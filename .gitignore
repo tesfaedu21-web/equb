@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Database (keep local db out of git — Railway uses its own volume)
+equb.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+uvicorn.log
+uvicorn_err.log
+server.log
+server_err.log
+
+# Temp / OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Excel temp files
+~$*.xlsx
+~$*.xls
+CUserstnegaAppDataLocalTemp*
+
+# IDE
+.vscode/
+.idea/
+
+# Secrets (never commit)
+.env

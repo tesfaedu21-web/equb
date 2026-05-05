@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}{{ group_name }} — Equb{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            equb: {
+              green:  '#078930', yellow: '#FCDD09', red: '#DA121A',
+              dark:   '#071A10', mid:    '#0f2318', light: '#1a3d2b',
+              muted:  '#2d6a4f', pale:   '#e8f5ec',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            ethiopic: ['"Noto Sans Ethiopic"', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    [x-cloak] { display: none !important; }
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .amharic { font-family: 'Noto Sans Ethiopic', sans-serif; }
+    input.amharic, input[data-amharic], .name-field { font-family: 'Noto Sans Ethiopic', sans-serif; }
+
+    /* Sidebar nav */
+    .nav-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 12px; border-radius: 10px;
+      color: #86efac; font-size: 0.8125rem; font-weight: 500;
+      transition: background 0.15s, color 0.15s; cursor: pointer; text-decoration: none;
+    }
+    .nav-link:hover  { background: rgba(255,255,255,0.08); color: #fff; }
+    .nav-link.active { background: rgba(7,137,48,0.35); color: #fff; }
+    .nav-link .icon  { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.85; }
+
+    /* Cards */
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04); border: 1px solid #f0f0f0; padding: 1.5rem; }
+
+    /* Buttons */
+    .btn-primary   { background: #078930; color: #fff; font-weight: 600; padding: 7px 16px; border-radius: 10px; font-size: 0.8125rem; transition: background .15s; border: none; cursor: pointer; }
+    .btn-primary:hover { background: #1a3d2b; }
+    .btn-secondary { background: #f3f4f6; color: #374151; font-weight: 600; padding: 7px 16px; border-radius: 10px; font-size: 0.8125rem; transition: background .15s; border: none; cursor: pointer; }
+    .btn-secondary:hover { background: #e5e7eb; }
+    .btn-danger    { background: #ef4444; color: #fff; font-weight: 600; padding: 7px 16px; border-radius: 10px; font-size: 0.8125rem; transition: background .15s; border: none; cursor: pointer; }
+    .btn-danger:hover { background: #dc2626; }
+
+    /* Inputs */
+    input:not([type=checkbox]):not([type=radio]), select, textarea {
+      border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 12px;
+      font-size: 0.8125rem; width: 100%; background: #fff; color: #111827;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:not([type=checkbox]):not([type=radio]):focus, select:focus, textarea:focus {
+      outline: none; border-color: #078930; box-shadow: 0 0 0 3px rgba(7,137,48,0.12);
+    }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 99px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; }
+    .badge-active   { background: #dcfce7; color: #166534; }
+    .badge-received { background: #dbeafe; color: #1e40af; }
+    .badge-left     { background: #f3f4f6; color: #6b7280; }
+    .badge-pending  { background: #fef9c3; color: #854d0e; }
+    .badge-paid     { background: #dcfce7; color: #15803d; }
+    .badge-missed   { background: #fee2e2; color: #991b1b; }
+    .badge-late     { background: #ffedd5; color: #9a3412; }
+    .badge-drawn    { background: #dbeafe; color: #1d4ed8; }
+    .badge-sold     { background: #f3e8ff; color: #6d28d9; }
+    .badge-group    { background: #fef3c7; color: #92400e; }
+    .badge-admin    { background: #fef3c7; color: #78350f; }
+    .badge-cashier  { background: #dcfce7; color: #14532d; }
+
+    /* Modals */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 1rem; backdrop-filter: blur(2px); }
+    .modal-box { background: #fff; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.18); width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 24px; right: 24px; z-index: 50; padding: 12px 20px; border-radius: 12px; color: #fff; font-size: 0.875rem; font-weight: 500; box-shadow: 0 8px 24px rgba(0,0,0,.2); transition: all .3s; }
+
+    /* Tables */
+    th { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; }
+    tbody tr { border-bottom: 1px solid #f9fafb; }
+    tbody tr:hover { background: #f9fafb; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 99px; }
+  </style>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+</head>
+
+<!-- Inject server-side user/branding context for JS -->
+<script>
+  window._equbCtx = {
+    userName: {{ user_name | tojson }},
+    userRole: {{ user_role | tojson }},
+    groupName: {{ group_name | tojson }},
+    groupTagline: {{ group_tagline | tojson }},
+    logoUrl: {{ (logo_url or '') | tojson }},
+  };
+</script>
+
+<body class="bg-gray-50" x-data="app()" x-init="initApp()">
+
+<!-- Toast -->
+<div x-show="toast.show" x-cloak
+     :class="toast.type === 'error' ? 'bg-red-500' : 'bg-equb-green'"
+     class="toast"
+     x-transition:enter="transition ease-out duration-250"
+     x-transition:enter-start="opacity-0 translate-y-3 scale-95"
+     x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     x-text="toast.msg">
+</div>
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+  <aside class="w-64 flex flex-col flex-shrink-0 overflow-y-auto"
+         style="background: linear-gradient(180deg, #071A10 0%, #0a2016 100%);">
+
+    <!-- Branding -->
+    <div class="px-5 pt-6 pb-4">
+      <div class="flex items-center gap-3 mb-4">
+        <!-- Logo -->
+        <div class="w-10 h-10 rounded-xl flex-shrink-0 overflow-hidden shadow-md"
+             x-show="!logoUrl"
+             style="background: linear-gradient(135deg, #078930 33%, #FCDD09 33% 66%, #DA121A 66%)">
+        </div>
+        <img x-show="logoUrl" :src="logoUrl" :alt="groupName"
+             class="w-10 h-10 rounded-xl object-cover shadow-md flex-shrink-0"/>
+        <div>
+          <div class="text-white font-bold text-lg leading-tight amharic" x-text="groupName"></div>
+          <div class="text-green-400 text-xs font-medium" x-text="groupTagline"></div>
+        </div>
+      </div>
+
+      <!-- Calendar toggle -->
+      <div class="flex items-center rounded-xl p-0.5 text-xs" style="background: rgba(255,255,255,0.07);">
+        <button @click="useEthCal=true; localStorage.setItem('useEthCal','true')"
+          :class="useEthCal ? 'bg-equb-green text-white shadow-sm' : 'text-green-400 hover:text-green-200'"
+          class="flex-1 py-1.5 rounded-[9px] font-semibold transition-all text-center amharic tracking-wide">ዓ.ም</button>
+        <button @click="useEthCal=false; localStorage.setItem('useEthCal','false')"
+          :class="!useEthCal ? 'bg-equb-green text-white shadow-sm' : 'text-green-400 hover:text-green-200'"
+          class="flex-1 py-1.5 rounded-[9px] font-semibold transition-all text-center">G.C.</button>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex-1 px-3 py-2 space-y-0.5">
+      <a href="/" class="nav-link {% block nav_dashboard %}{% endblock %}">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Dashboard
+      </a>
+      <a href="/members" class="nav-link {% block nav_members %}{% endblock %}">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Members
+      </a>
+      <a href="/draws" class="nav-link {% block nav_draws %}{% endblock %}">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+        Draws
+      </a>
+      <a href="/payments" class="nav-link {% block nav_payments %}{% endblock %}">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+        Payments
+      </a>
+      <a href="/reports" class="nav-link {% block nav_reports %}{% endblock %}">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        Reports
+      </a>
+
+      <!-- Admin-only items -->
+      <template x-if="isAdmin">
+        <div class="space-y-0.5">
+          <a href="/notifications" class="nav-link {% block nav_notifications %}{% endblock %}">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            Notifications
+          </a>
+          <a href="/settings" class="nav-link {% block nav_settings %}{% endblock %}">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Settings
+          </a>
+        </div>
+      </template>
+    </nav>
+
+    <!-- User info -->
+    <div class="px-3 pb-4 pt-2 border-t" style="border-color: rgba(255,255,255,0.08);">
+      <div class="flex items-center gap-3 px-2 py-2">
+        <!-- Avatar -->
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+             style="background: #078930"
+             x-text="userName.split(' ').map(w=>w[0]||'').join('').toUpperCase().slice(0,2) || 'U'">
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-white text-sm font-medium truncate" x-text="userName"></div>
+          <div class="text-xs">
+            <span :class="isAdmin ? 'text-amber-400' : 'text-green-400'"
+                  x-text="isAdmin ? 'Administrator' : 'Cashier'"></span>
+          </div>
+        </div>
+        <a href="/logout" title="Sign out"
+           class="flex-shrink-0 p-1.5 rounded-lg text-green-500 hover:text-white hover:bg-white/10 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main content ─────────────────────────────────────────────────────── -->
+  <main class="flex-1 overflow-y-auto bg-gray-50">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<!-- ── Ethiopian calendar + global helpers ─────────────────────────────────── -->
+<script>
+const EthCal = (() => {
+  const EPOCH = 1724221;
+  const M = ['መስከረም','ጥቅምት','ህዳር','ታህሳስ','ጥር','የካቲት','መጋቢት','ሚያዝያ','ግንቦት','ሰኔ','ሐምሌ','ነሐሴ','ጳጉሜ'];
+
+  function toJDN(y,m,d) {
+    const a=Math.floor((14-m)/12), yy=y+4800-a, mm=m+12*a-3;
+    return d+Math.floor((153*mm+2)/5)+365*yy+Math.floor(yy/4)-Math.floor(yy/100)+Math.floor(yy/400)-32045;
+  }
+  function fromJDN(jdn) {
+    const n=jdn-EPOCH+1, c=Math.floor((n-1)/1461), r=n-c*1461, y0=c*4+1;
+    let year,rem;
+    if(r<=365)      {year=y0;   rem=r;}
+    else if(r<=730) {year=y0+1; rem=r-365;}
+    else if(r<=1095){year=y0+2; rem=r-730;}
+    else            {year=y0+3; rem=r-1095;}
+    const month=Math.min(Math.floor((rem-1)/30)+1,13);
+    return {year, month, day:rem-(month-1)*30};
+  }
+  return {
+    months: M,
+    convert(iso) {
+      if(!iso) return null;
+      const d=new Date(iso);
+      return fromJDN(toJDN(d.getUTCFullYear(), d.getUTCMonth()+1, d.getUTCDate()));
+    },
+    fmt(iso) {
+      if(!iso) return '—';
+      const e=this.convert(iso);
+      return e ? `${e.day} ${M[e.month-1]} ${e.year}` : '—';
+    },
+    fmtShort(iso) {
+      if(!iso) return '—';
+      const e=this.convert(iso);
+      return e ? `${e.day}/${e.month}/${e.year}` : '—';
+    }
+  };
+})();
+
+function app() {
+  const ctx = window._equbCtx || {};
+  return {
+    toast: {show:false, msg:'', type:'success'},
+    useEthCal: localStorage.getItem('useEthCal') !== 'false',
+    userName:   ctx.userName   || 'User',
+    userRole:   ctx.userRole   || 'cashier',
+    groupName:  ctx.groupName  || 'እቁብ',
+    groupTagline: ctx.groupTagline || 'Equb Manager',
+    logoUrl:    ctx.logoUrl    || '',
+
+    get isAdmin() { return this.userRole === 'admin'; },
+
+    initApp() {},
+
+    showToast(msg, type='success') {
+      this.toast = {show:true, msg, type};
+      setTimeout(()=>{ this.toast.show=false; }, 3500);
+    },
+
+    fmt(n) {
+      if(n===null||n===undefined) return '—';
+      return new Intl.NumberFormat('en-ET').format(Math.round(n)) + ' ETB';
+    },
+
+    fmtDate(iso) {
+      if(!iso) return '—';
+      if(this.useEthCal) return EthCal.fmt(iso);
+      return new Date(iso).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+    },
+
+    fmtDateBoth(iso) {
+      if(!iso) return '—';
+      const eth  = EthCal.fmt(iso);
+      const greg = new Date(iso).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+      return this.useEthCal ? `${eth}` : `${greg}`;
+    },
+
+    async api(method, url, body) {
+      const opts = {method, headers:{'Content-Type':'application/json'}};
+      if(body) opts.body = JSON.stringify(body);
+      const res = await fetch(url, opts);
+      if(!res.ok) {
+        const err = await res.json().catch(()=>({}));
+        throw new Error(err.detail || 'Request failed');
+      }
+      return res.json();
+    }
+  };
+}
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

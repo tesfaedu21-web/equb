@@ -1,0 +1,896 @@
+{% extends "base.html" %}
+{% block title %}Payments — እቁብ Equb{% endblock %}
+{% block nav_payments %}active{% endblock %}
+
+{% block content %}
+<div x-data="payments()" x-init="load()">
+<div class="p-8 space-y-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Payments</h1>
+      <p class="text-sm text-gray-500 mt-0.5">Track weekly contributions — cash, bank transfer, or cheque</p>
+    </div>
+    <button @click="openNewPayment()" class="btn-secondary flex items-center gap-2 text-sm">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      New Payment
+    </button>
+  </div>
+
+  <!-- Tab switcher -->
+  <div class="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+    <button @click="activeTab='week'"
+            :class="activeTab==='week' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'"
+            class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all">
+      Week View
+    </button>
+    <button @click="activeTab='debtors'; loadDebtors()"
+            :class="activeTab==='debtors' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'"
+            class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5">
+      Debtors
+      <span x-show="debtors.length > 0"
+            class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-600 text-xs font-bold"
+            x-text="debtors.length"></span>
+    </button>
+    <button @click="activeTab='summary'; if (summaryCycle && !summaryWeeks.length) loadSummaryWeeks()"
+            :class="activeTab==='summary' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'"
+            class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all">
+      Weekly Summary
+    </button>
+  </div>
+
+  <!-- ── WEEK VIEW ─────────────────────────────────────────────────────────── -->
+  <div x-show="activeTab==='week'" x-cloak>
+
+    <!-- Week selector + summary -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div class="card lg:col-span-2">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Select Week</label>
+        <div class="flex gap-3">
+          <select x-model="selectedCycle" @change="loadWeeks()" class="w-48">
+            <option value="">— Cycle —</option>
+            <template x-for="c in cycles" :key="c.id">
+              <option :value="c.id" x-text="c.name"></option>
+            </template>
+          </select>
+          <select x-model="selectedWeek" @change="loadPayments()" class="flex-1">
+            <option value="">— Select Week —</option>
+            <template x-for="w in weeks" :key="w.id">
+              <option :value="w.id"
+                x-text="`Week ${w.week_number} — ${fmtDate(w.draw_date)}${w.is_group_week ? ' 🔔 Group' : ''}${w.is_worker_week ? ' 👷 Worker' : ''}`">
+              </option>
+            </template>
+          </select>
+        </div>
+      </div>
+      <div class="card" x-show="selectedWeek">
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <div class="text-xl font-bold text-green-600" x-text="payments.filter(p=>p.status==='paid').length"></div>
+            <div class="text-xs text-gray-400">Paid</div>
+          </div>
+          <div>
+            <div class="text-xl font-bold text-yellow-500" x-text="payments.filter(p=>p.status==='pending').length"></div>
+            <div class="text-xs text-gray-400">Pending</div>
+          </div>
+          <div>
+            <div class="text-xl font-bold text-red-500" x-text="payments.filter(p=>p.status==='missed').length"></div>
+            <div class="text-xs text-gray-400">Missed</div>
+          </div>
+        </div>
+        <div class="mt-3 bg-gray-100 rounded-full h-2">
+          <div class="bg-equb-green h-2 rounded-full transition-all"
+               :style="`width:${payments.length ? payments.filter(p=>p.status==='paid').length/payments.length*100 : 0}%`"></div>
+        </div>
+        <div class="text-center text-xs text-gray-400 mt-1">
+          Collected: <span class="font-semibold text-gray-700"
+            x-text="fmt(payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount,0))"></span>
+        </div>
+      </div>
+    </div>
+
+    <div x-show="!selectedWeek" class="card text-center py-12 text-gray-400">
+      Select a cycle and week above to view payments.
+    </div>
+
+    <!-- Payments table -->
+    <div x-show="selectedWeek" class="card p-0 overflow-hidden">
+      <div class="px-5 py-3 border-b flex flex-wrap items-center gap-3 bg-gray-50">
+        <input x-model="search" type="text" placeholder="Search member…" class="w-48 py-1.5 text-xs"/>
+        <select x-model="filterStatus" class="w-36 py-1.5 text-xs">
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="paid">Paid</option>
+          <option value="late">Late</option>
+          <option value="missed">Missed</option>
+        </select>
+        <div class="ml-auto flex gap-2">
+          <button @click="bulkAction('paid')" class="btn-primary text-xs py-1 px-3">✓ Mark Selected Paid</button>
+          <button @click="bulkAction('missed')" class="btn-danger text-xs py-1 px-3">✗ Missed</button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="border-b bg-white">
+            <tr>
+              <th class="px-4 py-3 w-8">
+                <input type="checkbox" @change="toggleAll($event)" class="w-auto rounded"/>
+              </th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Spot</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Member</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Amount</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Status</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Method</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Ref #</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Paid Date</th>
+              <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <template x-for="p in filteredPayments" :key="p.id">
+              <tr class="hover:bg-gray-50/70 transition-colors"
+                  :class="{'bg-green-50/30': p.status==='paid', 'bg-red-50/20': p.status==='missed', 'bg-orange-50/20': p.status==='late'}">
+                <td class="px-4 py-3">
+                  <input type="checkbox" :value="p.id" x-model="selected" class="w-auto rounded"/>
+                </td>
+                <td class="px-4 py-3">
+                  <template x-if="p.spot_numbers && p.spot_numbers.length">
+                    <div class="flex flex-wrap gap-1">
+                      <template x-for="sn in p.spot_numbers" :key="sn">
+                        <span class="inline-flex items-center justify-center w-7 h-7 bg-equb-pale text-equb-green rounded-lg text-xs font-bold"
+                              x-text="sn"></span>
+                      </template>
+                    </div>
+                  </template>
+                  <span x-show="!p.spot_numbers || !p.spot_numbers.length" class="text-gray-300 text-xs">—</span>
+                </td>
+                <td class="px-4 py-3 font-medium text-gray-900 amharic" x-text="p.member_name"></td>
+                <td class="px-4 py-3 font-semibold text-gray-700" x-text="fmt(p.amount)"></td>
+                <td class="px-4 py-3">
+                  <span :class="`badge badge-${p.status}`" x-text="p.status"></span>
+                </td>
+                <td class="px-4 py-3">
+                  <template x-if="p.status==='paid' && p.payment_method">
+                    <span :class="{
+                      'badge bg-green-100 text-green-700': p.payment_method==='cash',
+                      'badge bg-blue-100 text-blue-700': p.payment_method==='bank_transfer',
+                      'badge bg-purple-100 text-purple-700': p.payment_method==='cheque',
+                    }" x-text="methodLabel(p.payment_method)"></span>
+                  </template>
+                  <span x-show="p.status!=='paid' || !p.payment_method" class="text-gray-300 text-xs">—</span>
+                </td>
+                <td class="px-4 py-3 text-gray-400 text-xs font-mono" x-text="p.reference || '—'"></td>
+                <td class="px-4 py-3 text-gray-400 text-xs" x-text="p.paid_date ? fmtDate(p.paid_date) : '—'"></td>
+                <td class="px-4 py-3">
+                  <div class="flex items-center justify-end gap-1">
+                    <button x-show="p.status !== 'paid'"
+                            @click="openPayRow(p)"
+                            class="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors" title="Record Payment">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                      </svg>
+                    </button>
+                    <button x-show="p.status !== 'late'"
+                            @click="updatePayment(p.id, 'late')"
+                            class="p-1.5 rounded-lg text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition-colors" title="Mark Late">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                    </button>
+                    <button x-show="p.status !== 'missed'"
+                            @click="updatePayment(p.id, 'missed')"
+                            class="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Mark Missed">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                      </svg>
+                    </button>
+                    <button x-show="p.status !== 'pending'"
+                            @click="updatePayment(p.id, 'pending')"
+                            class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Reset">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                      </svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+            <tr x-show="filteredPayments.length === 0">
+              <td colspan="9" class="px-4 py-12 text-center text-gray-400">No payments found</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── WEEKLY SUMMARY VIEW ──────────────────────────────────────────────── -->
+  <div x-show="activeTab==='summary'" x-cloak id="summary-print-area">
+
+    <!-- Week selector -->
+    <div class="card mb-6 no-print">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Cycle</label>
+          <select x-model="summaryCycle" @change="loadSummaryWeeks()" class="w-44">
+            <option value="">— Select Cycle —</option>
+            <template x-for="c in cycles" :key="c.id">
+              <option :value="c.id" x-text="c.name"></option>
+            </template>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Week</label>
+          <select x-model="summaryWeekId" @change="loadSummary()" class="w-56">
+            <option value="">— Select Week —</option>
+            <template x-for="w in summaryWeeks" :key="w.id">
+              <option :value="w.id"
+                x-text="`Week ${w.week_number} — ${fmtDate(w.draw_date)}${w.is_group_week ? ' (Group)' : ''}${w.is_worker_week ? ' (Worker)' : ''}`">
+              </option>
+            </template>
+          </select>
+        </div>
+        <button x-show="summaryData" @click="printSummary()"
+                class="btn-secondary flex items-center gap-2 text-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+          </svg>
+          Print Summary
+        </button>
+      </div>
+    </div>
+
+    <div x-show="!summaryWeekId" class="card text-center py-12 text-gray-400 no-print">
+      Select a cycle and week above to view the collection summary.
+    </div>
+
+    <template x-if="summaryData">
+      <div class="space-y-5">
+
+        <!-- Print header (hidden on screen) -->
+        <div class="print-only hidden text-center mb-4">
+          <h1 class="text-xl font-bold">Weekly Payment Summary</h1>
+          <p class="text-gray-600">Week <span x-text="summaryData.week_number"></span> —
+             <span x-text="fmtDate(summaryData.draw_date)"></span></p>
+        </div>
+
+        <!-- Method breakdown cards -->
+        <div class="grid grid-cols-4 gap-4">
+          <div class="card text-center py-4">
+            <div class="text-xs font-semibold text-gray-400 uppercase mb-2">Cash</div>
+            <div class="text-2xl font-bold text-green-600" x-text="fmt(summaryData.totals.cash)"></div>
+            <div class="text-xs text-gray-400 mt-1" x-text="summaryData.count.cash + ' payment(s)'"></div>
+          </div>
+          <div class="card text-center py-4">
+            <div class="text-xs font-semibold text-gray-400 uppercase mb-2">Bank Transfer</div>
+            <div class="text-2xl font-bold text-blue-600" x-text="fmt(summaryData.totals.bank_transfer)"></div>
+            <div class="text-xs text-gray-400 mt-1" x-text="summaryData.count.bank_transfer + ' payment(s)'"></div>
+          </div>
+          <div class="card text-center py-4">
+            <div class="text-xs font-semibold text-gray-400 uppercase mb-2">Cheque</div>
+            <div class="text-2xl font-bold text-purple-600" x-text="fmt(summaryData.totals.cheque)"></div>
+            <div class="text-xs text-gray-400 mt-1" x-text="summaryData.count.cheque + ' payment(s)'"></div>
+          </div>
+          <div class="card text-center py-4 bg-equb-pale border border-equb-green/20">
+            <div class="text-xs font-semibold text-gray-400 uppercase mb-2">Total Collected</div>
+            <div class="text-2xl font-bold text-equb-green" x-text="fmt(summaryData.total_paid)"></div>
+            <div class="text-xs text-gray-400 mt-1" x-text="(summaryData.count.cash + summaryData.count.bank_transfer + summaryData.count.cheque) + ' payments'"></div>
+          </div>
+        </div>
+
+        <!-- Detailed payment table -->
+        <div class="card p-0 overflow-hidden">
+          <div class="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
+            <span class="text-sm font-semibold text-gray-700">
+              Paid Members — Week <span x-text="summaryData.week_number"></span>
+            </span>
+            <span class="text-xs text-gray-400" x-text="summaryData.payments.length + ' records'"></span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="border-b bg-white">
+                <tr>
+                  <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">#</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Member</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Method</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Reference</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Date</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Amount</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50">
+                <template x-for="(p, i) in summaryData.payments" :key="p.member_id">
+                  <tr class="hover:bg-gray-50/70">
+                    <td class="px-5 py-3 text-gray-400 text-xs" x-text="i + 1"></td>
+                    <td class="px-5 py-3 font-medium text-gray-900 amharic" x-text="p.member_name"></td>
+                    <td class="px-5 py-3">
+                      <span :class="{
+                        'badge bg-green-100 text-green-700': p.method==='cash',
+                        'badge bg-blue-100 text-blue-700': p.method==='bank_transfer',
+                        'badge bg-purple-100 text-purple-700': p.method==='cheque',
+                      }" x-text="methodLabel(p.method)"></span>
+                    </td>
+                    <td class="px-5 py-3 text-gray-400 text-xs font-mono" x-text="p.reference || '—'"></td>
+                    <td class="px-5 py-3 text-gray-400 text-xs" x-text="p.paid_date ? fmtDate(p.paid_date) : '—'"></td>
+                    <td class="px-5 py-3 text-right font-semibold text-gray-700" x-text="fmt(p.amount)"></td>
+                  </tr>
+                </template>
+                <tr class="border-t-2 border-gray-200 bg-gray-50">
+                  <td colspan="5" class="px-5 py-3 font-bold text-gray-700 text-right">Total</td>
+                  <td class="px-5 py-3 text-right font-bold text-equb-green" x-text="fmt(summaryData.total_paid)"></td>
+                </tr>
+                <tr x-show="summaryData.payments.length === 0">
+                  <td colspan="6" class="px-5 py-10 text-center text-gray-400">No paid payments recorded for this week.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ── DEBTORS VIEW ──────────────────────────────────────────────────────── -->
+  <div x-show="activeTab==='debtors'" x-cloak>
+
+    <!-- Summary bar -->
+    <div x-show="debtors.length > 0" class="grid grid-cols-3 gap-4 mb-6">
+      <div class="card text-center py-4">
+        <div class="text-2xl font-bold text-red-500" x-text="debtors.length"></div>
+        <div class="text-xs text-gray-400 mt-1">Members with debt</div>
+      </div>
+      <div class="card text-center py-4">
+        <div class="text-2xl font-bold text-orange-500"
+             x-text="debtors.reduce((s,d)=>s+d.unpaid_count,0)"></div>
+        <div class="text-xs text-gray-400 mt-1">Total missed weeks</div>
+      </div>
+      <div class="card text-center py-4">
+        <div class="text-xl font-bold text-gray-800"
+             x-text="fmt(debtors.reduce((s,d)=>s+d.unpaid_amount,0))"></div>
+        <div class="text-xs text-gray-400 mt-1">Total outstanding</div>
+      </div>
+    </div>
+
+    <!-- Search + refresh -->
+    <div class="flex gap-3 mb-4">
+      <input x-model="debtorSearch" type="text" placeholder="Search debtor…" class="w-64"/>
+      <button @click="loadDebtors()" class="btn-secondary flex items-center gap-2 text-sm">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+
+    <div x-show="loadingDebtors" class="card text-center py-10 text-gray-400">Loading…</div>
+
+    <div x-show="!loadingDebtors && debtors.length === 0"
+         class="card text-center py-12">
+      <div class="text-5xl mb-3">🎉</div>
+      <div class="font-semibold text-gray-700">All caught up!</div>
+      <div class="text-sm text-gray-400 mt-1">No members have outstanding past-due payments.</div>
+    </div>
+
+    <div x-show="!loadingDebtors && debtors.length > 0" class="card p-0 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b">
+            <tr>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Member</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Spot</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Phone</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Status</th>
+              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Weeks Owed</th>
+              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Amount Owed</th>
+              <th class="px-5 py-3"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <template x-for="d in filteredDebtors" :key="d.member_id">
+              <tr class="hover:bg-gray-50/70 transition-colors">
+                <td class="px-5 py-3.5 font-medium text-gray-900 amharic" x-text="d.member_name"></td>
+                <td class="px-5 py-3.5">
+                  <div class="flex flex-wrap gap-1">
+                    <template x-for="sn in d.spot_numbers" :key="sn">
+                      <span class="inline-flex items-center justify-center w-7 h-7 bg-equb-pale text-equb-green rounded-lg text-xs font-bold"
+                            x-text="sn"></span>
+                    </template>
+                    <span x-show="d.spot_numbers.length === 0" class="text-gray-300 text-xs">—</span>
+                  </div>
+                </td>
+                <td class="px-5 py-3.5 text-gray-500 text-sm" x-text="d.phone || '—'"></td>
+                <td class="px-5 py-3.5">
+                  <span :class="`badge badge-${d.status}`" x-text="d.status"></span>
+                </td>
+                <td class="px-5 py-3.5 text-right">
+                  <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-bold"
+                        :class="d.unpaid_count >= 10 ? 'bg-red-100 text-red-700' : d.unpaid_count >= 5 ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'"
+                        x-text="d.unpaid_count"></span>
+                </td>
+                <td class="px-5 py-3.5 text-right font-bold text-red-600" x-text="fmt(d.unpaid_amount)"></td>
+                <td class="px-5 py-3.5">
+                  <button @click="openDebtorPay(d)"
+                          class="btn-primary text-xs py-1 px-3">
+                    Pay
+                  </button>
+                </td>
+              </tr>
+            </template>
+            <tr x-show="filteredDebtors.length === 0 && debtors.length > 0">
+              <td colspan="7" class="px-5 py-10 text-center text-gray-400">No match</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end inner content -->
+
+<!-- ── Record Payment Modal ─────────────────────────────────────────────── -->
+<div x-show="showPayModal" x-cloak class="modal-backdrop" @click.self="showPayModal = false">
+  <div class="modal-box max-w-lg">
+
+    <div class="p-5 border-b flex items-start justify-between">
+      <div>
+        <h2 class="text-base font-bold text-gray-900">Record Payment</h2>
+        <p class="text-xs text-gray-400 mt-0.5">Select the weeks being paid now. Partial payment is allowed.</p>
+      </div>
+      <button @click="showPayModal = false" class="text-gray-400 hover:text-gray-600 mt-0.5">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="p-5 space-y-4">
+
+      <!-- Member selector (shown only when opened from "New Payment" button) -->
+      <div x-show="!batch._fromRow">
+        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Member</label>
+        <select x-model.number="batch.member_id" @change="loadOutstanding()" class="amharic">
+          <option :value="null">— Select member —</option>
+          <template x-for="m in allMembers" :key="m.id">
+            <option :value="m.id"
+              x-text="m.spot_numbers && m.spot_numbers.length ? `${m.name}  (Spot ${m.spot_numbers.join(', ')})` : m.name">
+            </option>
+          </template>
+        </select>
+      </div>
+
+      <!-- Member avatar card (when opened from row or debtors) -->
+      <div x-show="batch._fromRow" class="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+        <div class="w-9 h-9 rounded-full bg-equb-green/10 flex items-center justify-center text-equb-green font-bold text-sm"
+             x-text="batch._memberName ? batch._memberName[0] : '?'"></div>
+        <div>
+          <div class="font-semibold text-gray-800 amharic text-sm" x-text="batch._memberName"></div>
+          <div class="text-xs text-gray-400" x-text="batch._spotLabel"></div>
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div x-show="batch.member_id && loadingOutstanding" class="text-center py-3 text-gray-400 text-sm">Loading…</div>
+
+      <!-- Week list -->
+      <div x-show="batch.member_id && !loadingOutstanding">
+        <template x-if="outstanding.length > 0">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-gray-500 uppercase">
+                Weeks Outstanding
+                <span class="text-gray-400 font-normal normal-case ml-1">
+                  (<span x-text="outstanding.length"></span> weeks · <span x-text="fmt(totalOwed)"></span> total)
+                </span>
+              </span>
+              <div class="flex gap-2">
+                <button type="button" @click="selectAllWeeks()" class="text-xs text-equb-green hover:underline">All</button>
+                <button type="button" @click="batch.week_ids = []" class="text-xs text-gray-400 hover:underline">None</button>
+              </div>
+            </div>
+            <div class="border rounded-xl divide-y max-h-56 overflow-y-auto">
+              <template x-for="p in outstanding" :key="p.id">
+                <label class="flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors"
+                       :class="batch.week_ids.includes(p.week_id) ? 'bg-equb-pale/60' : 'hover:bg-gray-50'">
+                  <input type="checkbox"
+                         :checked="batch.week_ids.includes(p.week_id)"
+                         @change="toggleWeek(p.week_id)"
+                         class="w-auto rounded accent-equb-green"/>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold text-gray-800 text-sm">Week <span x-text="p.week_number"></span></span>
+                      <span x-show="p.week_id == batch._currentWeekId"
+                            class="text-xs bg-equb-green text-white px-1.5 py-0.5 rounded font-medium">This week</span>
+                      <span x-show="p.status === 'missed'"
+                            class="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">Missed</span>
+                      <span x-show="p.status === 'late'"
+                            class="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">Late</span>
+                    </div>
+                    <div class="text-xs text-gray-400 mt-0.5" x-text="fmtDate(p.draw_date || p.paid_date || '')"></div>
+                  </div>
+                  <span class="font-bold text-gray-700 text-sm shrink-0" x-text="fmt(p.amount)"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+        </template>
+        <div x-show="outstanding.length === 0 && batch.member_id"
+             class="text-center py-4 text-green-600 text-sm bg-green-50 rounded-xl">
+          ✓ No outstanding weeks — this member is fully paid up
+        </div>
+      </div>
+
+      <!-- Summary bar -->
+      <div x-show="batch.week_ids.length > 0"
+           class="flex items-center justify-between bg-equb-pale rounded-xl px-4 py-3">
+        <div class="text-sm text-gray-600">
+          <span class="font-semibold text-gray-800" x-text="batch.week_ids.length"></span>
+          week<span x-show="batch.week_ids.length > 1">s</span> selected
+        </div>
+        <div class="text-lg font-bold text-equb-green" x-text="fmt(selectedAmount)"></div>
+      </div>
+
+      <!-- Payment method (shown when weeks are selected) -->
+      <template x-if="batch.week_ids.length > 0">
+        <div class="space-y-3 pt-1 border-t">
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase mb-2">Payment Method</label>
+            <div class="grid grid-cols-3 gap-2">
+              <template x-for="m in methods" :key="m.value">
+                <button type="button"
+                        @click="batch.payment_method = m.value"
+                        :class="batch.payment_method === m.value
+                          ? 'ring-2 ring-equb-green bg-equb-pale text-equb-green font-semibold'
+                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100'"
+                        class="p-2.5 rounded-xl border text-sm text-center transition-all">
+                  <div x-text="m.icon" class="text-lg mb-0.5"></div>
+                  <div x-text="m.label" class="text-xs"></div>
+                </button>
+              </template>
+            </div>
+          </div>
+          <div x-show="batch.payment_method !== 'cash'">
+            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1"
+                   x-text="batch.payment_method === 'cheque' ? 'Cheque Number' : 'Bank Slip / Reference'"></label>
+            <input x-model="batch.reference" type="text" placeholder="Reference number"/>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Payment Date</label>
+              <input x-model="batch.payment_date" type="date"/>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Notes (optional)</label>
+              <input x-model="batch.notes" type="text" placeholder="e.g. partial payment"/>
+            </div>
+          </div>
+          <div class="flex gap-3 pt-1">
+            <button type="button" @click="showPayModal = false" class="btn-secondary flex-1">Cancel</button>
+            <button type="button" @click="saveBatch()" :disabled="saving"
+                    class="btn-primary flex-1"
+                    x-text="saving ? 'Saving…' : `Confirm — ${fmt(selectedAmount)}`"></button>
+          </div>
+        </div>
+      </template>
+
+      <!-- No weeks selected yet -->
+      <div x-show="batch.week_ids.length === 0 && outstanding.length > 0"
+           class="text-center py-2 text-gray-400 text-xs">
+        Check the weeks the member is paying for
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</div><!-- end x-data scope -->
+{% endblock %}
+
+{% block scripts %}
+<style>
+@media print {
+  body * { visibility: hidden; }
+  #summary-print-area, #summary-print-area * { visibility: visible; }
+  #summary-print-area {
+    position: absolute; top: 0; left: 0; width: 100%; padding: 24px;
+  }
+  .no-print { display: none !important; }
+  .print-only { display: block !important; visibility: visible; }
+  .card { box-shadow: none !important; border: 1px solid #e5e7eb !important; }
+}
+.print-only { display: none; }
+</style>
+<script>
+function payments() {
+  return {
+    cycles: [], weeks: [], payments: [], allMembers: [], outstanding: [],
+    debtors: [], debtorSearch: '', loadingDebtors: false,
+    selectedCycle: '', selectedWeek: '',
+    search: '', filterStatus: '', selected: [],
+    activeTab: 'week',
+    currentWeekId: null,
+    showPayModal: false, loadingOutstanding: false, saving: false,
+    summaryCycle: '', summaryWeeks: [], summaryWeekId: '', summaryData: null,
+    batch: {
+      member_id: null, week_ids: [], payment_method: 'cash',
+      reference: '', payment_date: '', notes: '',
+      _fromRow: false, _memberName: '', _spotLabel: '', _currentWeekId: null,
+    },
+    methods: [
+      { value: 'cash',          label: 'Cash',         icon: '💵' },
+      { value: 'bank_transfer', label: 'Bank Transfer', icon: '🏦' },
+      { value: 'cheque',        label: 'Cheque',       icon: '📋' },
+    ],
+
+    get filteredPayments() {
+      return this.payments.filter(p => {
+        const s = !this.search || p.member_name.toLowerCase().includes(this.search.toLowerCase());
+        const st = !this.filterStatus || p.status === this.filterStatus;
+        return s && st;
+      });
+    },
+    get filteredDebtors() {
+      if (!this.debtorSearch) return this.debtors;
+      const q = this.debtorSearch.toLowerCase();
+      return this.debtors.filter(d =>
+        d.member_name.toLowerCase().includes(q) ||
+        (d.phone && d.phone.includes(q)) ||
+        d.spot_numbers.some(sn => String(sn).includes(q))
+      );
+    },
+    get totalOwed()     { return this.outstanding.reduce((s, p) => s + p.amount, 0); },
+    get selectedAmount() {
+      return this.outstanding
+        .filter(p => this.batch.week_ids.includes(p.week_id))
+        .reduce((s, p) => s + p.amount, 0);
+    },
+
+    methodLabel(m) {
+      return { cash: 'Cash', bank_transfer: 'Bank Transfer', cheque: 'Cheque' }[m] || m;
+    },
+
+    async load() {
+      try {
+        this.cycles = await this.api('GET', '/api/draws/cycles');
+        const active = this.cycles.find(c => c.status === 'active') || this.cycles[0];
+        if (active) {
+          this.selectedCycle = active.id;
+          this.summaryCycle = active.id;  // pre-populate summary cycle
+          await Promise.all([this.loadWeeks(), this.loadSummaryWeeks()]);
+          // Find current pending week (most recent pending, or last week)
+          const pending = [...this.weeks].reverse().find(w => w.status === 'pending');
+          const target = pending || this.weeks[this.weeks.length - 1];
+          if (target) {
+            this.selectedWeek = target.id;
+            this.currentWeekId = target.id;
+            await this.loadPayments();
+          }
+        }
+        this.allMembers = await this.api('GET', '/api/members');
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async loadWeeks() {
+      if (!this.selectedCycle) return;
+      this.weeks = await this.api('GET', `/api/draws/cycles/${this.selectedCycle}/weeks`).catch(() => []);
+    },
+
+    async loadPayments() {
+      if (!this.selectedWeek) return;
+      this.selected = [];
+      this.payments = await this.api('GET', `/api/payments/week/${this.selectedWeek}`).catch(() => []);
+      // Update currentWeekId when user changes week selection
+      this.currentWeekId = parseInt(this.selectedWeek);
+    },
+
+    async loadDebtors() {
+      this.loadingDebtors = true;
+      try {
+        const cqs = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
+        this.debtors = await this.api('GET', `/api/payments/outstanding-members${cqs}`);
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.loadingDebtors = false; }
+    },
+
+    // Open from week-view row ✓ button
+    async openPayRow(p) {
+      const today = new Date().toISOString().split('T')[0];
+      const spotLabel = p.spot_numbers && p.spot_numbers.length
+        ? 'Spot ' + p.spot_numbers.join(', ')
+        : '';
+      this.batch = {
+        member_id: p.member_id, week_ids: [],
+        payment_method: 'cash', reference: '', payment_date: today, notes: '',
+        _fromRow: true, _memberName: p.member_name, _spotLabel: spotLabel,
+        _currentWeekId: p.week_id,
+      };
+      this.outstanding = [];
+      this.showPayModal = true;
+      await this.loadOutstanding();
+      if (this.outstanding.find(o => o.week_id === p.week_id)) {
+        this.batch.week_ids = [p.week_id];
+      }
+    },
+
+    // Open from Debtors tab "Pay" button
+    async openDebtorPay(d) {
+      const today = new Date().toISOString().split('T')[0];
+      const spotLabel = d.spot_numbers && d.spot_numbers.length
+        ? 'Spot ' + d.spot_numbers.join(', ')
+        : '';
+      this.batch = {
+        member_id: d.member_id, week_ids: [],
+        payment_method: 'cash', reference: '', payment_date: today, notes: '',
+        _fromRow: true, _memberName: d.member_name, _spotLabel: spotLabel,
+        _currentWeekId: this.currentWeekId,
+      };
+      this.outstanding = [];
+      this.showPayModal = true;
+      await this.loadOutstanding();
+      // Pre-select current week if it's outstanding
+      if (this.currentWeekId && this.outstanding.find(o => o.week_id === this.currentWeekId)) {
+        this.batch.week_ids = [this.currentWeekId];
+      }
+    },
+
+    // Open from "New Payment" header button
+    openNewPayment() {
+      const today = new Date().toISOString().split('T')[0];
+      this.batch = {
+        member_id: null, week_ids: [],
+        payment_method: 'cash', reference: '', payment_date: today, notes: '',
+        _fromRow: false, _memberName: '', _spotLabel: '',
+        _currentWeekId: this.currentWeekId,
+      };
+      this.outstanding = [];
+      this.showPayModal = true;
+    },
+
+    async loadOutstanding() {
+      if (!this.batch.member_id) return;
+      this.loadingOutstanding = true;
+      try {
+        const res = await this.api('GET', `/api/payments/member/${this.batch.member_id}/outstanding`);
+        this.outstanding = res.outstanding;
+        if (!this.batch._fromRow) this.batch.week_ids = [];
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.loadingOutstanding = false; }
+    },
+
+    toggleWeek(wid) {
+      const idx = this.batch.week_ids.indexOf(wid);
+      if (idx === -1) this.batch.week_ids.push(wid);
+      else this.batch.week_ids.splice(idx, 1);
+    },
+    selectAllWeeks() { this.batch.week_ids = this.outstanding.map(p => p.week_id); },
+
+    async saveBatch() {
+      if (!this.batch.week_ids.length) return;
+      this.saving = true;
+      try {
+        const res = await this.api('POST', '/api/payments/batch-record', {
+          member_id: this.batch.member_id,
+          week_ids: this.batch.week_ids,
+          payment_date: this.batch.payment_date || null,
+          payment_method: this.batch.payment_method,
+          reference: this.batch.reference || null,
+          notes: this.batch.notes || null,
+        });
+        this.showPayModal = false;
+        this.showToast(`Recorded ${res.weeks_paid} week(s) — ${this.fmt(res.total_amount)}`);
+        if (this.selectedWeek) await this.loadPayments();
+        // Refresh debtors list in background if on debtors tab
+        if (this.activeTab === 'debtors') await this.loadDebtors();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+
+    async updatePayment(id, status) {
+      try {
+        const updated = await this.api('PUT', `/api/payments/${id}`, { status });
+        const idx = this.payments.findIndex(x => x.id === id);
+        if (idx !== -1) this.payments[idx] = updated;
+        this.showToast(`Marked as ${status}`);
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async bulkAction(status) {
+      if (!this.selected.length) { this.showToast('Select payments first', 'error'); return; }
+      const memberIds = this.selected.map(id => this.payments.find(x => x.id === id)?.member_id).filter(Boolean);
+      try {
+        await this.api('POST', '/api/payments/bulk', {
+          week_id: parseInt(this.selectedWeek), member_ids: memberIds, status,
+        });
+        this.selected = [];
+        this.showToast(`${memberIds.length} payments marked as ${status}`);
+        await this.loadPayments();
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    toggleAll(e) { this.selected = e.target.checked ? this.filteredPayments.map(p => p.id) : []; },
+
+    async loadSummaryWeeks() {
+      if (!this.summaryCycle) return;
+      this.summaryWeeks = await this.api('GET', `/api/draws/cycles/${this.summaryCycle}/weeks`).catch(() => []);
+      this.summaryWeekId = '';
+      this.summaryData = null;
+    },
+
+    async loadSummary() {
+      if (!this.summaryWeekId) { this.summaryData = null; return; }
+      try {
+        this.summaryData = await this.api('GET', `/api/reports/weekly-summary/${this.summaryWeekId}`);
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    printSummary() {
+      if (!this.summaryData) return;
+      const d = this.summaryData;
+      const fmtNum = n => Number(n || 0).toLocaleString('en-ET') + ' ETB';
+      const fmtDt  = s => s ? new Date(s).toLocaleDateString('en-ET', { year:'numeric', month:'long', day:'numeric' }) : '—';
+      const methodBadge = m => ({
+        cash:          '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px">Cash</span>',
+        bank_transfer: '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-size:11px">Bank Transfer</span>',
+        cheque:        '<span style="background:#f3e8ff;color:#6b21a8;padding:2px 8px;border-radius:4px;font-size:11px">Cheque</span>',
+      }[m] || `<span>${m}</span>`);
+
+      const rows = d.payments.map((p, i) => `
+        <tr style="border-bottom:1px solid #f0f0f0">
+          <td style="padding:7px 10px;color:#666">${i + 1}</td>
+          <td style="padding:7px 10px;font-weight:500">${p.member_name}</td>
+          <td style="padding:7px 10px">${methodBadge(p.method)}</td>
+          <td style="padding:7px 10px;color:#888;font-size:12px;font-family:monospace">${p.reference || '—'}</td>
+          <td style="padding:7px 10px;color:#888;font-size:12px">${fmtDt(p.paid_date)}</td>
+          <td style="padding:7px 10px;text-align:right;font-weight:600">${fmtNum(p.amount)}</td>
+        </tr>`).join('');
+
+      const typeLabel = d.is_worker_week ? ' — Worker Week' : d.is_group_week ? ' — Group Week' : '';
+      const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Weekly Collection Summary — Week ${d.week_number}</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 28px; color: #111; }
+  h1   { font-size: 18px; margin: 0 0 4px 0; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
+  .cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+  .card  { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; text-align: center; }
+  .card .label { font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 6px; }
+  .card .amount { font-size: 20px; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #f9fafb; padding: 8px 10px; text-align: left; font-size: 11px; color: #888; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; }
+  tfoot td { padding: 10px; font-weight: 700; border-top: 2px solid #e5e7eb; }
+  @media print { body { padding: 0; } }
+</style></head><body>
+<h1>Weekly Payment Collection Summary</h1>
+<div class="sub">Week ${d.week_number}${typeLabel} &nbsp;·&nbsp; ${fmtDt(d.draw_date)} &nbsp;·&nbsp; ${d.payments.length} paid members</div>
+<div class="cards">
+  <div class="card"><div class="label">Cash</div><div class="amount" style="color:#16a34a">${fmtNum(d.totals.cash)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.count.cash} payment(s)</div></div>
+  <div class="card"><div class="label">Bank Transfer</div><div class="amount" style="color:#2563eb">${fmtNum(d.totals.bank_transfer)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.count.bank_transfer} payment(s)</div></div>
+  <div class="card"><div class="label">Cheque</div><div class="amount" style="color:#7c3aed">${fmtNum(d.totals.cheque)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.count.cheque} payment(s)</div></div>
+  <div class="card" style="background:#f0fdf4;border-color:#86efac"><div class="label">Total Collected</div><div class="amount" style="color:#15803d">${fmtNum(d.total_paid)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.payments.length} payments</div></div>
+</div>
+<table>
+  <thead><tr>
+    <th>#</th><th>Member Name</th><th>Method</th><th>Reference</th><th>Paid Date</th><th style="text-align:right">Amount</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+  <tfoot><tr>
+    <td colspan="5" style="text-align:right;padding:10px">Total</td>
+    <td style="text-align:right;padding:10px;color:#15803d">${fmtNum(d.total_paid)}</td>
+  </tr></tfoot>
+</table>
+<div style="margin-top:24px;font-size:11px;color:#bbb;text-align:right">Printed: ${new Date().toLocaleString()}</div>
+</body></html>`;
+
+      const win = window.open('', '_blank', 'width=900,height=700');
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 400);
+    },
+  }
+}
+</script>
+{% endblock %}

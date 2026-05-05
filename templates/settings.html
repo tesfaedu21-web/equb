@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}Settings — {{ group_name }}{% endblock %}
+{% block nav_settings %}active{% endblock %}
+
+{% block content %}
+<div x-data="settings()" x-init="load()">
+<div class="p-8 space-y-6 max-w-4xl">
+
+  <!-- Header -->
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
+    <p class="text-sm text-gray-500 mt-0.5">Manage branding, Equb configuration, and user accounts</p>
+  </div>
+
+  <!-- Branding -->
+  <div class="card space-y-4">
+    <h2 class="text-base font-semibold text-gray-800 flex items-center gap-2">
+      <svg class="w-4 h-4 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+      </svg>
+      Branding
+    </h2>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Group / Association Name</label>
+        <input x-model="form.group_name" type="text" class="name-field" placeholder="እቁብ"/>
+        <p class="text-xs text-gray-400 mt-1">Shown in sidebar and page titles</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Tagline</label>
+        <input x-model="form.group_tagline" type="text" placeholder="Equb Manager"/>
+        <p class="text-xs text-gray-400 mt-1">Subtitle below the name in sidebar</p>
+      </div>
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Logo URL</label>
+      <input x-model="form.logo_url" type="url" placeholder="https://… or leave blank for Ethiopian flag logo"/>
+      <p class="text-xs text-gray-400 mt-1">External image URL. Leave blank to use the default Ethiopian flag icon.</p>
+    </div>
+    <!-- Preview -->
+    <div class="flex items-center gap-3 bg-gray-900 rounded-xl px-4 py-3">
+      <template x-if="!form.logo_url">
+        <div class="w-9 h-9 rounded-xl flex-shrink-0 overflow-hidden"
+             style="background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%)"></div>
+      </template>
+      <template x-if="form.logo_url">
+        <img :src="form.logo_url" class="w-9 h-9 rounded-xl object-cover flex-shrink-0"/>
+      </template>
+      <div>
+        <div class="text-white font-bold amharic" x-text="form.group_name || 'እቁብ'"></div>
+        <div class="text-green-400 text-xs" x-text="form.group_tagline || 'Equb Manager'"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Equb configuration -->
+  <div class="card space-y-4">
+    <h2 class="text-base font-semibold text-gray-800 flex items-center gap-2">
+      <svg class="w-4 h-4 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+      </svg>
+      Equb Configuration
+      <span class="text-xs text-gray-400 font-normal ml-1">(takes effect on next cycle)</span>
+    </h2>
+    <div class="grid grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Full Spot Amount (ETB)</label>
+        <input x-model.number="form.full_spot_amount" type="number" step="500"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Half Spot Amount (ETB)</label>
+        <input x-model.number="form.half_spot_amount" type="number" step="500"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Association Deduction (ETB/spot)</label>
+        <input x-model.number="form.association_deduction" type="number" step="100"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Group Week Interval</label>
+        <input x-model.number="form.group_week_interval" type="number" min="2" max="12"/>
+        <p class="text-xs text-gray-400 mt-1">Every Nth week = group/buyer week</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Full Spot Voucher (ETB/week)</label>
+        <input x-model.number="form.full_spot_voucher" type="number" step="10"/>
+        <p class="text-xs text-gray-400 mt-1">Deducted from full-spot winner's pot</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Half Spot Voucher (ETB/week)</label>
+        <input x-model.number="form.half_spot_voucher" type="number" step="10"/>
+        <p class="text-xs text-gray-400 mt-1">Deducted from half-spot winner's pot</p>
+      </div>
+    </div>
+
+    <!-- Worker slot toggle -->
+    <div class="flex items-center gap-3 pt-1">
+      <button type="button"
+              @click="form.include_worker_slot = !form.include_worker_slot"
+              :class="form.include_worker_slot ? 'bg-equb-green' : 'bg-gray-300'"
+              class="relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none">
+        <span :class="form.include_worker_slot ? 'translate-x-5' : 'translate-x-1'"
+              class="inline-block h-4 w-4 mt-1 transform rounded-full bg-white transition duration-200 ease-in-out"></span>
+      </button>
+      <div>
+        <span class="text-sm font-medium text-gray-700">Include Worker Payment Week</span>
+        <p class="text-xs text-gray-400">Adds one extra full-spot week at end of cycle for staff payment (takes effect on next cycle)</p>
+      </div>
+    </div>
+    <div class="flex justify-end">
+      <button @click="saveSettings()" :disabled="saving" class="btn-primary">
+        <span x-text="saving ? 'Saving…' : 'Save Configuration'"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- User accounts -->
+  <div class="card space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="text-base font-semibold text-gray-800 flex items-center gap-2">
+        <svg class="w-4 h-4 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+        User Accounts
+      </h2>
+      <button @click="openAddUser()" class="btn-primary text-xs">+ Add User</button>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-100">
+            <th class="text-left px-3 py-2">Name</th>
+            <th class="text-left px-3 py-2">Username</th>
+            <th class="text-left px-3 py-2">Role</th>
+            <th class="text-left px-3 py-2">Status</th>
+            <th class="px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="u in users" :key="u.id">
+            <tr>
+              <td class="px-3 py-2.5 font-medium text-gray-800" x-text="u.full_name"></td>
+              <td class="px-3 py-2.5 text-gray-500 font-mono text-xs" x-text="u.username"></td>
+              <td class="px-3 py-2.5">
+                <span :class="u.role === 'admin' ? 'badge badge-admin' : 'badge badge-cashier'"
+                      x-text="u.role"></span>
+              </td>
+              <td class="px-3 py-2.5">
+                <span :class="u.is_active ? 'badge badge-active' : 'badge badge-left'"
+                      x-text="u.is_active ? 'Active' : 'Inactive'"></span>
+              </td>
+              <td class="px-3 py-2.5 text-right">
+                <button @click="openEditUser(u)"
+                        class="text-xs text-gray-400 hover:text-equb-green font-medium px-2 py-1 rounded-lg hover:bg-equb-pale">Edit</button>
+                <button x-show="u.is_active"
+                        @click="toggleUser(u)"
+                        class="text-xs text-gray-400 hover:text-red-500 font-medium px-2 py-1 rounded-lg hover:bg-red-50 ml-1">Deactivate</button>
+                <button x-show="!u.is_active"
+                        @click="toggleUser(u)"
+                        class="text-xs text-gray-400 hover:text-green-600 font-medium px-2 py-1 rounded-lg hover:bg-green-50 ml-1">Activate</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Change own password -->
+    <div class="border-t pt-4">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3">Change My Password</h3>
+      <div class="grid grid-cols-3 gap-3 items-end">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Current Password</label>
+          <input x-model="pwd.current" type="password"/>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">New Password</label>
+          <input x-model="pwd.new" type="password"/>
+        </div>
+        <button @click="changePassword()" class="btn-secondary">Update Password</button>
+      </div>
+    </div>
+  </div>
+</div><!-- end inner p-8 -->
+
+<!-- Add/Edit User Modal -->
+<div x-show="showUserModal" x-cloak class="modal-backdrop" @click.self="showUserModal=false">
+  <div class="modal-box">
+    <div class="p-6 border-b flex items-center justify-between">
+      <h2 class="text-base font-bold text-gray-900" x-text="editUserId ? 'Edit User' : 'Add User'"></h2>
+      <button @click="showUserModal=false" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+        <input x-model="userForm.full_name" type="text" class="name-field"/>
+      </div>
+      <div x-show="!editUserId">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+        <input x-model="userForm.username" type="text"/>
+      </div>
+      <div x-show="!editUserId">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <input x-model="userForm.password" type="password"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
+        <select x-model="userForm.role">
+          <option value="cashier">Cashier — can record payments</option>
+          <option value="admin">Administrator — full access</option>
+        </select>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button @click="showUserModal=false" class="btn-secondary flex-1">Cancel</button>
+        <button @click="saveUser()" :disabled="saving" class="btn-primary flex-1"
+                x-text="saving ? 'Saving…' : (editUserId ? 'Update' : 'Create User')"></button>
+      </div>
+    </div>
+  </div>
+</div><!-- end user modal -->
+</div><!-- end x-data scope -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+function settings() {
+  return {
+    form: {},
+    users: [],
+    saving: false,
+    showUserModal: false,
+    editUserId: null,
+    userForm: { full_name:'', username:'', password:'', role:'cashier' },
+    pwd: { current:'', new:'' },
+
+    async load() {
+      try {
+        [this.form, this.users] = await Promise.all([
+          this.api('GET', '/api/settings'),
+          this.api('GET', '/api/auth/users'),
+        ]);
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async saveSettings() {
+      this.saving = true;
+      try {
+        await this.api('PUT', '/api/settings', this.form);
+        this.showToast('Settings saved — reload to see branding changes');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+
+    openAddUser() {
+      this.editUserId = null;
+      this.userForm = { full_name:'', username:'', password:'', role:'cashier' };
+      this.showUserModal = true;
+    },
+
+    openEditUser(u) {
+      this.editUserId = u.id;
+      this.userForm = { full_name: u.full_name, role: u.role };
+      this.showUserModal = true;
+    },
+
+    async saveUser() {
+      this.saving = true;
+      try {
+        if (this.editUserId) {
+          await this.api('PUT', `/api/auth/users/${this.editUserId}`, this.userForm);
+          this.showToast('User updated');
+        } else {
+          await this.api('POST', '/api/auth/users', this.userForm);
+          this.showToast('User created');
+        }
+        this.showUserModal = false;
+        this.users = await this.api('GET', '/api/auth/users');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+
+    async toggleUser(u) {
+      try {
+        await this.api('PUT', `/api/auth/users/${u.id}`, { is_active: !u.is_active });
+        this.users = await this.api('GET', '/api/auth/users');
+        this.showToast(`User ${u.is_active ? 'deactivated' : 'activated'}`);
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async changePassword() {
+      if (!this.pwd.current || !this.pwd.new) return;
+      try {
+        await this.api('POST', '/api/auth/change-password', {
+          current_password: this.pwd.current, new_password: this.pwd.new
+        });
+        this.pwd = { current:'', new:'' };
+        this.showToast('Password updated');
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+  }
+}
+</script>
+{% endblock %}

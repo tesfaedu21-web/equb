@@ -1,0 +1,746 @@
+{% extends "base.html" %}
+{% block title %}Members — እቁብ Equb{% endblock %}
+{% block nav_members %}active{% endblock %}
+
+{% block content %}
+<div x-data="members()" x-init="init()">
+<div class="p-8 space-y-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Members</h1>
+      <p class="text-sm text-gray-500 mt-0.5">
+        <span x-show="selectedCycle" x-text="'Cycle: ' + (allCycles.find(c=>c.id==selectedCycle)?.name || '')"></span>
+        <span x-show="!selectedCycle">All members (no cycle selected)</span>
+      </p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- Export dropdown -->
+      <div class="relative" x-data="{ exportOpen: false }">
+        <button @click="exportOpen = !exportOpen" @keydown.escape="exportOpen = false"
+                class="btn-secondary flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Export
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <div x-show="exportOpen" @click.outside="exportOpen = false" x-cloak
+             class="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50">
+          <a href="/api/members/export?format=csv"
+             @click="exportOpen = false"
+             class="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+            <span class="text-base">📄</span> Export CSV
+          </a>
+          <a href="/api/members/export?format=xlsx"
+             @click="exportOpen = false"
+             class="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+            <span class="text-base">📊</span> Export Excel
+          </a>
+          <div class="border-t my-1"></div>
+          <a href="/api/members/import-template"
+             @click="exportOpen = false"
+             class="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-500 hover:bg-gray-50">
+            <span class="text-base">📋</span> Import Template
+          </a>
+        </div>
+      </div>
+
+      <button @click="openImport()" class="btn-secondary flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+        </svg>
+        Import
+      </button>
+
+      <!-- Delete All (admin only) -->
+      <button x-show="isAdmin" @click="deleteAllMembers()"
+              class="btn-secondary flex items-center gap-2 text-red-500 hover:text-red-700 hover:border-red-300"
+              title="Wipe all members (admin only)">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+        Delete All
+      </button>
+
+      <button @click="selectedCycle ? openAdd() : showToast('Select a cycle first', 'error')"
+              class="btn-primary flex items-center gap-2"
+              :class="!selectedCycle ? 'opacity-60 cursor-not-allowed' : ''">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add Member
+      </button>
+    </div>
+  </div>
+
+  <!-- Cycle selector banner -->
+  <div class="card py-3 px-4 flex items-center gap-3 flex-wrap">
+    <span class="text-sm font-semibold text-gray-600 flex-shrink-0">📋 Cycle:</span>
+
+    <!-- Select always in DOM so x-model stays reactive (x-show not x-if) -->
+    <select x-model="selectedCycle" @change="load(); loadSpots()"
+            x-show="allCycles.length > 0" class="w-60 text-sm">
+      <option value="">— Show All Members —</option>
+      <template x-for="c in allCycles" :key="c.id">
+        <option :value="c.id"
+                x-text="c.name + (c.status === 'active' ? ' 🟢 (active)' : ' ✓ (completed)')">
+        </option>
+      </template>
+    </select>
+
+    <!-- No cycles message -->
+    <span x-show="allCycles.length === 0" class="flex items-center gap-3">
+      <span class="text-sm text-red-600 font-medium">No cycles found.</span>
+      <a href="/draws" class="btn-primary text-xs py-1.5 px-3">➕ Create a Cycle in Draws</a>
+      <span class="text-xs text-gray-400">Members below are unfiltered (legacy data).</span>
+    </span>
+
+    <!-- Status badge -->
+    <span x-show="allCycles.length > 0 && !selectedCycle"
+          class="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
+      ⚠ Select a cycle to add members or assign spots
+    </span>
+    <span x-show="selectedCycle"
+          class="text-xs text-green-700 bg-green-50 px-2 py-1 rounded-lg"
+          x-text="'Showing: ' + (allCycles.find(c=>c.id==selectedCycle)?.name || '')">
+    </span>
+  </div>
+
+  <!-- Stats row -->
+  <div class="grid grid-cols-4 gap-3">
+    <div class="card py-4 text-center" :class="!selectedCycle && allCycles.length > 0 ? 'opacity-40' : ''">
+      <div class="text-2xl font-bold text-gray-900" x-text="memberStats.total || 0"></div>
+      <div class="text-xs text-gray-400 mt-1">Total <span x-show="selectedCycle" x-text="'in ' + (allCycles.find(c=>c.id==selectedCycle)?.name || 'cycle')"></span><span x-show="!selectedCycle" class="text-amber-500">(all)</span></div>
+    </div>
+    <div class="card py-4 text-center" :class="!selectedCycle && allCycles.length > 0 ? 'opacity-40' : ''">
+      <div class="text-2xl font-bold text-green-600" x-text="memberStats.active || 0"></div>
+      <div class="text-xs text-gray-400 mt-1">Active</div>
+    </div>
+    <div class="card py-4 text-center" :class="!selectedCycle && allCycles.length > 0 ? 'opacity-40' : ''">
+      <div class="text-2xl font-bold text-blue-500" x-text="memberStats.received || 0"></div>
+      <div class="text-xs text-gray-400 mt-1">Received</div>
+    </div>
+    <div class="card py-4 text-center" :class="!selectedCycle && allCycles.length > 0 ? 'opacity-40' : ''">
+      <div class="text-2xl font-bold text-gray-400" x-text="memberStats.left || 0"></div>
+      <div class="text-xs text-gray-400 mt-1">Left</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card">
+    <div class="flex flex-col sm:flex-row gap-3">
+      <input x-model="search" @input.debounce.300ms="load()" type="text"
+             placeholder="Search by name or phone…" class="flex-1"/>
+      <select x-model="filterStatus" @change="load()" class="sm:w-40">
+        <option value="">All Status</option>
+        <option value="active">Active</option>
+        <option value="received">Received</option>
+        <option value="left">Left</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Members Table -->
+  <div class="card p-0 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b">
+          <tr>
+            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Name</th>
+            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Phone</th>
+            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Spots</th>
+            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Weekly</th>
+            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Partners</th>
+            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+            <th class="px-5 py-3"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          <template x-for="m in members" :key="m.id">
+            <tr class="hover:bg-gray-50/70 transition-colors">
+              <td class="px-5 py-3.5 font-medium text-gray-900 amharic" x-text="m.name"></td>
+              <td class="px-5 py-3.5 text-gray-500" x-text="m.phone || '—'"></td>
+              <td class="px-5 py-3.5">
+                <div class="flex flex-wrap gap-1">
+                  <template x-for="sn in m.spot_numbers" :key="sn">
+                    <span class="inline-flex items-center justify-center w-8 h-8 bg-equb-pale text-equb-green rounded-lg text-xs font-bold" x-text="sn"></span>
+                  </template>
+                  <span x-show="m.spot_numbers.length === 0" class="text-gray-300 text-xs">—</span>
+                </div>
+              </td>
+              <td class="px-5 py-3.5 font-semibold text-equb-green" x-text="fmt(m.total_weekly_contribution)"></td>
+              <td class="px-5 py-3.5 text-gray-500 text-xs amharic" x-text="m.partners.join(', ') || '—'"></td>
+              <td class="px-5 py-3.5">
+                <span :class="`badge badge-${m.status}`" x-text="m.status"></span>
+              </td>
+              <td class="px-5 py-3.5">
+                <div class="flex items-center gap-1.5">
+                  <button @click="openEdit(m)"
+                          class="p-1.5 rounded-lg text-gray-400 hover:text-equb-green hover:bg-equb-pale transition-colors" title="Edit">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                  </button>
+                  <button @click="markLeft(m)" x-show="m.status !== 'left'"
+                          class="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Mark Left">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                  </button>
+                  <!-- Permanent delete — admin only, only for members with no payment history -->
+                  <button @click="permanentDelete(m)" x-show="isAdmin"
+                          class="p-1.5 rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors" title="Permanently Delete (admin)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="members.length === 0">
+            <td colspan="7" class="px-5 py-12 text-center text-gray-400">No members found</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div><!-- end inner p-8 -->
+
+<!-- Add Member Modal -->
+<div x-show="showAddModal" x-cloak class="modal-backdrop" @click.self="showAddModal = false">
+  <div class="modal-box">
+    <div class="p-6 border-b flex items-center justify-between">
+      <h2 class="text-lg font-bold text-gray-900">Add New Member</h2>
+      <button @click="showAddModal = false" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <form @submit.prevent="saveAdd()" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Full Name <span class="text-red-400">*</span></label>
+        <input x-model="addForm.name" type="text" placeholder="የአባሉ ሙሉ ስም / Member full name" required class="name-field"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+        <input x-model="addForm.phone" type="tel" placeholder="+251 9XX XXX XXXX"/>
+      </div>
+
+      <!-- Optional initial spot assignment -->
+      <div class="border border-gray-200 rounded-xl p-4 space-y-4">
+        <div class="text-sm font-medium text-gray-700">Initial Spot Assignment <span class="text-gray-400 font-normal">(optional)</span></div>
+
+        <!-- Share type selector — prominent button style -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-2">Share Type</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button type="button"
+                    :class="addForm.share === 'full'
+                      ? 'ring-2 ring-equb-green bg-equb-pale border-equb-green'
+                      : 'bg-gray-50 hover:bg-gray-100 border-gray-200'"
+                    @click="addForm.share = 'full'; addForm.spot_id = null; addForm.weekly_contribution = settings.full_spot_amount || 21000"
+                    class="rounded-xl p-3 text-left border transition-all">
+              <div class="font-semibold text-gray-900 text-sm">Full Spot</div>
+              <div class="text-xs text-equb-green font-medium mt-0.5" x-text="fmt(settings.full_spot_amount || 21000) + ' / week'"></div>
+              <div class="text-xs text-gray-400 mt-1">One person per spot</div>
+            </button>
+            <button type="button"
+                    :class="addForm.share === 'half'
+                      ? 'ring-2 ring-equb-green bg-equb-pale border-equb-green'
+                      : 'bg-gray-50 hover:bg-gray-100 border-gray-200'"
+                    @click="addForm.share = 'half'; addForm.spot_id = null; addForm.weekly_contribution = settings.half_spot_amount || 10500"
+                    class="rounded-xl p-3 text-left border transition-all">
+              <div class="font-semibold text-gray-900 text-sm">Half Spot</div>
+              <div class="text-xs text-equb-green font-medium mt-0.5" x-text="fmt(settings.half_spot_amount || 10500) + ' / week'"></div>
+              <div class="text-xs text-gray-400 mt-1">Shared with one other</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Spot selector filtered by share type -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Spot Number</label>
+          <select x-model.number="addForm.spot_id">
+            <option :value="null">— No spot yet —</option>
+            <template x-for="s in filteredSpots" :key="s.id">
+              <option :value="s.id"
+                      x-text="`#${s.number}${s.is_half_available ? '  (½ taken — needs partner)' : ''}`"></option>
+            </template>
+          </select>
+          <p x-show="filteredSpots.length === 0" class="text-xs text-amber-500 mt-1">
+            No available spots for this share type
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+        <textarea x-model="addForm.notes" rows="2" placeholder="Optional notes…"></textarea>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="button" @click="showAddModal = false" class="btn-secondary flex-1">Cancel</button>
+        <button type="submit" :disabled="saving" class="btn-primary flex-1"
+                x-text="saving ? 'Saving…' : 'Add Member'"></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Member Modal -->
+<div x-show="showEditModal" x-cloak class="modal-backdrop" @click.self="showEditModal = false">
+  <div class="modal-box">
+    <div class="p-6 border-b flex items-center justify-between">
+      <h2 class="text-lg font-bold text-gray-900">Edit Member</h2>
+      <button @click="showEditModal = false" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <!-- Basic info -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Full Name <span class="text-red-400">*</span></label>
+        <input x-model="editForm.name" type="text" required class="name-field"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+        <input x-model="editForm.phone" type="tel"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+        <select x-model="editForm.status">
+          <option value="active">Active</option>
+          <option value="received">Received</option>
+          <option value="left">Left</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+        <textarea x-model="editForm.notes" rows="2"></textarea>
+      </div>
+      <div class="flex gap-3">
+        <button type="button" @click="showEditModal = false" class="btn-secondary flex-1">Cancel</button>
+        <button @click="saveEdit()" :disabled="saving" class="btn-primary flex-1"
+                x-text="saving ? 'Saving…' : 'Update Info'"></button>
+      </div>
+
+      <!-- Spot management -->
+      <div class="border-t pt-4 space-y-3">
+        <div class="text-sm font-semibold text-gray-700">Spot Assignments</div>
+
+        <!-- Current spots -->
+        <template x-for="sa in editMember?.spots || []" :key="sa.id">
+          <div class="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-2.5">
+            <div class="flex items-center gap-3">
+              <span class="w-8 h-8 inline-flex items-center justify-center bg-equb-pale text-equb-green rounded-lg text-xs font-bold" x-text="sa.spot_number"></span>
+              <div>
+                <div class="text-sm font-medium text-gray-700">Spot #<span x-text="sa.spot_number"></span></div>
+                <div class="text-xs text-gray-400">
+                  <span x-text="sa.share === 'half' ? 'Half share' : 'Full share'"></span>
+                  — <span x-text="fmt(sa.weekly_contribution)"></span>/wk
+                </div>
+              </div>
+            </div>
+            <button @click="removeSpot(sa.spot_id)"
+                    class="text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1 rounded-lg hover:bg-red-50">
+              Remove
+            </button>
+          </div>
+        </template>
+        <div x-show="(editMember?.spots || []).length === 0"
+             class="text-sm text-gray-400 text-center py-2">No spots assigned</div>
+
+        <!-- Add spot form -->
+        <div class="border border-dashed border-gray-300 rounded-xl p-4 space-y-3">
+          <div class="text-xs font-medium text-gray-500">Add Another Spot</div>
+          <!-- Share type buttons -->
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button"
+                    :class="newSpotForm.share === 'full' ? 'ring-2 ring-equb-green bg-equb-pale border-equb-green' : 'bg-gray-50 border-gray-200'"
+                    @click="newSpotForm.share = 'full'; newSpotForm.spot_id = null; newSpotForm.weekly_contribution = settings.full_spot_amount || 21000"
+                    class="rounded-lg p-2 text-left border transition-all text-xs">
+              <div class="font-semibold text-gray-800">Full</div>
+              <div class="text-equb-green" x-text="fmt(settings.full_spot_amount || 21000)"></div>
+            </button>
+            <button type="button"
+                    :class="newSpotForm.share === 'half' ? 'ring-2 ring-equb-green bg-equb-pale border-equb-green' : 'bg-gray-50 border-gray-200'"
+                    @click="newSpotForm.share = 'half'; newSpotForm.spot_id = null; newSpotForm.weekly_contribution = settings.half_spot_amount || 10500"
+                    class="rounded-lg p-2 text-left border transition-all text-xs">
+              <div class="font-semibold text-gray-800">Half</div>
+              <div class="text-equb-green" x-text="fmt(settings.half_spot_amount || 10500)"></div>
+            </button>
+          </div>
+          <!-- Filtered spot selector -->
+          <select x-model.number="newSpotForm.spot_id">
+            <option :value="null">— Select spot —</option>
+            <template x-for="s in filteredEditSpots" :key="s.id">
+              <option :value="s.id"
+                      x-text="`#${s.number}${s.is_half_available ? '  (½ taken — needs partner)' : ''}`"></option>
+            </template>
+          </select>
+          <button @click="addSpot()" :disabled="!newSpotForm.spot_id"
+                  class="btn-secondary w-full text-xs">+ Add Spot</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- end edit modal -->
+
+<!-- ── Import Modal ──────────────────────────────────────────────────────── -->
+<div x-show="showImportModal" x-cloak class="modal-backdrop" @click.self="showImportModal = false">
+  <div class="modal-box max-w-2xl">
+    <div class="p-6 border-b flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-bold text-gray-900">Import Members</h2>
+        <p class="text-sm text-gray-500 mt-0.5">Upload CSV or Excel — columns: Name, Phone, Spot Number, Share, Notes</p>
+      </div>
+      <button @click="showImportModal = false" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="p-6 space-y-5">
+
+      <!-- Step 1: File picker (hidden after results) -->
+      <template x-if="!importResults">
+        <div class="space-y-4">
+          <!-- Tips -->
+          <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800 space-y-1">
+            <div class="font-semibold mb-1">File format</div>
+            <div>• <strong>Required:</strong> Name</div>
+            <div>• <strong>Optional:</strong> Phone, Spot Number, Share (full/half), Notes</div>
+            <div>• Supports <strong>.csv</strong> and <strong>.xlsx</strong></div>
+            <div class="pt-1">
+              <a href="/api/members/import-template" class="underline font-medium hover:text-blue-600">
+                ↓ Download blank template
+              </a>
+            </div>
+          </div>
+
+          <!-- Drop zone -->
+          <label class="block border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-equb-green hover:bg-equb-pale/30 transition-all">
+            <div class="text-3xl mb-2">📂</div>
+            <div class="font-semibold text-gray-700" x-text="importFile ? importFile.name : 'Click to choose file'"></div>
+            <div class="text-xs text-gray-400 mt-1" x-show="!importFile">CSV or XLSX, any size</div>
+            <div class="text-xs text-equb-green mt-1" x-show="importFile">File ready — click Import below</div>
+            <input type="file" accept=".csv,.xlsx,.xls" class="hidden"
+                   @change="importFile = $event.target.files[0]"/>
+          </label>
+
+          <div class="flex gap-3">
+            <button @click="showImportModal = false" class="btn-secondary flex-1">Cancel</button>
+            <button @click="runImport()" :disabled="!importFile || importing"
+                    class="btn-primary flex-1 flex items-center justify-center gap-2"
+                    x-text="importing ? 'Importing…' : 'Import Members'"></button>
+          </div>
+        </div>
+      </template>
+
+      <!-- Step 2: Results -->
+      <template x-if="importResults">
+        <div class="space-y-4">
+
+          <!-- Summary bar -->
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div class="bg-green-50 rounded-xl py-3 px-4">
+              <div class="text-2xl font-bold text-green-600" x-text="importResults.created"></div>
+              <div class="text-xs text-gray-500 mt-0.5">Created</div>
+            </div>
+            <div class="bg-red-50 rounded-xl py-3 px-4">
+              <div class="text-2xl font-bold text-red-500" x-text="importResults.skipped"></div>
+              <div class="text-xs text-gray-500 mt-0.5">Skipped</div>
+            </div>
+            <div class="bg-gray-50 rounded-xl py-3 px-4">
+              <div class="text-2xl font-bold text-gray-700" x-text="importResults.total"></div>
+              <div class="text-xs text-gray-500 mt-0.5">Total rows</div>
+            </div>
+          </div>
+
+          <!-- Row-by-row results -->
+          <div class="border rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+            <table class="w-full text-xs">
+              <thead class="bg-gray-50 border-b sticky top-0">
+                <tr>
+                  <th class="text-left px-3 py-2 text-gray-400">#</th>
+                  <th class="text-left px-3 py-2 text-gray-400">Name</th>
+                  <th class="text-left px-3 py-2 text-gray-400">Spot</th>
+                  <th class="text-left px-3 py-2 text-gray-400">Result</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50">
+                <template x-for="r in importResults.results" :key="r.row">
+                  <tr :class="r.status === 'skipped' ? 'bg-red-50/50' : ''">
+                    <td class="px-3 py-2 text-gray-400" x-text="r.row"></td>
+                    <td class="px-3 py-2 font-medium text-gray-800 amharic" x-text="r.name || '—'"></td>
+                    <td class="px-3 py-2 text-gray-500" x-text="r.spot || '—'"></td>
+                    <td class="px-3 py-2">
+                      <span x-show="r.status === 'created'" class="text-green-600 font-medium">✓ Created</span>
+                      <span x-show="r.status === 'skipped'" class="text-red-500 font-medium"
+                            x-text="'✗ ' + (r.reason || 'Skipped')"></span>
+                      <span x-show="r.warning" class="text-amber-500 text-xs ml-1" x-text="r.warning"></span>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="flex gap-3">
+            <button @click="importResults = null; importFile = null" class="btn-secondary flex-1">
+              Import Another File
+            </button>
+            <button @click="showImportModal = false; load()" class="btn-primary flex-1">
+              Done — Refresh List
+            </button>
+          </div>
+        </div>
+      </template>
+
+    </div>
+  </div>
+</div><!-- end import modal -->
+
+</div><!-- end x-data scope -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+function members() {
+  return {
+    members: [],
+    memberStats: {},
+    availableSpots: [],
+    allCycles: [],
+    selectedCycle: '',   // cycle_id currently being viewed/managed
+    settings: { full_spot_amount: 21000, half_spot_amount: 10500 },
+    search: '',
+    filterStatus: '',
+    showAddModal: false,
+    showEditModal: false,
+    showImportModal: false,
+    saving: false,
+    importing: false,
+    importFile: null,
+    importResults: null,
+    addForm: { name: '', phone: '', spot_id: null, share: 'full', weekly_contribution: 21000, notes: '' },
+    editForm: { name: '', phone: '', status: 'active', notes: '' },
+    editMember: null,
+    newSpotForm: { spot_id: null, share: 'full', weekly_contribution: 21000 },
+
+    // Computed: filter spots by share type for Add modal
+    get filteredSpots() {
+      if (this.addForm.share === 'full') {
+        return this.availableSpots.filter(s => s.occupants === 0);
+      }
+      return this.availableSpots.filter(s => s.occupants < 2);
+    },
+
+    // Computed: filter spots by share type for Edit modal
+    get filteredEditSpots() {
+      if (this.newSpotForm.share === 'full') {
+        return this.availableSpots.filter(s => s.occupants === 0);
+      }
+      return this.availableSpots.filter(s => s.occupants < 2);
+    },
+
+    async init() {
+      // Step 1: load cycles and auto-select active one FIRST
+      await this.loadCycles();
+      // Step 2: then load members, spots, settings in parallel
+      await Promise.all([this.load(), this.loadSpots(), this.loadSettings()]);
+    },
+
+    async loadCycles() {
+      try {
+        this.allCycles = await this.api('GET', '/api/draws/cycles');
+        if (!this.allCycles.length) {
+          // No cycles in DB — clear selection so load() shows global unfiltered view
+          this.selectedCycle = '';
+          return;
+        }
+        // Auto-select active cycle; fall back to most recent
+        const active = this.allCycles.find(c => c.status === 'active') || this.allCycles[0];
+        this.selectedCycle = active ? active.id : '';
+      } catch(e) {
+        console.error('loadCycles failed:', e);
+        this.showToast('Could not load cycles: ' + e.message, 'error');
+      }
+    },
+
+    async load() {
+      try {
+        const params = new URLSearchParams();
+        if (this.search)       params.set('search', this.search);
+        if (this.filterStatus) params.set('status', this.filterStatus);
+        if (this.selectedCycle) params.set('cycle_id', this.selectedCycle);
+        const statsQs = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
+        [this.members, this.memberStats] = await Promise.all([
+          this.api('GET', `/api/members?${params}`),
+          this.api('GET', `/api/members/stats${statsQs}`),
+        ]);
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async loadSpots() {
+      this.availableSpots = await this.api('GET', '/api/members/available-spots').catch(() => []);
+    },
+
+    async loadSettings() {
+      try {
+        this.settings = await this.api('GET', '/api/settings');
+      } catch(e) { /* keep defaults */ }
+    },
+
+    async openAdd() {
+      await Promise.all([this.loadSettings(), this.loadSpots()]);
+      this.addForm = {
+        name: '', phone: '', spot_id: null, share: 'full',
+        weekly_contribution: this.settings.full_spot_amount || 21000,
+        notes: ''
+      };
+      this.showAddModal = true;
+    },
+
+    async openEdit(m) {
+      this.editMember = m;
+      this.editForm = { name: m.name, phone: m.phone || '', status: m.status, notes: m.notes || '' };
+      this.newSpotForm = {
+        spot_id: null, share: 'full',
+        weekly_contribution: this.settings.full_spot_amount || 21000
+      };
+      await Promise.all([this.loadSettings(), this.loadSpots()]);
+      this.showEditModal = true;
+    },
+
+    async saveAdd() {
+      this.saving = true;
+      try {
+        const spots = [];
+        if (this.addForm.spot_id) {
+          spots.push({
+            spot_id: this.addForm.spot_id,
+            share: this.addForm.share,
+            weekly_contribution: this.addForm.weekly_contribution
+          });
+        }
+        await this.api('POST', '/api/members', {
+          name: this.addForm.name,
+          phone: this.addForm.phone || null,
+          notes: this.addForm.notes || null,
+          spots,
+        });
+        this.showToast('Member added');
+        this.showAddModal = false;
+        await this.load();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+
+    async saveEdit() {
+      this.saving = true;
+      try {
+        const updated = await this.api('PUT', `/api/members/${this.editMember.id}`, this.editForm);
+        this.editMember = updated;
+        this.showToast('Member updated');
+        await this.load();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+
+    async addSpot() {
+      if (!this.newSpotForm.spot_id) return;
+      try {
+        const updated = await this.api('POST', `/api/members/${this.editMember.id}/spots`, this.newSpotForm);
+        this.editMember = updated;
+        this.newSpotForm = {
+          spot_id: null, share: 'full',
+          weekly_contribution: this.settings.full_spot_amount || 21000
+        };
+        this.showToast('Spot added');
+        await Promise.all([this.load(), this.loadSpots()]);
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async removeSpot(spotId) {
+      if (!confirm('Remove this spot from the member?')) return;
+      try {
+        await this.api('DELETE', `/api/members/${this.editMember.id}/spots/${spotId}`);
+        const updated = await this.api('GET', `/api/members/${this.editMember.id}`);
+        this.editMember = updated;
+        this.showToast('Spot removed');
+        await Promise.all([this.load(), this.loadSpots()]);
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async markLeft(m) {
+      if (!confirm(`Mark ${m.name} as left?`)) return;
+      try {
+        await this.api('DELETE', `/api/members/${m.id}`);
+        this.showToast(`${m.name} marked as left`);
+        await this.load();
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async permanentDelete(m) {
+      if (!confirm(`⚠️ PERMANENTLY DELETE ${m.name}?\n\nThis cannot be undone. Only members with no payment records can be deleted (accidental inserts only).`)) return;
+      try {
+        await this.api('DELETE', `/api/members/permanent/${m.id}`);
+        this.showToast(`${m.name} permanently deleted`, 'success');
+        await this.load();
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async deleteAllMembers() {
+      if (!confirm('⚠️ DELETE ALL MEMBERS?\n\nThis will permanently remove ALL members and their spot assignments.\n\nMembers with payment history will be marked as "Left" instead.\n\nThis CANNOT be undone. Are you sure?')) return;
+      if (!confirm('🔴 FINAL CONFIRMATION\n\nYou are about to wipe all members. Type OK in your mind and click OK only if you are 100% sure.')) return;
+      try {
+        const res = await this.api('DELETE', '/api/members/permanent/all');
+        this.showToast(res.message || 'All members deleted', 'success');
+        await this.load();
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    openImport() {
+      this.importFile    = null;
+      this.importResults = null;
+      this.showImportModal = true;
+    },
+
+    async runImport() {
+      if (!this.importFile) return;
+      this.importing = true;
+      try {
+        const fd = new FormData();
+        fd.append('file', this.importFile);
+        const res = await fetch('/api/members/import', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: 'Upload failed' }));
+          throw new Error(err.detail || 'Import failed');
+        }
+        this.importResults = await res.json();
+        this.showToast(`Import done — ${this.importResults.created} members created`);
+      } catch(e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.importing = false;
+      }
+    },
+  }
+}
+</script>
+{% endblock %}

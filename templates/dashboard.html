@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — እቁብ Equb{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+<div x-data="dashboard()" x-init="init()">
+<div class="p-8 space-y-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <p class="text-sm text-gray-500 mt-0.5" x-text="stats.cycle ? stats.cycle.name : 'No active cycle'"></p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- Cycle selector -->
+      <select x-model="selectedCycleId" @change="loadStats()" class="w-56 text-sm">
+        <option value="">— Active Cycle —</option>
+        <template x-for="c in allCycles" :key="c.id">
+          <option :value="c.id"
+                  x-text="c.name + (c.status === 'active' ? ' ✓' : '') + ' (' + c.drawn_weeks + '/' + c.total_weeks + ')'">
+          </option>
+        </template>
+      </select>
+      <button @click="openNewCycle()" class="btn-primary flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        New Cycle
+      </button>
+    </div>
+  </div>
+
+  <!-- No cycle warning -->
+  <div x-show="!stats.cycle" x-cloak
+       class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
+    <div class="text-amber-600 font-semibold text-lg mb-1">No active cycle yet</div>
+    <p class="text-amber-500 text-sm mb-4">Create a new cycle to start managing your Equb.</p>
+    <button @click="openNewCycle()" class="btn-primary">Create First Cycle</button>
+  </div>
+
+  <!-- Stats Grid -->
+  <div x-show="stats.cycle" x-cloak class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- Total Members -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total Members</span>
+        <div class="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
+          <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </div>
+      </div>
+      <div class="text-3xl font-bold text-gray-900" x-text="stats.total_members || 0"></div>
+      <div class="text-xs text-gray-400 mt-1">
+        <span class="text-green-600 font-semibold" x-text="stats.active_members || 0"></span> active ·
+        <span class="text-blue-600 font-semibold" x-text="stats.received_members || 0"></span> received
+      </div>
+    </div>
+
+    <!-- Spots Progress -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Spots Drawn</span>
+        <div class="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center">
+          <svg class="w-5 h-5 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+      </div>
+      <div class="text-3xl font-bold text-gray-900">
+        <span x-text="stats.received_spots || 0"></span>
+        <span class="text-lg text-gray-400">/ <span x-text="stats.total_spots || 0"></span></span>
+      </div>
+      <div class="mt-2 bg-gray-100 rounded-full h-2">
+        <div class="bg-equb-green h-2 rounded-full transition-all duration-500"
+             :style="`width:${stats.total_spots ? (stats.received_spots/stats.total_spots*100) : 0}%`"></div>
+      </div>
+    </div>
+
+    <!-- Next Draw -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Next Draw</span>
+        <div class="w-9 h-9 bg-purple-50 rounded-xl flex items-center justify-center">
+          <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+        </div>
+      </div>
+      <div class="text-lg font-bold text-gray-900" x-text="stats.next_week ? fmtDate(stats.next_week.draw_date) : '—'"></div>
+      <div class="text-xs text-gray-400 mt-1" x-show="stats.next_week">
+        Week <span x-text="stats.next_week?.week_number"></span>
+        <span x-show="stats.next_week?.is_group_week" class="badge badge-group ml-1">Group Week</span>
+      </div>
+    </div>
+
+    <!-- Association Fund -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Association Fund</span>
+        <div class="w-9 h-9 bg-yellow-50 rounded-xl flex items-center justify-center">
+          <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+      </div>
+      <div class="text-xl font-bold text-gray-900" x-text="fmt(stats.association_fund)"></div>
+      <div class="text-xs text-gray-400 mt-1">Collected: <span x-text="fmt(stats.total_collected)"></span></div>
+    </div>
+  </div>
+
+  <!-- Last Draw + Cycle Progress -->
+  <div x-show="stats.cycle" x-cloak class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <!-- Last Draw Result -->
+    <div class="card">
+      <h3 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+        </svg>
+        Last Draw
+      </h3>
+      <template x-if="stats.last_draw">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-500">Week</span>
+            <span class="font-semibold text-gray-800" x-text="'#' + stats.last_draw.week_number"></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-500">Date</span>
+            <span class="font-semibold text-gray-800" x-text="fmtDate(stats.last_draw.draw_date)"></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-500">Result</span>
+            <span :class="stats.last_draw.status === 'drawn' ? 'badge badge-drawn' : 'badge badge-sold'"
+                  x-text="stats.last_draw.status"></span>
+          </div>
+          <div class="flex items-center justify-between" x-show="stats.last_draw.winner">
+            <span class="text-sm text-gray-500">Winner</span>
+            <span class="font-semibold text-gray-800" x-text="stats.last_draw.winner"></span>
+          </div>
+          <div class="flex items-center justify-between" x-show="stats.last_draw.buyer">
+            <span class="text-sm text-gray-500">Buyer</span>
+            <span class="font-semibold text-gray-800" x-text="stats.last_draw.buyer"></span>
+          </div>
+          <div class="flex items-center justify-between border-t pt-3 mt-3">
+            <span class="text-sm text-gray-500">Pot Amount</span>
+            <span class="font-bold text-equb-green text-lg" x-text="fmt(stats.last_draw.net_pot)"></span>
+          </div>
+        </div>
+      </template>
+      <template x-if="!stats.last_draw">
+        <div class="text-center py-8 text-gray-400">No draws recorded yet</div>
+      </template>
+    </div>
+
+    <!-- Cycle Progress -->
+    <div class="card">
+      <h3 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        Cycle Progress
+      </h3>
+      <div class="space-y-4">
+        <div>
+          <div class="flex justify-between text-sm mb-1">
+            <span class="text-gray-500">Weeks completed</span>
+            <span class="font-semibold" x-text="`${stats.weeks_done || 0} / ${stats.total_weeks || 0}`"></span>
+          </div>
+          <div class="bg-gray-100 rounded-full h-3">
+            <div class="bg-equb-green h-3 rounded-full transition-all duration-700"
+                 :style="`width:${stats.total_weeks ? (stats.weeks_done/stats.total_weeks*100) : 0}%`"></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1">
+            <span class="text-gray-500">Members received pot</span>
+            <span class="font-semibold" x-text="`${stats.received_members || 0} / ${stats.total_members || 0}`"></span>
+          </div>
+          <div class="bg-gray-100 rounded-full h-3">
+            <div class="bg-blue-400 h-3 rounded-full transition-all duration-700"
+                 :style="`width:${stats.total_members ? (stats.received_members/stats.total_members*100) : 0}%`"></div>
+          </div>
+        </div>
+        <div class="pt-2 border-t grid grid-cols-3 gap-2 text-center">
+          <div>
+            <div class="text-2xl font-bold text-equb-green" x-text="stats.active_spots || 0"></div>
+            <div class="text-xs text-gray-400">Active Spots</div>
+          </div>
+          <div>
+            <div class="text-2xl font-bold text-blue-500" x-text="stats.received_spots || 0"></div>
+            <div class="text-xs text-gray-400">Received</div>
+          </div>
+          <div>
+            <div class="text-2xl font-bold text-gray-400" x-text="(stats.total_spots||0) - (stats.received_spots||0) - (stats.active_spots||0)"></div>
+            <div class="text-xs text-gray-400">Remaining</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Links -->
+  <div x-show="stats.cycle" x-cloak class="grid grid-cols-3 gap-4">
+    <a href="/draws" class="card flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer group">
+      <div class="w-12 h-12 bg-equb-pale rounded-2xl flex items-center justify-center group-hover:bg-equb-green transition-colors">
+        <svg class="w-6 h-6 text-equb-green group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+        </svg>
+      </div>
+      <div>
+        <div class="font-semibold text-gray-800">Record Draw</div>
+        <div class="text-xs text-gray-400">Week <span x-text="stats.next_week?.week_number || '—'"></span></div>
+      </div>
+    </a>
+    <a href="/members" class="card flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer group">
+      <div class="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center group-hover:bg-blue-500 transition-colors">
+        <svg class="w-6 h-6 text-blue-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+      </div>
+      <div>
+        <div class="font-semibold text-gray-800">Add Member</div>
+        <div class="text-xs text-gray-400"><span x-text="stats.available_spots_count ?? 0"></span> spots available</div>
+      </div>
+    </a>
+    <a href="/payments" class="card flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer group">
+      <div class="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center group-hover:bg-purple-500 transition-colors">
+        <svg class="w-6 h-6 text-purple-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="font-semibold text-gray-800">Track Payments</div>
+        <div class="text-xs text-gray-400">Mark weekly contributions</div>
+      </div>
+    </a>
+  </div>
+</div><!-- end inner p-8 -->
+
+<!-- New Cycle Modal -->
+<div x-show="showNewCycle" x-cloak class="modal-backdrop" @click.self="showNewCycle = false">
+  <div class="modal-box max-w-lg">
+    <div class="p-6 border-b">
+      <h2 class="text-lg font-bold text-gray-900">Create New Cycle</h2>
+      <p class="text-sm text-gray-500 mt-1">Weekly draw slots will be generated automatically. Settings below apply to all weeks in this cycle.</p>
+    </div>
+    <form @submit.prevent="createCycle()" class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+
+      <!-- Cycle Info -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Cycle Name</label>
+        <input x-model="newCycle.name" type="text" placeholder="e.g. Equb 2026 Round 1" required/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Start Date (first Sunday)</label>
+        <input x-model="newCycle.start_date" type="date" required/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+        <textarea x-model="newCycle.notes" rows="2" placeholder="Any notes about this cycle..."></textarea>
+      </div>
+
+      <!-- Spot Count Section -->
+      <div class="border-t pt-4">
+        <div class="text-sm font-semibold text-gray-700 mb-3">🔢 Number of Spots (Members Capacity)</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Member Spots</label>
+            <input x-model.number="newCycle.total_member_spots" type="number" min="1" step="any" placeholder="e.g. 113"/>
+            <p class="text-xs text-gray-400 mt-0.5">Regular member slots</p>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Association Spots</label>
+            <input x-model.number="newCycle.total_assoc_spots" type="number" min="0" step="any" placeholder="e.g. 5"/>
+            <p class="text-xs text-gray-400 mt-0.5">Group-owned slots</p>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-2">Total weeks = member spots + association spots (+1 worker week). Leave blank to use settings default.</p>
+      </div>
+
+      <!-- Amounts Section -->
+      <div class="border-t pt-4">
+        <div class="text-sm font-semibold text-gray-700 mb-3">💰 Weekly Contribution Amounts</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Full Spot (ETB)</label>
+            <input x-model.number="newCycle.full_spot_amount" type="number" min="1" step="any" placeholder="e.g. 21000"/>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Half Spot (ETB)</label>
+            <input x-model.number="newCycle.half_spot_amount" type="number" min="1" step="any" placeholder="e.g. 10500"/>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Association Deduction (ETB)</label>
+            <input x-model.number="newCycle.association_deduction" type="number" min="0" step="any" placeholder="e.g. 1000"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vouchers Section -->
+      <div class="border-t pt-4">
+        <div class="text-sm font-semibold text-gray-700 mb-1">🎟 Voucher Deductions (from winner's pot)</div>
+        <p class="text-xs text-gray-400 mb-3">Deducted at disbursement from the winner's net pot.</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Full Spot Voucher (ETB)</label>
+            <input x-model.number="newCycle.full_spot_voucher" type="number" min="0" step="any" placeholder="e.g. 80"/>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Half Spot Voucher (ETB)</label>
+            <input x-model.number="newCycle.half_spot_voucher" type="number" min="0" step="any" placeholder="e.g. 40"/>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+        <strong>Note:</strong> Any existing active cycle will be closed. Member statuses reset to active. Weekly slots are pre-generated (every 4th week = group week, +1 worker week at end). Leave amount fields blank to keep current settings.
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="button" @click="showNewCycle = false" class="btn-secondary flex-1">Cancel</button>
+        <button type="submit" :disabled="saving" class="btn-primary flex-1" x-text="saving ? 'Creating...' : 'Create Cycle'"></button>
+      </div>
+    </form>
+  </div>
+</div><!-- end new cycle modal -->
+</div><!-- end x-data scope -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+function dashboard() {
+  return {
+    stats: {},
+    allCycles: [],
+    selectedCycleId: '',
+    showNewCycle: false,
+    saving: false,
+    newCycle: {
+      name: '', start_date: '', notes: '',
+      total_member_spots: null, total_assoc_spots: null,
+      full_spot_amount: null, half_spot_amount: null,
+      association_deduction: null, full_spot_voucher: null, half_spot_voucher: null
+    },
+
+    async init() {
+      // Load cycles first, auto-select active, then load stats
+      try {
+        this.allCycles = await this.api('GET', '/api/draws/cycles');
+        const active = this.allCycles.find(c => c.status === 'active') || this.allCycles[0];
+        if (active) this.selectedCycleId = active.id;
+      } catch(e) { this.showToast('Failed to load cycles', 'error'); }
+      await this.loadStats();
+    },
+
+    async load() {
+      // Called after cycle change
+      await this.loadStats();
+    },
+
+    async loadStats() {
+      try {
+        const qs = this.selectedCycleId ? `?cycle_id=${this.selectedCycleId}` : '';
+        this.stats = await this.api('GET', `/api/reports/dashboard${qs}`);
+      } catch(e) {
+        this.showToast('Failed to load stats', 'error');
+      }
+    },
+
+    openNewCycle() {
+      const s = this.stats.settings || {};
+      this.newCycle = {
+        name: '', start_date: '', notes: '',
+        total_member_spots: s.total_member_spots || null,
+        total_assoc_spots: s.total_assoc_spots || null,
+        full_spot_amount: s.full_spot_amount || null,
+        half_spot_amount: s.half_spot_amount || null,
+        association_deduction: s.association_deduction || null,
+        full_spot_voucher: s.full_spot_voucher || null,
+        half_spot_voucher: s.half_spot_voucher || null,
+      };
+      this.showNewCycle = true;
+    },
+
+    async createCycle() {
+      if (!this.newCycle.name || !this.newCycle.start_date) return;
+      this.saving = true;
+      try {
+        const payload = { name: this.newCycle.name, start_date: this.newCycle.start_date, notes: this.newCycle.notes };
+        if (this.newCycle.total_member_spots)        payload.total_member_spots   = this.newCycle.total_member_spots;
+        if (this.newCycle.total_assoc_spots != null) payload.total_assoc_spots    = this.newCycle.total_assoc_spots;
+        if (this.newCycle.full_spot_amount)          payload.full_spot_amount     = this.newCycle.full_spot_amount;
+        if (this.newCycle.half_spot_amount)          payload.half_spot_amount     = this.newCycle.half_spot_amount;
+        if (this.newCycle.association_deduction !== null) payload.association_deduction = this.newCycle.association_deduction;
+        if (this.newCycle.full_spot_voucher  !== null)   payload.full_spot_voucher  = this.newCycle.full_spot_voucher;
+        if (this.newCycle.half_spot_voucher  !== null)   payload.half_spot_voucher  = this.newCycle.half_spot_voucher;
+
+        const res = await this.api('POST', '/api/draws/cycles', payload);
+        this.showNewCycle = false;
+        this.showToast(`Cycle "${res.name}" created with ${res.total_weeks} weeks`);
+        // Switch to the new cycle
+        this.selectedCycleId = res.id;
+        await this.load();
+      } catch(e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.saving = false;
+      }
+    }
+  }
+}
+</script>
+{% endblock %}

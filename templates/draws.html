@@ -1,0 +1,1026 @@
+{% extends "base.html" %}
+{% block title %}Draws — እቁብ Equb{% endblock %}
+{% block nav_draws %}active{% endblock %}
+
+{% block content %}
+<div x-data="draws()" x-init="load()">
+<div class="p-8 space-y-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Weekly Draws</h1>
+      <p class="text-sm text-gray-500 mt-0.5">Every 4th week is a group/buyer week — sold, not drawn</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <select x-model="selectedCycle" @change="loadCycleAndWeeks()" class="w-56">
+        <option value="">— Select Cycle —</option>
+        <template x-for="c in cycles" :key="c.id">
+          <option :value="c.id" x-text="`${c.name} (${c.drawn_weeks}/${c.total_weeks})`"></option>
+        </template>
+      </select>
+      <!-- Delete Cycle (admin only) -->
+      <button x-show="isAdmin && selectedCycle" @click="deleteCycle()"
+              class="p-2 rounded-xl text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete this cycle (admin)">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Tab switcher -->
+  <div class="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+    <button @click="activeTab = 'draws'"
+            :class="activeTab === 'draws' ? 'bg-white shadow text-gray-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
+            class="px-4 py-2 rounded-lg text-sm transition-all">
+      📋 Draws
+    </button>
+    <button @click="activeTab = 'disbursements'; loadDisbursements()"
+            :class="activeTab === 'disbursements' ? 'bg-white shadow text-gray-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
+            class="px-4 py-2 rounded-lg text-sm transition-all">
+      💵 Disbursements
+    </button>
+  </div>
+
+  <!-- ══════════════ DRAWS TAB ══════════════ -->
+  <div x-show="activeTab === 'draws'" x-cloak>
+
+  <!-- No cycle -->
+  <div x-show="!selectedCycle" class="card text-center py-12 text-gray-400">
+    Select a cycle above to view and manage weekly draws.
+    <div class="mt-3"><a href="/" class="text-equb-green hover:underline text-sm">Go to Dashboard to create a cycle →</a></div>
+  </div>
+
+  <template x-if="selectedCycle">
+    <div class="space-y-4">
+
+      <!-- Draw Phase Banner -->
+      <template x-if="activeCycle?.draw_phase === 'collection'">
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span class="font-bold text-amber-800">Collection Phase — Draws Not Started</span>
+            </div>
+            <p class="text-sm text-amber-700">Payments are being collected. When ready, start draws to record winners for all accumulated weeks at once.</p>
+          </div>
+          <button @click="openStartDraws()" class="flex-shrink-0 bg-amber-500 hover:bg-amber-600 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+            Start Draws
+          </button>
+        </div>
+      </template>
+
+      <template x-if="activeCycle?.draw_phase === 'active'">
+        <div class="bg-green-50 border border-green-200 rounded-2xl px-5 py-3 flex items-center gap-3">
+          <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span class="text-sm font-medium text-green-800">
+            Draw phase active — draws started from week <strong x-text="activeCycle.draw_start_week"></strong>.
+            <span x-show="pendingBatchCount > 0" class="text-amber-700 ml-2">
+              <span x-text="pendingBatchCount"></span> batch draw(s) still pending.
+              <button @click="openBatchDraw()" class="underline hover:no-underline font-semibold">Record batch draws →</button>
+            </span>
+          </span>
+        </div>
+      </template>
+
+      <!-- Filter tabs -->
+      <div class="flex gap-2 flex-wrap">
+        <button @click="filter='all'" :class="filter==='all' ? 'btn-primary' : 'btn-secondary'" class="text-xs px-3 py-1.5">All</button>
+        <button @click="filter='pending'" :class="filter==='pending' ? 'btn-primary' : 'btn-secondary'" class="text-xs px-3 py-1.5">Pending</button>
+        <button @click="filter='drawn'" :class="filter==='drawn' ? 'btn-primary' : 'btn-secondary'" class="text-xs px-3 py-1.5">Drawn</button>
+        <button @click="filter='sold'" :class="filter==='sold' ? 'btn-primary' : 'btn-secondary'" class="text-xs px-3 py-1.5">Sold</button>
+        <button @click="filter='group'" :class="filter==='group' ? 'btn-primary' : 'btn-secondary'" class="text-xs px-3 py-1.5">Group Weeks</button>
+        <button x-show="activeCycle?.draw_phase === 'active' && pendingBatchCount > 0"
+                @click="openBatchDraw()"
+                class="text-xs px-3 py-1.5 bg-amber-100 text-amber-800 font-semibold rounded-xl hover:bg-amber-200 ml-auto">
+          📋 Batch Draw (<span x-text="pendingBatchCount"></span> pending)
+        </button>
+      </div>
+
+      <div class="card p-0 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 border-b">
+              <tr>
+                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16">Week</th>
+                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Date</th>
+                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Type</th>
+                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Net Pot</th>
+                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Winner / Buyer</th>
+                <th class="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Action</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              <template x-for="w in filteredWeeks" :key="w.id">
+                <tr class="hover:bg-gray-50/70 transition-colors"
+                    :class="w.is_group_week ? 'bg-amber-50/40' : ''">
+                  <td class="px-5 py-3.5">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold"
+                          :class="w.is_group_week ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'"
+                          x-text="w.week_number"></span>
+                  </td>
+                  <td class="px-5 py-3.5 text-gray-600" x-text="fmtDate(w.draw_date)"></td>
+                  <td class="px-5 py-3.5">
+                    <span x-show="w.is_worker_week" class="badge bg-purple-100 text-purple-700">Worker</span>
+                    <span x-show="w.is_group_week && !w.is_worker_week" class="badge badge-group">Group Week</span>
+                    <span x-show="!w.is_group_week && !w.is_worker_week" class="badge bg-gray-100 text-gray-600">Regular</span>
+                  </td>
+                  <td class="px-5 py-3.5 font-semibold text-equb-green" x-text="fmt(w.net_pot)"></td>
+                  <td class="px-5 py-3.5">
+                    <span :class="`badge badge-${w.status}`" x-text="w.status"></span>
+                  </td>
+                  <td class="px-5 py-3.5 text-gray-600 text-sm amharic">
+                    <template x-if="w.status === 'drawn' && w.winner_spot">
+                      <span x-text="w.winner_spot.members.map(m=>m.name).join(' & ')"></span>
+                    </template>
+                    <template x-if="w.status === 'sold' && w.transaction">
+                      <div>
+                        <span class="font-medium" x-text="w.transaction.buyer?.name"></span>
+                        <span x-show="w.transaction.percentage" class="text-xs text-purple-600 ml-1"
+                              x-text="`(${w.transaction.percentage}%)`"></span>
+                      </div>
+                    </template>
+                    <span x-show="w.status === 'pending'" class="text-gray-300">—</span>
+                  </td>
+                  <td class="px-5 py-3.5 text-right">
+                    <template x-if="w.status === 'pending' && w.is_worker_week">
+                      <span class="text-xs text-purple-500 font-medium">Payment week only</span>
+                    </template>
+                    <template x-if="w.status === 'pending' && !w.is_worker_week && activeCycle?.draw_phase === 'active'">
+                      <div class="flex items-center justify-end gap-2">
+                        <button x-show="!w.is_group_week"
+                                @click="openDraw(w)"
+                                class="text-xs btn-primary py-1 px-3">Record Draw</button>
+                        <button @click="openSale(w)"
+                                class="text-xs btn-secondary py-1 px-3"
+                                x-text="w.is_group_week ? 'Record Sale' : 'Sell Pot'"></button>
+                      </div>
+                    </template>
+                    <template x-if="w.status === 'pending' && !w.is_worker_week && activeCycle?.draw_phase === 'collection'">
+                      <span class="text-xs text-amber-500 font-medium">Collection</span>
+                    </template>
+                    <template x-if="w.status !== 'pending'">
+                      <button @click="openDisbursement(w)"
+                              :class="disbursedWeeks.has(w.id) ? 'text-green-600 hover:text-green-700' : 'text-indigo-500 hover:text-indigo-700'"
+                              class="text-xs font-medium px-2 py-1 rounded-lg hover:bg-gray-100"
+                              x-text="disbursedWeeks.has(w.id) ? '✓ Disbursed' : 'Disburse'"></button>
+                    </template>
+                  </td>
+                </tr>
+              </template>
+              <tr x-show="filteredWeeks.length === 0">
+                <td colspan="7" class="px-5 py-12 text-center text-gray-400">No weeks match the current filter</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  </div><!-- end draws tab -->
+
+  <!-- ══════════════ DISBURSEMENTS TAB ══════════════ -->
+  <div x-show="activeTab === 'disbursements'" x-cloak>
+
+    <!-- Summary cards -->
+    <div class="grid grid-cols-4 gap-3" x-show="disbursements.length > 0">
+      <div class="card py-4 text-center">
+        <div class="text-2xl font-bold text-gray-900" x-text="disbursements.length"></div>
+        <div class="text-xs text-gray-400 mt-1">Total Disbursements</div>
+      </div>
+      <div class="card py-4 text-center">
+        <div class="text-2xl font-bold text-equb-green"
+             x-text="fmt(disbursements.reduce((s,d) => s + (d.net_amount||0), 0))"></div>
+        <div class="text-xs text-gray-400 mt-1">Total Net Issued</div>
+      </div>
+      <div class="card py-4 text-center">
+        <div class="text-2xl font-bold text-green-600"
+             x-text="disbursements.filter(d=>d.status==='collected').length"></div>
+        <div class="text-xs text-gray-400 mt-1">Collected</div>
+      </div>
+      <div class="card py-4 text-center">
+        <div class="text-2xl font-bold text-amber-500"
+             x-text="disbursements.filter(d=>d.status==='issued').length"></div>
+        <div class="text-xs text-gray-400 mt-1">Pending Collection</div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card p-0 overflow-hidden">
+      <div class="px-5 py-4 border-b flex items-center justify-between">
+        <h2 class="font-semibold text-gray-800">Cheque Disbursements</h2>
+        <span class="text-xs text-gray-400">All cycles</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b">
+            <tr>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Week</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Winner(s)</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Gross</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Svc Fee</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Voucher</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Net Cheque</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Cheque #</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Date</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Guarantors</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+              <th class="px-5 py-3"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <template x-for="d in disbursements" :key="d.id">
+              <tr class="hover:bg-gray-50/70 transition-colors">
+                <td class="px-5 py-3.5">
+                  <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold bg-gray-100 text-gray-600"
+                        x-text="d.week_number || '—'"></span>
+                </td>
+                <td class="px-5 py-3.5 font-medium text-gray-900 amharic"
+                    x-text="d.winner_members?.map(m=>m.name).join(' & ') || '—'"></td>
+                <td class="px-5 py-3.5 text-gray-600" x-text="fmt(d.gross_amount)"></td>
+                <td class="px-5 py-3.5 text-red-500" x-text="d.service_fee ? '−' + fmt(d.service_fee) : '—'"></td>
+                <td class="px-5 py-3.5 text-red-500" x-text="d.voucher_deduction ? '−' + fmt(d.voucher_deduction) : '—'"></td>
+                <td class="px-5 py-3.5 font-bold text-equb-green" x-text="fmt(d.net_amount)"></td>
+                <td class="px-5 py-3.5 font-mono text-gray-700" x-text="d.cheque_number"></td>
+                <td class="px-5 py-3.5 text-gray-600" x-text="fmtDate(d.cheque_date)"></td>
+                <td class="px-5 py-3.5 text-xs text-gray-500 amharic"
+                    x-text="[d.guarantor_1?.name, d.guarantor_2?.name, d.guarantor_3?.name].filter(Boolean).join(', ')"></td>
+                <td class="px-5 py-3.5">
+                  <span :class="d.status === 'collected' ? 'badge badge-active' : 'badge badge-pending'"
+                        x-text="d.status === 'collected' ? '✓ Collected' : 'Issued'"></span>
+                </td>
+                <td class="px-5 py-3.5 text-right">
+                  <button x-show="d.status === 'issued'"
+                          @click="markDisbCollected(d)"
+                          class="text-xs btn-primary py-1 px-3">Mark Collected</button>
+                  <span x-show="d.status === 'collected'" class="text-xs text-gray-300">—</span>
+                </td>
+              </tr>
+            </template>
+            <tr x-show="disbursements.length === 0">
+              <td colspan="11" class="px-5 py-12 text-center text-gray-400">
+                No disbursements recorded yet. Use the Draws tab to record disbursements after a winner is drawn.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- end disbursements tab -->
+
+</div><!-- end inner p-8 -->
+
+<!-- Start Draws Modal -->
+<div x-show="showStartDrawsModal" x-cloak class="modal-backdrop" @click.self="showStartDrawsModal = false">
+  <div class="modal-box">
+    <div class="p-6 border-b">
+      <h2 class="text-lg font-bold text-gray-900">Start Draws</h2>
+      <p class="text-sm text-gray-500 mt-1">This transitions the cycle from collection to active draw phase. All weeks up to the start week will need batch draws recorded.</p>
+    </div>
+    <form @submit.prevent="confirmStartDraws()" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Start from Week Number <span class="text-red-400">*</span></label>
+        <input x-model.number="startDrawsWeek" type="number" min="1" required
+               placeholder="e.g. 15 or 20 — the first batch draw week"/>
+        <p class="text-xs text-gray-400 mt-1">Weeks 1 through this number will be available for batch draws immediately.</p>
+      </div>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+        <strong>After confirming:</strong> use the Batch Draw feature to record all <span x-text="startDrawsWeek || 'N'"></span> winners (plus group week buyers) at once.
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="button" @click="showStartDrawsModal = false" class="btn-secondary flex-1">Cancel</button>
+        <button type="submit" :disabled="saving" class="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-4 py-2 rounded-xl flex-1 text-sm"
+                x-text="saving ? 'Starting…' : 'Confirm & Start Draws'"></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Batch Draw Modal -->
+<div x-show="showBatchModal" x-cloak class="modal-backdrop" @click.self="showBatchModal = false">
+  <div class="modal-box max-w-2xl">
+    <div class="p-6 border-b flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-bold text-gray-900">Batch Draw</h2>
+        <p class="text-sm text-gray-500 mt-1">Record winners for all pending weeks at once.</p>
+      </div>
+      <button @click="showBatchModal = false" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+      <template x-for="(row, idx) in batchRows" :key="row.week_id">
+        <div class="border border-gray-200 rounded-xl p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold"
+                  :class="row.is_group_week ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'"
+                  x-text="row.week_number"></span>
+            <div>
+              <div class="text-sm font-medium text-gray-800" x-text="fmtDate(row.draw_date)"></div>
+              <div class="text-xs text-gray-400">
+                <span x-show="row.is_group_week" class="text-amber-600 font-medium">Group Week — record sale below</span>
+                <span x-show="!row.is_group_week">Net pot: <span x-text="fmt(row.net_pot)"></span></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Regular week: pick winning spot -->
+          <template x-if="!row.is_group_week">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Winning Spot</label>
+              <select x-model.number="batchRows[idx].winner_spot_id">
+                <option :value="null">— Select winner —</option>
+                <template x-for="s in activeSpots" :key="s.id">
+                  <option :value="s.id"
+                          x-text="`Spot #${s.number} — ${s.members.map(m=>m.name).join(' & ') || 'Unassigned'}`"></option>
+                </template>
+              </select>
+            </div>
+          </template>
+
+          <!-- Group week: record sale separately -->
+          <template x-if="row.is_group_week">
+            <div class="text-xs text-amber-600 bg-amber-50 rounded-lg p-2">
+              Group week sales are recorded individually via "Record Sale" after batch draw.
+            </div>
+          </template>
+        </div>
+      </template>
+      <div x-show="batchRows.length === 0" class="text-center text-gray-400 py-8">No pending regular weeks to draw.</div>
+    </div>
+    <div class="p-6 border-t flex gap-3">
+      <button @click="showBatchModal = false" class="btn-secondary flex-1">Cancel</button>
+      <button @click="submitBatchDraw()" :disabled="saving"
+              class="btn-primary flex-1"
+              x-text="saving ? 'Saving…' : `Submit ${batchRows.filter(r=>!r.is_group_week && r.winner_spot_id).length} Draw(s)`"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Record Draw Modal -->
+<div x-show="showDrawModal" x-cloak class="modal-backdrop" @click.self="showDrawModal = false">
+  <div class="modal-box">
+    <div class="p-6 border-b">
+      <h2 class="text-lg font-bold text-gray-900">Record Draw — Week <span x-text="activeWeek?.week_number"></span></h2>
+      <p class="text-sm text-gray-500 mt-1">Select the spot that won the draw this week.</p>
+    </div>
+    <form @submit.prevent="recordDraw()" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Winning Spot <span class="text-red-400">*</span></label>
+        <select x-model.number="drawForm.winner_spot_id" @change="checkWinnerPayment()" required>
+          <option :value="null">— Select winner spot —</option>
+          <template x-for="s in activeSpots" :key="s.id">
+            <option :value="s.id"
+                    x-text="`Spot #${s.number} — ${s.members.map(m=>m.name).join(' & ') || 'Unassigned'}`"></option>
+          </template>
+        </select>
+      </div>
+
+      <!-- Payment status check -->
+      <template x-if="paymentCheck">
+        <div :class="paymentCheck.all_paid
+              ? 'bg-green-50 border-green-200 text-green-700'
+              : 'bg-red-50 border-red-200 text-red-700'"
+             class="border rounded-xl p-3 text-xs">
+          <template x-if="paymentCheck.all_paid">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <strong>All payments up to date.</strong> This spot is eligible to receive the pot.
+            </div>
+          </template>
+          <template x-if="!paymentCheck.all_paid">
+            <div>
+              <div class="flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.072 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                </svg>
+                <strong>Pot on hold — unpaid weeks exist.</strong>
+              </div>
+              <template x-for="m in paymentCheck.members.filter(m=>!m.fully_paid)" :key="m.member_id">
+                <div class="ml-6 amharic">
+                  <span x-text="m.name"></span>:
+                  <span x-text="`${m.unpaid_count} week(s) unpaid`"></span>
+                  (weeks <span x-text="m.unpaid_weeks.join(', ')"></span>) —
+                  <span x-text="fmt(m.unpaid_amount)"></span>
+                </div>
+              </template>
+              <div class="mt-2 ml-6 text-red-600 font-semibold">Must pay all outstanding weeks before receiving the pot.</div>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <div class="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700">
+        <strong>Pot Amount:</strong> <span x-text="fmt(activeWeek?.net_pot)"></span>
+        (gross <span x-text="fmt(activeWeek?.gross_pot)"></span> − assoc. <span x-text="fmt(activeWeek?.association_amount)"></span>)
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="button" @click="showDrawModal = false" class="btn-secondary flex-1">Cancel</button>
+        <button type="submit" :disabled="saving" class="btn-primary flex-1"
+                x-text="saving ? 'Saving…' : 'Confirm Draw'"></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Record Sale Modal -->
+<div x-show="showSaleModal" x-cloak class="modal-backdrop" @click.self="showSaleModal = false">
+  <div class="modal-box">
+    <div class="p-6 border-b">
+      <h2 class="text-lg font-bold text-gray-900">
+        <span x-text="activeWeek?.is_group_week ? 'Group Week Sale' : 'Sell Pot'"></span>
+        — Week <span x-text="activeWeek?.week_number"></span>
+      </h2>
+      <p class="text-sm text-gray-500 mt-1" x-text="activeWeek?.is_group_week
+        ? 'Group week. The pot is sold to any active member at face value.'
+        : 'Winner is selling their pot to another active member for a % fee.'"></p>
+    </div>
+    <form @submit.prevent="recordSale()" class="p-6 space-y-4">
+
+      <!-- Member sale: original winner -->
+      <template x-if="!activeWeek?.is_group_week">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Original Winner (Seller)</label>
+          <select x-model.number="saleForm.original_winner_id" @change="saleForm.seller_id = saleForm.original_winner_id" class="amharic">
+            <option :value="null">— Select original winner —</option>
+            <template x-for="m in activeMembers" :key="m.id">
+              <option :value="m.id" x-text="`${m.name}${m.spot_numbers?.length ? ' (Spot #'+m.spot_numbers[0]+')' : ''}`"></option>
+            </template>
+          </select>
+        </div>
+      </template>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Buyer <span class="text-red-400">*</span></label>
+        <select x-model.number="saleForm.buyer_id" @change="checkBuyerPayment()" required class="amharic">
+          <option :value="null">— Select buyer —</option>
+          <template x-for="m in activeMembers" :key="m.id">
+            <option :value="m.id"
+                    :disabled="!activeWeek?.is_group_week && m.id === saleForm.original_winner_id"
+                    x-text="`${m.name}${m.spot_numbers?.length ? ' (Spot #'+m.spot_numbers[0]+')' : ''}`"></option>
+          </template>
+        </select>
+        <!-- Buyer payment check -->
+        <template x-if="buyerPaymentCheck">
+          <div :class="buyerPaymentCheck.fully_paid
+                ? 'bg-green-50 border-green-200 text-green-700'
+                : 'bg-red-50 border-red-200 text-red-700'"
+               class="border rounded-xl p-2.5 mt-2 text-xs">
+            <template x-if="buyerPaymentCheck.fully_paid">
+              <span>✓ Fully paid — eligible to buy this pot.</span>
+            </template>
+            <template x-if="!buyerPaymentCheck.fully_paid">
+              <span>
+                ✗ <strong x-text="buyerPaymentCheck.name" class="amharic"></strong>
+                has <span x-text="buyerPaymentCheck.unpaid_count"></span> unpaid week(s)
+                (weeks <span x-text="buyerPaymentCheck.unpaid_weeks?.join(', ')"></span>) —
+                <span x-text="fmt(buyerPaymentCheck.unpaid_amount)"></span> outstanding.
+              </span>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      <!-- Percentage (member sale only) -->
+      <template x-if="!activeWeek?.is_group_week">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Sale % (fee to seller)</label>
+          <div class="flex items-center gap-3">
+            <input x-model.number="saleForm.percentage" type="number" min="0" max="20" step="0.5" class="flex-1" placeholder="e.g. 8"/>
+            <div class="flex gap-1">
+              <template x-for="pct in [8,7,6,5,4,3,2]" :key="pct">
+                <button type="button"
+                        @click="saleForm.percentage = pct"
+                        :class="saleForm.percentage === pct ? 'bg-equb-green text-white' : 'bg-gray-100 text-gray-600'"
+                        class="px-2 py-1 rounded-lg text-xs font-semibold"
+                        x-text="pct + '%'"></button>
+              </template>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Summary -->
+      <div class="bg-gray-50 border rounded-xl p-4 text-sm space-y-2">
+        <div class="flex justify-between">
+          <span class="text-gray-500">Gross Pot</span>
+          <span class="font-semibold" x-text="fmt(activeWeek?.gross_pot)"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Association (−)</span>
+          <span class="text-red-500 font-semibold" x-text="fmt(activeWeek?.association_amount)"></span>
+        </div>
+        <template x-if="!activeWeek?.is_group_week && saleForm.percentage">
+          <div class="flex justify-between">
+            <span class="text-gray-500">Seller Fee (<span x-text="saleForm.percentage"></span>%)</span>
+            <span class="text-purple-600 font-semibold" x-text="fmt((activeWeek?.gross_pot||0) * saleForm.percentage / 100)"></span>
+          </div>
+        </template>
+        <div class="flex justify-between border-t pt-2 mt-2">
+          <span class="text-gray-700 font-semibold">Buyer Receives</span>
+          <span class="font-bold text-equb-green text-base" x-text="fmt(buyerReceives)"></span>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+        <textarea x-model="saleForm.notes" rows="2" placeholder="Optional notes…"></textarea>
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <button type="button" @click="showSaleModal = false" class="btn-secondary flex-1">Cancel</button>
+        <button type="submit" :disabled="saving" class="btn-primary flex-1"
+                x-text="saving ? 'Saving…' : 'Confirm Sale'"></button>
+      </div>
+    </form>
+  </div>
+</div><!-- end sale modal -->
+
+<!-- Disbursement Modal -->
+<div x-show="showDisbursementModal" x-cloak class="modal-backdrop" @click.self="showDisbursementModal = false">
+  <div class="modal-box max-w-lg">
+    <div class="p-6 border-b flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-bold text-gray-900">
+          <span x-text="existingDisbursement ? 'Disbursement Record' : 'Record Disbursement'"></span>
+          — Week <span x-text="activeWeek?.week_number"></span>
+        </h2>
+        <p class="text-sm text-gray-500 mt-0.5">Payment by cheque only. Member brings 3 guarantors.</p>
+      </div>
+      <button @click="showDisbursementModal = false" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+
+      <!-- Existing record view -->
+      <template x-if="existingDisbursement">
+        <div class="bg-green-50 border border-green-200 rounded-xl p-4 space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-gray-500">Winner</span>
+            <span class="font-medium amharic" x-text="existingDisbursement.winner_members?.map(m=>m.name).join(' & ')"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Gross (net_pot after assoc.)</span>
+            <span class="font-medium" x-text="fmt(existingDisbursement.gross_amount)"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Service Fee (−)</span>
+            <span class="text-red-500 font-medium" x-text="fmt(existingDisbursement.service_fee)"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Voucher Deduction (−)</span>
+            <span class="text-red-500 font-medium" x-text="fmt(existingDisbursement.voucher_deduction)"></span>
+          </div>
+          <div class="flex justify-between border-t pt-2 font-bold">
+            <span>Net Cheque Amount</span>
+            <span class="text-equb-green" x-text="fmt(existingDisbursement.net_amount)"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Cheque #</span>
+            <span class="font-mono font-medium" x-text="existingDisbursement.cheque_number"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Cheque Date</span>
+            <span x-text="fmtDate(existingDisbursement.cheque_date)"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Guarantors</span>
+            <span class="amharic text-right" x-text="[existingDisbursement.guarantor_1?.name, existingDisbursement.guarantor_2?.name, existingDisbursement.guarantor_3?.name].filter(Boolean).join(', ')"></span>
+          </div>
+          <div class="flex justify-between items-center pt-1">
+            <span class="text-gray-500">Status</span>
+            <div class="flex items-center gap-2">
+              <span :class="existingDisbursement.status === 'collected' ? 'badge badge-active' : 'badge badge-pending'"
+                    x-text="existingDisbursement.status"></span>
+              <button x-show="existingDisbursement.status === 'issued'"
+                      @click="markCollected()"
+                      class="text-xs btn-primary py-1 px-2">Mark Collected</button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- New disbursement form -->
+      <template x-if="!existingDisbursement">
+        <div class="space-y-4">
+
+          <!-- Deduction breakdown -->
+          <template x-if="voucherInfo">
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-1">
+              <div class="font-semibold text-amber-800 mb-1">Deduction Breakdown</div>
+              <div class="flex justify-between text-gray-600">
+                <span>Gross Pot (net_pot after assoc.)</span>
+                <span x-text="fmt(voucherInfo.net_pot)"></span>
+              </div>
+              <template x-for="a in voucherInfo.assignments" :key="a.member">
+                <div class="space-y-0.5 pl-2">
+                  <div class="flex justify-between text-amber-700">
+                    <span class="amharic" x-text="'− Service fee (' + a.member + ')'"></span>
+                    <span x-text="'−' + fmt(a.service_fee)"></span>
+                  </div>
+                  <div class="flex justify-between text-amber-700">
+                    <span class="amharic" x-text="'− Voucher (' + a.member + ')'"></span>
+                    <span x-text="'−' + fmt(a.voucher)"></span>
+                  </div>
+                </div>
+              </template>
+              <div class="flex justify-between font-bold text-green-700 border-t border-amber-200 pt-1 mt-1">
+                <span>Net to Winner</span>
+                <span x-text="fmt(voucherInfo.net_after_all)"></span>
+              </div>
+            </div>
+          </template>
+
+          <!-- Amounts -->
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Gross Amount (ETB)</label>
+              <input x-model.number="disbForm.gross_amount" type="number" step="100"/>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Service Fee (−)</label>
+              <input x-model.number="disbForm.service_fee" type="number" step="100"/>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Voucher Deduction (−)</label>
+              <input x-model.number="disbForm.voucher_deduction" type="number" step="100"/>
+            </div>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-3 flex justify-between text-sm font-semibold">
+            <span class="text-gray-600">Net Cheque Amount</span>
+            <span class="text-equb-green" x-text="fmt((disbForm.gross_amount||0) - (disbForm.service_fee||0) - (disbForm.voucher_deduction||0))"></span>
+          </div>
+
+          <!-- Cheque details -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Cheque Number <span class="text-red-400">*</span></label>
+              <input x-model="disbForm.cheque_number" type="text" placeholder="e.g. CHQ-001234"/>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Cheque Date <span class="text-red-400">*</span></label>
+              <input x-model="disbForm.cheque_date" type="date"/>
+            </div>
+          </div>
+
+          <!-- Guarantors -->
+          <div>
+            <label class="block text-xs text-gray-500 mb-2">3 Guarantor Members <span class="text-red-400">*</span></label>
+            <div class="space-y-2">
+              <template x-for="i in [1,2,3]" :key="i">
+                <select x-model.number="disbForm['guarantor_' + i + '_id']" class="amharic">
+                  <option :value="null" x-text="`— Guarantor ${i} —`"></option>
+                  <template x-for="m in allMembers" :key="m.id">
+                    <option :value="m.id" x-text="m.name"></option>
+                  </template>
+                </select>
+              </template>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Notes</label>
+            <textarea x-model="disbForm.notes" rows="2" placeholder="Optional notes…"></textarea>
+          </div>
+
+          <div class="flex gap-3 pt-2">
+            <button @click="showDisbursementModal = false" class="btn-secondary flex-1">Cancel</button>
+            <button @click="saveDisbursement()" :disabled="saving" class="btn-primary flex-1"
+                    x-text="saving ? 'Saving…' : 'Record Disbursement'"></button>
+          </div>
+        </div>
+      </template>
+
+    </div>
+  </div>
+</div><!-- end disbursement modal -->
+
+
+</div><!-- end x-data scope -->
+{% endblock %}
+
+{% block scripts %}
+<style>
+@media print {
+  body > *:not(#weekly-summary-print) { display: none !important; }
+  #weekly-summary-print { display: block !important; box-shadow: none; border-radius: 0; }
+  .no-print { display: none !important; }
+  .modal-backdrop { position: static; background: none; padding: 0; }
+  .modal-box { max-width: 100%; box-shadow: none; }
+}
+</style>
+<script>
+function draws() {
+  return {
+    cycles: [],
+    weeks: [],
+    activeCycle: null,
+    activeSpots: [],
+    activeMembers: [],
+    allMembers: [],
+    selectedCycle: '',
+    filter: 'all',
+    activeTab: 'draws',
+    disbursements: [],
+    showDrawModal: false,
+    showSaleModal: false,
+    showStartDrawsModal: false,
+    showBatchModal: false,
+    showDisbursementModal: false,
+    activeWeek: null,
+    saving: false,
+    startDrawsWeek: null,
+    drawForm: { winner_spot_id: null },
+    saleForm: { original_winner_id: null, seller_id: null, buyer_id: null, percentage: null, notes: '' },
+    disbForm: { gross_amount: 0, service_fee: 0, voucher_deduction: 0, cheque_number: '', cheque_date: '', guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null, notes: '' },
+    existingDisbursement: null,
+    voucherInfo: null,
+    disbursedWeeks: new Set(),
+    paymentCheck: null,
+    buyerPaymentCheck: null,
+    batchRows: [],
+
+    get filteredWeeks() {
+      return this.weeks.filter(w => {
+        if (this.filter === 'pending') return w.status === 'pending';
+        if (this.filter === 'drawn') return w.status === 'drawn';
+        if (this.filter === 'sold') return w.status === 'sold';
+        if (this.filter === 'group') return w.is_group_week;
+        return true;
+      });
+    },
+
+    get pendingBatchCount() {
+      if (!this.activeCycle || this.activeCycle.draw_phase !== 'active') return 0;
+      const startWeek = this.activeCycle.draw_start_week || 1;
+      return this.weeks.filter(w => w.status === 'pending' && w.week_number <= startWeek).length;
+    },
+
+    get buyerReceives() {
+      if (!this.activeWeek) return 0;
+      const net = this.activeWeek.net_pot || 0;
+      const gross = this.activeWeek.gross_pot || 0;
+      if (!this.activeWeek.is_group_week && this.saleForm.percentage) {
+        return net - (gross * this.saleForm.percentage / 100);
+      }
+      return net;
+    },
+
+    async load() {
+      try {
+        this.cycles = await this.api('GET', '/api/draws/cycles');
+        if (this.cycles.length > 0) {
+          const active = this.cycles.find(c => c.status === 'active') || this.cycles[0];
+          this.selectedCycle = active.id;
+          await this.loadCycleAndWeeks();
+        }
+        // Load all members for guarantor selects
+        const members = await this.api('GET', '/api/members').catch(() => []);
+        this.allMembers = members.filter ? members.filter(m => m.status !== 'left') : [];
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async loadCycleAndWeeks() {
+      if (!this.selectedCycle) return;
+      try {
+        this.activeCycle = this.cycles.find(c => c.id === parseInt(this.selectedCycle)) || null;
+        this.weeks = await this.api('GET', `/api/draws/cycles/${this.selectedCycle}/weeks`);
+        // Track which weeks already have disbursements recorded
+        const disbs = await this.api('GET', '/api/disbursements').catch(() => []);
+        this.disbursedWeeks = new Set(disbs.map(d => d.week_id));
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    openStartDraws() {
+      this.startDrawsWeek = null;
+      this.showStartDrawsModal = true;
+    },
+
+    async confirmStartDraws() {
+      if (!this.startDrawsWeek) return;
+      this.saving = true;
+      try {
+        const res = await this.api('POST',
+          `/api/draws/cycles/${this.selectedCycle}/start-draws?at_week_number=${this.startDrawsWeek}`);
+        this.showToast(res.message || 'Draws started!');
+        this.showStartDrawsModal = false;
+        this.cycles = await this.api('GET', '/api/draws/cycles');
+        await this.loadCycleAndWeeks();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+
+    async openBatchDraw() {
+      this.activeSpots = await this.api('GET', '/api/draws/active-spots').catch(() => []);
+      const startWeek = this.activeCycle?.draw_start_week || 1;
+      this.batchRows = this.weeks
+        .filter(w => w.status === 'pending' && w.week_number <= startWeek)
+        .map(w => ({ week_id: w.id, week_number: w.week_number, draw_date: w.draw_date,
+                     is_group_week: w.is_group_week, net_pot: w.net_pot, winner_spot_id: null }));
+      this.showBatchModal = true;
+    },
+
+    async submitBatchDraw() {
+      const draws = this.batchRows
+        .filter(r => !r.is_group_week && r.winner_spot_id)
+        .map(r => ({ week_id: r.week_id, winner_spot_id: r.winner_spot_id }));
+      if (draws.length === 0) { this.showToast('No draws selected', 'error'); return; }
+      this.saving = true;
+      try {
+        const res = await this.api('POST', '/api/draws/batch-draw', { draws });
+        this.showToast(`${res.processed} draw(s) recorded`);
+        this.showBatchModal = false;
+        await this.loadCycleAndWeeks();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+
+    async openDraw(w) {
+      this.activeWeek = w;
+      this.drawForm = { winner_spot_id: null };
+      this.paymentCheck = null;
+      this.activeSpots = await this.api('GET', '/api/draws/active-spots').catch(() => []);
+      this.showDrawModal = true;
+    },
+
+    async checkWinnerPayment() {
+      if (!this.drawForm.winner_spot_id || !this.activeWeek) return;
+      try {
+        this.paymentCheck = await this.api('GET',
+          `/api/draws/weeks/${this.activeWeek.id}/check-payment/${this.drawForm.winner_spot_id}`);
+      } catch(e) { this.paymentCheck = null; }
+    },
+
+    async openSale(w) {
+      this.activeWeek = w;
+      this.saleForm = { original_winner_id: null, seller_id: null, buyer_id: null, percentage: null, notes: '' };
+      this.buyerPaymentCheck = null;
+      this.activeMembers = await this.api('GET', '/api/draws/active-members').catch(() => []);
+      this.showSaleModal = true;
+    },
+
+    async checkBuyerPayment() {
+      if (!this.saleForm.buyer_id || !this.activeWeek) return;
+      try {
+        this.buyerPaymentCheck = await this.api('GET',
+          `/api/draws/weeks/${this.activeWeek.id}/check-payment-member/${this.saleForm.buyer_id}`);
+      } catch(e) { this.buyerPaymentCheck = null; }
+    },
+
+    async recordDraw() {
+      if (!this.drawForm.winner_spot_id) return;
+      this.saving = true;
+      try {
+        await this.api('POST', `/api/draws/weeks/${this.activeWeek.id}/draw`, this.drawForm);
+        this.showDrawModal = false;
+        this.showToast('Draw recorded');
+        await this.loadCycleAndWeeks();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+
+    async openDisbursement(w) {
+      this.activeWeek = w;
+      this.existingDisbursement = null;
+      this.voucherInfo = null;
+      // Check for existing disbursement
+      const existing = await this.api('GET', `/api/disbursements/week/${w.id}`).catch(() => null);
+      if (existing) {
+        this.existingDisbursement = existing;
+      } else {
+        // Pre-fill amounts and fetch voucher info
+        this.disbForm = {
+          gross_amount: w.net_pot || 0,
+          voucher_deduction: 0,
+          cheque_number: '',
+          cheque_date: new Date().toISOString().slice(0, 10),
+          guarantor_1_id: null,
+          guarantor_2_id: null,
+          guarantor_3_id: null,
+          notes: '',
+        };
+        if (w.winner_spot) {
+          try {
+            this.voucherInfo = await this.api('GET', `/api/disbursements/voucher-info/${w.id}`);
+            this.disbForm.gross_amount = this.voucherInfo.net_pot || 0;
+            this.disbForm.service_fee = this.voucherInfo.service_fee || 0;
+            this.disbForm.voucher_deduction = this.voucherInfo.voucher_deduction || 0;
+          } catch(e) { /* no winner yet */ }
+        }
+      }
+      this.showDisbursementModal = true;
+    },
+
+    async saveDisbursement() {
+      if (!this.disbForm.cheque_number || !this.disbForm.cheque_date) {
+        this.showToast('Cheque number and date are required', 'error'); return;
+      }
+      if (!this.disbForm.guarantor_1_id || !this.disbForm.guarantor_2_id || !this.disbForm.guarantor_3_id) {
+        this.showToast('All 3 guarantors are required', 'error'); return;
+      }
+      this.saving = true;
+      try {
+        await this.api('POST', '/api/disbursements', {
+          week_id: this.activeWeek.id,
+          gross_amount: this.disbForm.gross_amount,
+          service_fee: this.disbForm.service_fee || 0,
+          voucher_deduction: this.disbForm.voucher_deduction || 0,
+          cheque_number: this.disbForm.cheque_number,
+          cheque_date: this.disbForm.cheque_date,
+          guarantor_1_id: this.disbForm.guarantor_1_id,
+          guarantor_2_id: this.disbForm.guarantor_2_id,
+          guarantor_3_id: this.disbForm.guarantor_3_id,
+          notes: this.disbForm.notes || null,
+        });
+        this.showToast('Disbursement recorded');
+        this.showDisbursementModal = false;
+        await this.loadCycleAndWeeks();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+
+    async markCollected() {
+      if (!this.existingDisbursement) return;
+      try {
+        const updated = await this.api('PUT', `/api/disbursements/${this.existingDisbursement.id}`, { status: 'collected' });
+        this.existingDisbursement = updated;
+        this.showToast('Marked as collected');
+        await this.loadCycleAndWeeks();
+        if (this.disbursements.length > 0) await this.loadDisbursements();
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async loadDisbursements() {
+      try {
+        this.disbursements = await this.api('GET', '/api/disbursements');
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async markDisbCollected(d) {
+      try {
+        const updated = await this.api('PUT', `/api/disbursements/${d.id}`, { status: 'collected' });
+        const idx = this.disbursements.findIndex(x => x.id === d.id);
+        if (idx !== -1) this.disbursements[idx] = updated;
+        // Force reactivity
+        this.disbursements = [...this.disbursements];
+        this.showToast('Marked as collected');
+        await this.loadCycleAndWeeks();
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async deleteCycle() {
+      const cyc = this.cycles.find(c => c.id === parseInt(this.selectedCycle));
+      if (!cyc) return;
+      if (!confirm(`⚠️ DELETE cycle "${cyc.name}"?\n\nThis permanently deletes all weeks, payments, draws, and disbursements for this cycle. This cannot be undone.`)) return;
+      try {
+        await this.api('DELETE', `/api/draws/cycles/${this.selectedCycle}`);
+        this.showToast(`Cycle "${cyc.name}" deleted`);
+        this.selectedCycle = '';
+        this.activeCycle = null;
+        this.weeks = [];
+        this.disbursedWeeks = new Set();
+        this.cycles = await this.api('GET', '/api/draws/cycles');
+        if (this.cycles.length > 0) {
+          this.selectedCycle = this.cycles[0].id;
+          await this.loadCycleAndWeeks();
+        }
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async recordSale() {
+      if (!this.saleForm.buyer_id) return;
+      this.saving = true;
+      try {
+        const payload = {
+          transaction_type: this.activeWeek.is_group_week ? 'group_week_sale' : 'member_sale',
+          buyer_id: this.saleForm.buyer_id,
+          original_winner_id: this.saleForm.original_winner_id || null,
+          seller_id: this.saleForm.seller_id || null,
+          percentage: this.saleForm.percentage || null,
+          notes: this.saleForm.notes || null,
+        };
+        await this.api('POST', `/api/draws/weeks/${this.activeWeek.id}/sell`, payload);
+        this.showSaleModal = false;
+        this.showToast('Sale recorded');
+        await this.loadCycleAndWeeks();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
+    },
+  }
+}
+</script>
+{% endblock %}
