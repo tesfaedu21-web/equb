@@ -3,21 +3,30 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login — Equb Manager</title>
+  <title>Sign In — Equb Manager</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            equb: { green:'#078930', yellow:'#FCDD09', red:'#DA121A', dark:'#071A10', mid:'#1a3d2b', light:'#2d6a4f' }
+            equb: { green:'#078930', yellow:'#FCDD09', red:'#DA121A', dark:'#051209', mid:'#0a2016' }
           },
           fontFamily: {
             sans: ['Inter', 'system-ui', 'sans-serif'],
             ethiopic: ['"Noto Sans Ethiopic"', 'sans-serif'],
+          },
+          animation: {
+            'float': 'float 6s ease-in-out infinite',
+            'float-slow': 'float 9s ease-in-out infinite',
+            'pulse-soft': 'pulse-soft 4s ease-in-out infinite',
+          },
+          keyframes: {
+            float: { '0%,100%': {transform:'translateY(0)'}, '50%': {transform:'translateY(-18px)'} },
+            'pulse-soft': { '0%,100%': {opacity:'0.4'}, '50%': {opacity:'0.7'} },
           }
         }
       }
@@ -26,113 +35,237 @@
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; }
     .amharic { font-family: 'Noto Sans Ethiopic', sans-serif; }
-    .flag-stripe {
-      background: linear-gradient(to right, #078930 33.3%, #FCDD09 33.3% 66.6%, #DA121A 66.6%);
+
+    /* ── Mesh gradient background ── */
+    .bg-mesh {
+      background-color: #051209;
+      background-image:
+        radial-gradient(ellipse at 15% 15%, rgba(7,137,48,0.28) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 80%, rgba(7,137,48,0.18) 0%, transparent 50%),
+        radial-gradient(ellipse at 60% 20%, rgba(252,221,9,0.06) 0%, transparent 40%),
+        radial-gradient(ellipse at 20% 80%, rgba(218,18,26,0.07) 0%, transparent 40%);
     }
-    input:focus { outline: none; box-shadow: 0 0 0 3px rgba(7,137,48,0.2); border-color: #078930; }
-    input { transition: border-color 0.15s, box-shadow 0.15s; }
+
+    /* ── Ethiopian cross / star pattern (SVG background) ── */
+    .eth-pattern {
+      background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23078930' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+
+    /* ── Glassmorphism card ── */
+    .glass-card {
+      background: rgba(255,255,255,0.97);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    /* ── Input styles ── */
+    .field-input {
+      width: 100%;
+      padding: 11px 12px 11px 40px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 12px;
+      font-size: 0.875rem;
+      background: #f9fafb;
+      color: #111827;
+      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    }
+    .field-input:focus {
+      outline: none;
+      border-color: #078930;
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(7,137,48,0.12);
+    }
+    .field-input.error {
+      border-color: #ef4444;
+      background: #fff5f5;
+    }
+    .field-input.error:focus {
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
+    }
+
+    /* ── Submit button ── */
+    .btn-signin {
+      width: 100%;
+      padding: 11px;
+      background: linear-gradient(135deg, #078930 0%, #0a9e38 100%);
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.9rem;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: all 0.2s;
+      box-shadow: 0 4px 14px rgba(7,137,48,0.35);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-signin:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(7,137,48,0.45); }
+    .btn-signin:active { transform: translateY(0); }
+    .btn-signin::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(255,255,255,0.12), transparent);
+    }
+    .btn-signin:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ── Floating orbs ── */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      pointer-events: none;
+    }
   </style>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </head>
-<body class="min-h-screen flex items-center justify-center bg-equb-dark"
-      style="background: radial-gradient(ellipse at 30% 20%, #0f3020 0%, #071A10 60%);">
 
-  <!-- Decorative blobs -->
-  <div class="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none" aria-hidden="true">
-    <div class="absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-10" style="background: #078930; filter: blur(80px);"></div>
-    <div class="absolute -bottom-32 -right-32 w-80 h-80 rounded-full opacity-10" style="background: #FCDD09; filter: blur(80px);"></div>
-    <div class="absolute top-1/2 right-20 w-64 h-64 rounded-full opacity-5" style="background: #DA121A; filter: blur(60px);"></div>
+<body class="min-h-screen flex items-center justify-center bg-mesh eth-pattern"
+      x-data="loginForm()" @keydown.enter.window="if(!$event.target.form) null">
+
+  <!-- Animated background orbs -->
+  <div class="orb w-96 h-96 animate-float"
+       style="background:rgba(7,137,48,0.2);top:-8rem;left:-8rem"></div>
+  <div class="orb w-72 h-72 animate-float-slow"
+       style="background:rgba(7,137,48,0.12);bottom:-6rem;right:-6rem;animation-delay:-3s"></div>
+  <div class="orb w-48 h-48 animate-pulse-soft"
+       style="background:rgba(252,221,9,0.06);top:40%;left:10%"></div>
+  <div class="orb w-40 h-40 animate-pulse-soft"
+       style="background:rgba(218,18,26,0.05);top:20%;right:15%;animation-delay:-2s"></div>
+
+  <!-- Vertical Ethiopian flag bar on far left -->
+  <div class="fixed left-0 top-0 h-full w-1.5 flex flex-col" aria-hidden="true">
+    <div class="flex-1" style="background:#078930"></div>
+    <div class="flex-1" style="background:#FCDD09"></div>
+    <div class="flex-1" style="background:#DA121A"></div>
   </div>
 
-  <div class="w-full max-w-sm mx-4 relative z-10" x-data="loginForm()">
-    <!-- Card -->
-    <div class="bg-white rounded-3xl shadow-2xl overflow-hidden">
+  <!-- Login card -->
+  <div class="w-full max-w-sm mx-5 relative z-10">
+    <div class="glass-card rounded-3xl shadow-2xl overflow-hidden"
+         style="box-shadow:0 32px 80px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05)">
 
-      <!-- Ethiopian flag stripe at top -->
-      <div class="flag-stripe h-1.5"></div>
+      <!-- Top accent bar -->
+      <div class="h-1" style="background:linear-gradient(to right,#078930,#0da83e,#078930)"></div>
 
-      <!-- Card content -->
-      <div class="px-8 py-8">
-        <!-- Logo / Branding -->
-        <div class="text-center mb-8">
-          <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 overflow-hidden shadow-lg"
-               style="background: linear-gradient(135deg, #078930 33%, #FCDD09 33% 66%, #DA121A 66%)">
+      <div class="px-8 pt-8 pb-6">
+
+        <!-- Branding -->
+        <div class="text-center mb-7">
+          <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-3 shadow-lg overflow-hidden"
+               style="background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%)">
+            <svg class="w-8 h-8 text-white drop-shadow" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" opacity=".3"/>
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+            </svg>
           </div>
-          <h1 class="text-3xl font-bold text-gray-900 amharic leading-tight">እቁብ</h1>
-          <p class="text-sm text-gray-500 mt-1 font-medium">Equb Management System</p>
+          <h1 class="text-3xl font-black text-gray-900 amharic leading-none tracking-tight">እቁብ</h1>
+          <p class="text-xs font-semibold text-gray-400 mt-1 uppercase tracking-widest">Equb Management System</p>
         </div>
 
-        <!-- Error message -->
+        <!-- Error / lockout banner -->
         {% if error %}
-        <div class="mb-5 flex items-center gap-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        <div class="mb-5 flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm
+                    {% if locked %}bg-orange-50 border border-orange-200 text-orange-700
+                    {% else %}bg-red-50 border border-red-200 text-red-700{% endif %}">
+          <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {% if locked %}
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            {% else %}
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            {% endif %}
           </svg>
-          {{ error }}
+          <span>{{ error }}</span>
         </div>
         {% endif %}
 
-        <!-- Login form -->
-        <form method="post" action="/login" class="space-y-4">
+        <!-- Form -->
+        <form method="post" action="/login" class="space-y-4" @submit="submitting = true">
+
+          <!-- Username -->
           <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Username</label>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+              Username
+            </label>
             <div class="relative">
               <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
                 <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                 </svg>
               </div>
               <input name="username" type="text" required autocomplete="username"
-                     class="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 bg-gray-50 placeholder-gray-400"
-                     placeholder="Enter your username"/>
+                     class="field-input {% if error and not locked %}error{% endif %}"
+                     placeholder="Enter username" autofocus/>
             </div>
           </div>
 
+          <!-- Password -->
           <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+              Password
+            </label>
             <div class="relative">
               <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
                 <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                 </svg>
               </div>
-              <input name="password" :type="showPwd ? 'text' : 'password'" required autocomplete="current-password"
-                     class="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 bg-gray-50 placeholder-gray-400"
-                     placeholder="Enter your password"/>
+              <input name="password" :type="showPwd ? 'text' : 'password'" required
+                     autocomplete="current-password"
+                     class="field-input pr-10 {% if error and not locked %}error{% endif %}"
+                     placeholder="Enter password"/>
               <button type="button" @click="showPwd = !showPwd"
-                      class="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600">
+                      class="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors">
                 <svg x-show="!showPwd" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                 </svg>
                 <svg x-show="showPwd" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
                 </svg>
               </button>
             </div>
           </div>
 
-          <button type="submit"
-                  class="w-full py-2.5 bg-equb-green hover:bg-equb-light text-white font-semibold rounded-xl text-sm transition-colors duration-200 mt-2 shadow-sm"
-                  style="background-color: #078930;">
+          <button type="submit" class="btn-signin mt-1"
+                  :disabled="submitting{% if locked %} || true{% endif %}"
+                  x-text="submitting ? 'Signing in…' : 'Sign In'">
             Sign In
           </button>
         </form>
       </div>
 
       <!-- Footer -->
-      <div class="bg-gray-50 border-t border-gray-100 px-8 py-4">
-        <p class="text-xs text-gray-400 text-center">Ethiopian Equb Management System</p>
+      <div class="bg-gray-50 border-t border-gray-100 px-8 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-1.5">
+          <div class="w-1.5 h-1.5 rounded-full bg-equb-green animate-pulse"></div>
+          <span class="text-xs text-gray-400">Secure connection</span>
+        </div>
+        <span class="text-xs text-gray-300">v2.0</span>
       </div>
     </div>
 
-    <p class="text-center text-green-600 text-xs mt-6 opacity-60">
-      Default: admin / admin123 &nbsp;·&nbsp; cashier / cashier123
+    <!-- Subtle hint below card -->
+    <p class="text-center text-green-600/50 text-xs mt-5 font-medium">
+      Ethiopian Equb Management System
     </p>
   </div>
 
   <script>
     function loginForm() {
-      return { showPwd: false };
+      return { showPwd: false, submitting: false };
     }
   </script>
 </body>

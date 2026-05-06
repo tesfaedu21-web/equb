@@ -25,9 +25,22 @@ class PasswordChange(BaseModel):
     new_password: str
 
 
+_MIN_PASSWORD_LEN = 8
+
 def _require_admin(request: Request):
     if getattr(request.state, "user_role", None) != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
+
+def _validate_password(pw: str):
+    if len(pw) < _MIN_PASSWORD_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be at least {_MIN_PASSWORD_LEN} characters long."
+        )
+    if pw.isdigit():
+        raise HTTPException(status_code=400, detail="Password cannot be all numbers.")
+    if pw.lower() in {"password","123456789","abcdefgh","equb1234","admin123","cashier1"}:
+        raise HTTPException(status_code=400, detail="Password is too common. Choose a stronger password.")
 
 
 def _user_dict(u: User) -> dict:
@@ -63,6 +76,7 @@ def create_user(data: UserCreate, request: Request, db: Session = Depends(get_db
     _require_admin(request)
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
+    _validate_password(data.password)
     u = User(
         username=data.username,
         password_hash=_pwd.hash(data.password),
@@ -96,6 +110,7 @@ def change_password(data: PasswordChange, request: Request, db: Session = Depend
     u = db.query(User).filter(User.id == uid).first()
     if not u or not _pwd.verify(data.current_password, u.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
+    _validate_password(data.new_password)
     u.password_hash = _pwd.hash(data.new_password)
     db.commit()
     return {"ok": True}

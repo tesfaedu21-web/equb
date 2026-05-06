@@ -146,8 +146,16 @@
           </thead>
           <tbody class="divide-y divide-gray-50">
             <template x-for="p in filteredPayments" :key="p.id">
-              <tr class="hover:bg-gray-50/70 transition-colors"
-                  :class="{'bg-green-50/30': p.status==='paid', 'bg-red-50/20': p.status==='missed', 'bg-orange-50/20': p.status==='late'}">
+              <tr class="transition-colors"
+                  :class="{
+                    'optimistic-paid':   p.status==='paid'   && p._saving,
+                    'optimistic-missed': p.status==='missed' && p._saving,
+                    'optimistic-saving': p._saving,
+                    'bg-green-50/40':    p.status==='paid'   && !p._saving,
+                    'bg-red-50/20':      p.status==='missed' && !p._saving,
+                    'bg-orange-50/20':   p.status==='late'   && !p._saving,
+                    'hover:bg-gray-50/70': !p._saving,
+                  }">
                 <td class="px-4 py-3">
                   <input type="checkbox" :value="p.id" x-model="selected" class="w-auto rounded"/>
                 </td>
@@ -961,12 +969,19 @@ function payments() {
     },
 
     async updatePayment(id, status) {
+      // Optimistic update
+      const idx = this.payments.findIndex(x => x.id === id);
+      const original = idx !== -1 ? {...this.payments[idx]} : null;
+      if (idx !== -1) this.payments[idx] = {...this.payments[idx], status, _saving: true};
       try {
         const updated = await this.api('PUT', `/api/payments/${id}`, { status });
-        const idx = this.payments.findIndex(x => x.id === id);
         if (idx !== -1) this.payments[idx] = updated;
         this.showToast(`Marked as ${status}`);
-      } catch(e) { this.showToast(e.message, 'error'); }
+      } catch(e) {
+        // Revert on failure
+        if (idx !== -1 && original) this.payments[idx] = original;
+        this.showToast(e.message, 'error');
+      }
     },
 
     async bulkAction(status) {
