@@ -382,6 +382,54 @@ def cycle_payment_summary(cycle_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/daily-collection")
+def daily_collection(date: Optional[str] = None, db: Session = Depends(get_db)):
+    """Return all PaymentBatches recorded on a given date, grouped by payment method."""
+    from datetime import date as _date
+    if date:
+        try:
+            target = _date.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+    else:
+        target = _date.today()
+
+    batches = (db.query(PaymentBatch)
+               .filter(func.date(PaymentBatch.payment_date) == target)
+               .order_by(PaymentBatch.payment_method, PaymentBatch.id)
+               .all())
+
+    groups = {"cash": [], "bank_transfer": [], "cheque": []}
+    totals = {"cash": 0.0, "bank_transfer": 0.0, "cheque": 0.0}
+
+    for b in batches:
+        method = b.payment_method if b.payment_method in groups else "cash"
+        # get spot numbers for this member
+        spot_numbers = [sa.spot.number for sa in b.member.spot_assignments if sa.is_active] if b.member else []
+        week_numbers = sorted([p.week.week_number for p in b.payments if p.week])
+        entry = {
+            "batch_id": b.id,
+            "member_id": b.member_id,
+            "member_name": b.member.name if b.member else "—",
+            "spot_numbers": spot_numbers,
+            "weeks_paid": b.weeks_paid,
+            "week_numbers": week_numbers,
+            "total_amount": float(b.total_amount),
+            "reference": b.reference,
+        }
+        groups[method].append(entry)
+        totals[method] += float(b.total_amount)
+
+    grand_total = sum(totals.values())
+    return {
+        "date": target.isoformat(),
+        "groups": groups,
+        "totals": totals,
+        "grand_total": grand_total,
+        "total_batches": len(batches),
+    }
+
+
 @router.get("/member/{member_id}/balance")
 def member_payment_balance(member_id: int, up_to_week_number: int = 9999,
                            db: Session = Depends(get_db)):

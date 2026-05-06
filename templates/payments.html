@@ -40,6 +40,11 @@
             class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all">
       Weekly Summary
     </button>
+    <button @click="activeTab='daily'; loadDailyReport()"
+            :class="activeTab==='daily' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'"
+            class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5">
+      📋 Daily Report
+    </button>
   </div>
 
   <!-- ── WEEK VIEW ─────────────────────────────────────────────────────────── -->
@@ -430,6 +435,151 @@
     </div>
   </div>
 
+  <!-- ── DAILY COLLECTION REPORT ─────────────────────────────────────────── -->
+  <div x-show="activeTab==='daily'" x-cloak>
+
+    <!-- Controls -->
+    <div class="card mb-6">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Date</label>
+          <input x-model="dailyDate" @change="loadDailyReport()" type="date" class="w-44"/>
+        </div>
+        <button @click="loadDailyReport()" class="btn-secondary flex items-center gap-2 text-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Refresh
+        </button>
+        <button x-show="dailyData && dailyData.total_batches > 0" @click="printDailyReport()"
+                class="btn-secondary flex items-center gap-2 text-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+          </svg>
+          Print
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div x-show="loadingDaily" class="card text-center py-10 text-gray-400">Loading…</div>
+
+    <!-- No data -->
+    <div x-show="!loadingDaily && dailyData && dailyData.total_batches === 0"
+         class="card text-center py-12">
+      <div class="text-5xl mb-3">📭</div>
+      <div class="font-semibold text-gray-700">No payments recorded</div>
+      <div class="text-sm text-gray-400 mt-1" x-text="`No payments were recorded on ${dailyDate}.`"></div>
+    </div>
+
+    <!-- Report body -->
+    <template x-if="dailyData && dailyData.total_batches > 0">
+      <div class="space-y-5">
+
+        <!-- Summary cards -->
+        <div class="grid grid-cols-4 gap-4">
+          <div class="card text-center py-4">
+            <div class="text-xs font-semibold text-gray-400 uppercase mb-2">💵 Cash</div>
+            <div class="text-2xl font-bold text-green-600" x-text="fmt(dailyData.totals.cash)"></div>
+            <div class="text-xs text-gray-400 mt-1" x-text="dailyData.groups.cash.length + ' payment(s)'"></div>
+          </div>
+          <div class="card text-center py-4">
+            <div class="text-xs font-semibold text-gray-400 uppercase mb-2">🏦 Bank Transfer</div>
+            <div class="text-2xl font-bold text-blue-600" x-text="fmt(dailyData.totals.bank_transfer)"></div>
+            <div class="text-xs text-gray-400 mt-1" x-text="dailyData.groups.bank_transfer.length + ' payment(s)'"></div>
+          </div>
+          <div class="card text-center py-4">
+            <div class="text-xs font-semibold text-gray-400 uppercase mb-2">📋 Cheque</div>
+            <div class="text-2xl font-bold text-purple-600" x-text="fmt(dailyData.totals.cheque)"></div>
+            <div class="text-xs text-gray-400 mt-1" x-text="dailyData.groups.cheque.length + ' payment(s)'"></div>
+          </div>
+          <div class="card text-center py-4 bg-equb-pale border border-equb-green/20">
+            <div class="text-xs font-semibold text-gray-400 uppercase mb-2">Grand Total</div>
+            <div class="text-2xl font-bold text-equb-green" x-text="fmt(dailyData.grand_total)"></div>
+            <div class="text-xs text-gray-400 mt-1" x-text="dailyData.total_batches + ' total payment(s)'"></div>
+          </div>
+        </div>
+
+        <!-- Per-method group tables -->
+        <template x-for="method in ['cash','bank_transfer','cheque']" :key="method">
+          <div x-show="dailyData.groups[method].length > 0" class="card p-0 overflow-hidden">
+            <div class="px-5 py-3 border-b flex items-center justify-between"
+                 :class="method==='cash' ? 'bg-green-50' : method==='bank_transfer' ? 'bg-blue-50' : 'bg-purple-50'">
+              <div class="flex items-center gap-2">
+                <span x-text="method==='cash' ? '💵 Cash' : method==='bank_transfer' ? '🏦 Bank Transfer' : '📋 Cheque'"
+                      class="font-semibold text-sm"
+                      :class="method==='cash' ? 'text-green-700' : method==='bank_transfer' ? 'text-blue-700' : 'text-purple-700'"></span>
+                <span class="text-xs text-gray-400"
+                      x-text="dailyData.groups[method].length + ' payment(s)'"></span>
+              </div>
+              <span class="font-bold"
+                    :class="method==='cash' ? 'text-green-600' : method==='bank_transfer' ? 'text-blue-600' : 'text-purple-600'"
+                    x-text="fmt(dailyData.totals[method])"></span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="border-b bg-white">
+                  <tr>
+                    <th class="text-left px-5 py-2.5 text-xs font-semibold text-gray-400 uppercase">#</th>
+                    <th class="text-left px-5 py-2.5 text-xs font-semibold text-gray-400 uppercase">Member</th>
+                    <th class="text-left px-5 py-2.5 text-xs font-semibold text-gray-400 uppercase">Spot</th>
+                    <th class="text-left px-5 py-2.5 text-xs font-semibold text-gray-400 uppercase">Weeks Paid</th>
+                    <th class="text-left px-5 py-2.5 text-xs font-semibold text-gray-400 uppercase">Reference</th>
+                    <th class="text-right px-5 py-2.5 text-xs font-semibold text-gray-400 uppercase">Amount</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                  <template x-for="(row, i) in dailyData.groups[method]" :key="row.batch_id">
+                    <tr class="hover:bg-gray-50/70 transition-colors">
+                      <td class="px-5 py-3 text-gray-400 text-xs" x-text="i + 1"></td>
+                      <td class="px-5 py-3 font-medium text-gray-900 amharic" x-text="row.member_name"></td>
+                      <td class="px-5 py-3">
+                        <div class="flex flex-wrap gap-1">
+                          <template x-for="sn in row.spot_numbers" :key="sn">
+                            <span class="inline-flex items-center justify-center w-7 h-7 bg-equb-pale text-equb-green rounded-lg text-xs font-bold"
+                                  x-text="sn"></span>
+                          </template>
+                          <span x-show="row.spot_numbers.length === 0" class="text-gray-300 text-xs">—</span>
+                        </div>
+                      </td>
+                      <td class="px-5 py-3">
+                        <span class="text-xs text-gray-600"
+                              x-text="row.week_numbers.length > 0 ? 'Wk ' + row.week_numbers.join(', ') : row.weeks_paid + ' wk(s)'"></span>
+                        <span class="ml-1.5 text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5"
+                              x-text="row.weeks_paid + (row.weeks_paid === 1 ? ' week' : ' weeks')"></span>
+                      </td>
+                      <td class="px-5 py-3 text-gray-400 text-xs font-mono" x-text="row.reference || '—'"></td>
+                      <td class="px-5 py-3 text-right font-semibold text-gray-800" x-text="fmt(row.total_amount)"></td>
+                    </tr>
+                  </template>
+                  <tr class="border-t border-gray-100 bg-gray-50">
+                    <td colspan="5" class="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Subtotal</td>
+                    <td class="px-5 py-2.5 text-right font-bold"
+                        :class="method==='cash' ? 'text-green-600' : method==='bank_transfer' ? 'text-blue-600' : 'text-purple-600'"
+                        x-text="fmt(dailyData.totals[method])"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </template>
+
+        <!-- Grand total bar -->
+        <div class="card bg-equb-pale border border-equb-green/20 flex items-center justify-between px-6 py-4">
+          <div>
+            <div class="text-sm font-semibold text-gray-700">Grand Total Collected</div>
+            <div class="text-xs text-gray-400 mt-0.5"
+                 x-text="dailyData.total_batches + ' payment(s) · ' + dailyDate"></div>
+          </div>
+          <div class="text-3xl font-bold text-equb-green" x-text="fmt(dailyData.grand_total)"></div>
+        </div>
+
+      </div>
+    </template>
+  </div>
+
 </div><!-- end inner content -->
 
 <!-- ── Record Payment Modal ─────────────────────────────────────────────── -->
@@ -613,6 +763,7 @@ function payments() {
     currentWeekId: null,
     showPayModal: false, loadingOutstanding: false, saving: false,
     summaryCycle: '', summaryWeeks: [], summaryWeekId: '', summaryData: null,
+    dailyDate: new Date().toISOString().slice(0, 10), dailyData: null, loadingDaily: false,
     batch: {
       member_id: null, week_ids: [], payment_method: 'cash',
       reference: '', payment_date: '', notes: '',
@@ -823,6 +974,107 @@ function payments() {
       try {
         this.summaryData = await this.api('GET', `/api/reports/weekly-summary/${this.summaryWeekId}`);
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async loadDailyReport() {
+      this.loadingDaily = true;
+      this.dailyData = null;
+      try {
+        this.dailyData = await this.api('GET', `/api/payments/daily-collection?date=${this.dailyDate}`);
+      } catch(e) { this.showToast(e.message, 'error'); }
+      this.loadingDaily = false;
+    },
+
+    printDailyReport() {
+      if (!this.dailyData) return;
+      const d = this.dailyData;
+      const fmtNum = n => Number(n || 0).toLocaleString('en-ET') + ' ETB';
+      const fmtDateStr = s => {
+        if (!s) return '—';
+        const [y, m, day] = s.split('-');
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return `${months[+m-1]} ${+day}, ${y}`;
+      };
+
+      const methodLabel = m => ({ cash: '💵 Cash', bank_transfer: '🏦 Bank Transfer', cheque: '📋 Cheque' }[m] || m);
+      const methodColor = m => ({ cash: '#16a34a', bank_transfer: '#2563eb', cheque: '#7c3aed' }[m] || '#111');
+      const methodBg    = m => ({ cash: '#f0fdf4', bank_transfer: '#eff6ff', cheque: '#faf5ff' }[m] || '#f9fafb');
+
+      const groupSections = ['cash','bank_transfer','cheque'].map(method => {
+        const rows = d.groups[method];
+        if (!rows || rows.length === 0) return '';
+        const rowHtml = rows.map((row, i) => `
+          <tr style="border-bottom:1px solid #f0f0f0">
+            <td style="padding:6px 10px;color:#999;font-size:12px">${i+1}</td>
+            <td style="padding:6px 10px;font-weight:500">${row.member_name}</td>
+            <td style="padding:6px 10px;color:#666;font-size:12px">${row.spot_numbers.join(', ') || '—'}</td>
+            <td style="padding:6px 10px;font-size:12px;color:#555">${row.week_numbers.length > 0 ? 'Wk ' + row.week_numbers.join(', ') : row.weeks_paid + ' wk(s)'}</td>
+            <td style="padding:6px 10px;font-size:11px;color:#999;font-family:monospace">${row.reference || '—'}</td>
+            <td style="padding:6px 10px;text-align:right;font-weight:600">${fmtNum(row.total_amount)}</td>
+          </tr>`).join('');
+        return `
+          <div style="margin-bottom:20px">
+            <div style="background:${methodBg(method)};padding:8px 12px;border-left:4px solid ${methodColor(method)};margin-bottom:0;font-weight:600;color:${methodColor(method)};font-size:13px;display:flex;justify-content:space-between;align-items:center">
+              <span>${methodLabel(method)}</span>
+              <span>${fmtNum(d.totals[method])}</span>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="background:#fafafa;border-bottom:1px solid #e5e7eb">
+                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">#</th>
+                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">Member Name</th>
+                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">Spot</th>
+                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">Weeks</th>
+                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">Ref</th>
+                  <th style="padding:7px 10px;text-align:right;font-size:11px;color:#888;text-transform:uppercase">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowHtml}
+                <tr style="border-top:2px solid #e5e7eb;background:#fafafa">
+                  <td colspan="5" style="padding:7px 10px;text-align:right;font-weight:700;color:#555;font-size:12px">Subtotal</td>
+                  <td style="padding:7px 10px;text-align:right;font-weight:700;color:${methodColor(method)}">${fmtNum(d.totals[method])}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>`;
+      }).join('');
+
+      const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Daily Collection Report — ${d.date}</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 28px; color: #111; }
+  h1   { font-size: 18px; margin: 0 0 4px 0; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
+  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+  .card  { border:1px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center; }
+  .card .label { font-size:11px; color:#999; text-transform:uppercase; margin-bottom:6px; }
+  .card .amount { font-size:18px; font-weight:700; }
+  .grand { display:flex; justify-content:space-between; align-items:center;
+           border:2px solid #16a34a; border-radius:8px; padding:14px 18px; margin-top:24px; background:#f0fdf4; }
+  .grand .label { font-size:14px; font-weight:600; color:#333; }
+  .grand .amount { font-size:28px; font-weight:800; color:#15803d; }
+  @media print { body { padding:0; } }
+</style></head><body>
+<h1>Daily Collection Report</h1>
+<div class="sub">${fmtDateStr(d.date)} &nbsp;·&nbsp; ${d.total_batches} payment(s)</div>
+<div class="cards">
+  <div class="card"><div class="label">💵 Cash</div><div class="amount" style="color:#16a34a">${fmtNum(d.totals.cash)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.groups.cash.length} payment(s)</div></div>
+  <div class="card"><div class="label">🏦 Bank Transfer</div><div class="amount" style="color:#2563eb">${fmtNum(d.totals.bank_transfer)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.groups.bank_transfer.length} payment(s)</div></div>
+  <div class="card"><div class="label">📋 Cheque</div><div class="amount" style="color:#7c3aed">${fmtNum(d.totals.cheque)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.groups.cheque.length} payment(s)</div></div>
+  <div class="card" style="background:#f0fdf4;border-color:#86efac"><div class="label">Grand Total</div><div class="amount" style="color:#15803d">${fmtNum(d.grand_total)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.total_batches} payment(s)</div></div>
+</div>
+${groupSections}
+<div class="grand"><div class="label">Grand Total Collected — ${fmtDateStr(d.date)}</div><div class="amount">${fmtNum(d.grand_total)}</div></div>
+<div style="margin-top:20px;font-size:11px;color:#bbb;text-align:right">Printed: ${new Date().toLocaleString()}</div>
+</body></html>`;
+
+      const win = window.open('', '_blank', 'width=900,height=700');
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 400);
     },
 
     printSummary() {
