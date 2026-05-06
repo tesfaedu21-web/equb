@@ -293,6 +293,10 @@ async def import_members(file: UploadFile = File(...), db: Session = Depends(get
                         return v
         return ""
 
+    # Get active cycle for spot assignments
+    active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    active_cycle_id = active_cycle.id if active_cycle else None
+
     results = []
     created = 0
     skipped = 0
@@ -339,7 +343,8 @@ async def import_members(file: UploadFile = File(...), db: Session = Depends(get
                             else (settings.half_spot_amount if settings else 10500)
                         )
                         db.add(MemberSpot(member_id=m.id, spot_id=spot.id,
-                                          share=share, weekly_contribution=contribution))
+                                          share=share, weekly_contribution=contribution,
+                                          cycle_id=active_cycle_id))
             except (ValueError, TypeError):
                 spot_msg = f"Invalid spot number '{spot_str}' — created without spot"
 
