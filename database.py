@@ -22,11 +22,18 @@ class _pwd:
         except Exception:
             return False
 
-# On Railway, set DATABASE_PATH env var to /data/equb.db (persistent volume)
-# Locally it falls back to ./equb.db
-_db_path = os.environ.get("DATABASE_PATH", "./equb.db")
-DATABASE_URL = f"sqlite:///{_db_path}"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# Use PostgreSQL on Railway (DATABASE_URL is set automatically by Railway Postgres plugin)
+# Falls back to local SQLite for development
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./equb.db")
+
+# Railway gives postgres:// but SQLAlchemy needs postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
