@@ -120,6 +120,35 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
 
     total_weeks = db.query(Week).filter(Week.cycle_id == cycle.id).count() if cycle else 0
 
+    # ── Current week payment snapshot ───────────────────────────────────────
+    current_week_stats = {"paid": 0, "pending": 0, "missed": 0, "total": 0, "collected": 0}
+    if cycle and next_week_obj:
+        wps = db.query(Payment).filter(Payment.week_id == next_week_obj.id).all()
+        current_week_stats = {
+            "paid":      sum(1 for p in wps if p.status == "paid"),
+            "pending":   sum(1 for p in wps if p.status == "pending"),
+            "missed":    sum(1 for p in wps if p.status == "missed"),
+            "total":     len(wps),
+            "collected": sum(p.amount for p in wps if p.status == "paid"),
+        }
+
+    # ── Debtors count (members with any past-due unpaid weeks) ──────────────
+    debtors_count = 0
+    if cycle:
+        from datetime import datetime as _dt
+        now_dt = _dt.utcnow()
+        debtors_count = (
+            db.query(Payment.member_id)
+            .join(Week, Week.id == Payment.week_id)
+            .filter(
+                Payment.status.in_(["pending", "late", "missed"]),
+                Week.draw_date <= now_dt,
+                Week.cycle_id == cycle.id,
+            )
+            .distinct()
+            .count()
+        )
+
     return {
         "total_spots": total_spots,
         "received_spots": received_spots,
@@ -139,6 +168,8 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
             "name": cycle.name,
             "start_date": cycle.start_date.isoformat(),
         } if cycle else None,
+        "current_week": current_week_stats,
+        "debtors_count": debtors_count,
         "settings": {
             "full_spot_amount": settings.full_spot_amount,
             "half_spot_amount": settings.half_spot_amount,
@@ -245,3 +276,120 @@ def association_fund_detail(cycle_id: Optional[int] = None, db: Session = Depend
         })
 
     return {"total": total, "weeks": breakdown}
+
+
+@router.get("/collection-trend")
+def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Week-by-week collection totals for the trend chart."""
+    if not cycle_id:
+        c = db.query(Cycle).filter(Cycle.status == "active").first()
+        if not c:
+            return []
+        cycle_id = c.id
+    weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
+    result = []
+    for w in weeks:
+        ps = db.query(Payment).filter(Payment.week_id == w.id).all()
+        result.append({
+            "week_number": w.week_number,
+            "draw_date": w.draw_date.isoformat(),
+            "is_group_week": w.is_group_week,
+            "week_status": w.status,
+            "paid":         float(sum(p.amount for p in ps if p.status == "paid")),
+            "missed":       float(sum(p.amount for p in ps if p.status == "missed")),
+            "paid_count":   sum(1 for p in ps if p.status == "paid"),
+            "missed_count": sum(1 for p in ps if p.status == "missed"),
+            "pending_count":sum(1 for p in ps if p.status == "pending"),
+            "total":        float(sum(p.amount for p in ps)),
+        })
+    return result
+
+
+@router.get("/member-ranking")
+def member_ranking(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Members ranked by payment consistency (on-time rate)."""
+    if not cycle_id:
+        c = db.query(Cycle).filter(Cycle.status == "active").first()
+        if not c:
+            return []
+        cycle_id = c.id
+
+    member_ids = [r[0] for r in db.query(MemberSpot.member_id).filter(
+        MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True
+    ).distinct().all()]
+
+    completed_week_ids = [r[0] for r in db.query(Week.id).filter(
+        Week.cycle_id == cycle_id, Week.status.in_(["drawn", "sold"])
+    ).all()]
+
+    result = []
+    for mid in member_ids:
+        member = db.query(Member).filter(Member.id == mid).first()
+        if not member:
+            continue
+        ps = db.query(Payment).filter(
+            Payment.member_id == mid,
+            Payment.week_id.in_(completed_week_ids),
+        ).all() if completed_week_ids else []
+        paid   = sum(1 for p in ps if p.status == "paid")
+        missed = sum(1 for p in ps if p.status in ["missed"])
+        late   = sum(1 for p in ps if p.status == "late")
+        total  = len(ps)
+        rate   = round(paid / total * 100, 1) if total else 100.0
+        spot_numbers = [sa.spot.number for sa in member.spot_assignments
+                        if sa.is_active and sa.cycle_id == cycle_id]
+        result.append({
+            "member_id":   mid,
+            "member_name": member.name,
+            "phone":       member.phone,
+            "spot_numbers": spot_numbers,
+            "paid_weeks":  paid,
+            "missed_weeks": missed,
+            "late_weeks":  late,
+            "total_weeks": total,
+            "rate":        rate,
+        })
+    return sorted(result, key=lambda x: (-x["rate"], -x["paid_weeks"]))
+
+
+@router.get("/member/{member_id}/statement")
+def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Full payment history for one member (for printable statement)."""
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    q = db.query(Payment).filter(Payment.member_id == member_id)
+    if cycle_id:
+        q = q.join(Week).filter(Week.cycle_id == cycle_id)
+
+    ps = q.join(Week).order_by(Week.week_number).all()
+    spot_numbers = [sa.spot.number for sa in member.spot_assignments
+                    if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)]
+
+    return {
+        "member_id":   member.id,
+        "member_name": member.name,
+        "phone":       member.phone,
+        "spot_numbers": spot_numbers,
+        "payments": [
+            {
+                "week_number":    p.week.week_number,
+                "draw_date":      p.week.draw_date.isoformat(),
+                "amount":         float(p.amount),
+                "status":         p.status,
+                "payment_method": p.payment_method,
+                "paid_date":      p.paid_date.isoformat() if p.paid_date else None,
+                "reference":      p.reference,
+            }
+            for p in ps
+        ],
+        "summary": {
+            "paid":                sum(1 for p in ps if p.status == "paid"),
+            "missed":              sum(1 for p in ps if p.status == "missed"),
+            "late":                sum(1 for p in ps if p.status == "late"),
+            "pending":             sum(1 for p in ps if p.status == "pending"),
+            "total_paid_amount":   float(sum(p.amount for p in ps if p.status == "paid")),
+            "total_missed_amount": float(sum(p.amount for p in ps if p.status == "missed")),
+        },
+    }
