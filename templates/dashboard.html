@@ -404,7 +404,7 @@
 
 <!-- New Cycle Modal -->
 <div x-show="showNewCycle" x-cloak class="modal-backdrop" @click.self="showNewCycle = false; cycleError = ''">
-  <div class="modal-box max-w-lg flex flex-col" style="max-height:92vh">
+  <div class="modal-box max-w-lg flex flex-col" style="max-height:90vh; overflow:hidden;">
 
     <!-- Header — always visible, never scrolls -->
     <div class="p-5 border-b flex items-center justify-between flex-shrink-0">
@@ -422,7 +422,7 @@
     </div>
 
     <!-- Scrollable form body -->
-    <form id="newCycleForm" @submit.prevent="createCycle()" onsubmit="return false" class="flex-1 overflow-y-auto">
+    <form id="newCycleForm" @submit.prevent="createCycle()" onsubmit="return false" class="flex-1 min-h-0 overflow-y-auto">
       <div class="p-5 space-y-4">
 
         <!-- Required fields first -->
