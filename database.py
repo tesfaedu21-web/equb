@@ -394,6 +394,7 @@ def init_db():
             db.add(User(username="cashier", password_hash=_pwd.hash("cashier123"),
                         full_name="Cashier", role="cashier"))
             db.commit()
+            print("[init] Default users created — admin:admin123 / cashier:cashier123")
         if db.query(Spot).count() == 0:
             s = Settings.__new__(Settings)
             cfg = db.query(Settings).first()

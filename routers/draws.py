@@ -178,6 +178,9 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
     db.add(cycle)
     db.flush()
 
+    # Calculate pot amounts ONCE — same for all weeks in this cycle
+    gross, assoc, net = _calculate_pot(db)
+
     interval = getattr(settings, "group_week_interval", 4)
     for i in range(1, total_spots + 1):
         draw_date = start + timedelta(weeks=i - 1)
@@ -185,7 +188,6 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
         days_to_sunday = (6 - draw_date.weekday()) % 7
         if days_to_sunday:
             draw_date = draw_date + timedelta(days=days_to_sunday)
-        gross, assoc, net = _calculate_pot(db)
         w = Week(
             cycle_id=cycle.id, week_number=i, draw_date=draw_date,
             is_group_week=(i % interval == 0),
@@ -200,16 +202,20 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
         days_to_sunday = (6 - draw_date.weekday()) % 7
         if days_to_sunday:
             draw_date = draw_date + timedelta(days=days_to_sunday)
-        gross, assoc, net = _calculate_pot(db)
         db.add(Week(
             cycle_id=cycle.id, week_number=worker_week_num, draw_date=draw_date,
             is_group_week=False, is_worker_week=True,
             gross_pot=gross, association_amount=assoc, net_pot=net,
         ))
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
     db.refresh(cycle)
-    total_weeks = len(cycle.weeks)
+    total_weeks = db.query(Week).filter(Week.cycle_id == cycle.id).count()
     return {"id": cycle.id, "name": cycle.name, "total_weeks": total_weeks,
             "draw_phase": "collection"}
 

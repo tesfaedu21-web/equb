@@ -22,7 +22,7 @@
           </option>
         </template>
       </select>
-      <button @click="openNewCycle()" class="btn-primary flex items-center gap-2">
+      <button x-show="isAdmin" @click="openNewCycle()" class="btn-primary flex items-center gap-2">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
         </svg>
@@ -36,7 +36,12 @@
        class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
     <div class="text-amber-600 font-semibold text-lg mb-1">No active cycle yet</div>
     <p class="text-amber-500 text-sm mb-4">Create a new cycle to start managing your Equb.</p>
-    <button @click="openNewCycle()" class="btn-primary">Create First Cycle</button>
+    <template x-if="isAdmin">
+      <button @click="openNewCycle()" class="btn-primary">Create First Cycle</button>
+    </template>
+    <template x-if="!isAdmin">
+      <p class="text-sm text-gray-500">Ask your administrator to create a cycle.</p>
+    </template>
   </div>
 
   <!-- Stats Grid -->
@@ -476,9 +481,20 @@
       <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
         <strong>Note:</strong> Any existing active cycle will be closed. Member statuses reset to active. Weekly slots are pre-generated (every 4th week = group week, +1 worker week at end). Leave amount fields blank to keep current settings.
       </div>
+
+      <!-- Inline error message -->
+      <div x-show="cycleError" x-cloak
+           class="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+        <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span x-text="cycleError"></span>
+      </div>
+
       <div class="flex gap-3 pt-2">
-        <button type="button" @click="showNewCycle = false" class="btn-secondary flex-1">Cancel</button>
-        <button type="submit" :disabled="saving" class="btn-primary flex-1" x-text="saving ? 'Creating...' : 'Create Cycle'"></button>
+        <button type="button" @click="showNewCycle = false; cycleError = ''" class="btn-secondary flex-1">Cancel</button>
+        <button type="submit" :disabled="saving" class="btn-primary flex-1"
+                x-text="saving ? 'Creating… please wait' : 'Create Cycle'"></button>
       </div>
     </form>
   </div>
@@ -497,6 +513,7 @@ function dashboard() {
     selectedCycleId: '',
     showNewCycle: false,
     saving: false,
+    cycleError: '',
     newCycle: {
       name: '', start_date: '', notes: '',
       total_member_spots: null, total_assoc_spots: null,
@@ -535,40 +552,54 @@ function dashboard() {
 
     openNewCycle() {
       const s = this.stats.settings || {};
+      this.cycleError = '';
       this.newCycle = {
         name: '', start_date: '', notes: '',
         total_member_spots: s.total_member_spots || null,
-        total_assoc_spots: s.total_assoc_spots || null,
+        total_assoc_spots: s.total_assoc_spots !== undefined ? s.total_assoc_spots : null,
         full_spot_amount: s.full_spot_amount || null,
         half_spot_amount: s.half_spot_amount || null,
-        association_deduction: s.association_deduction || null,
-        full_spot_voucher: s.full_spot_voucher || null,
-        half_spot_voucher: s.half_spot_voucher || null,
+        association_deduction: s.association_deduction !== undefined ? s.association_deduction : null,
+        full_spot_voucher: s.full_spot_voucher !== undefined ? s.full_spot_voucher : null,
+        half_spot_voucher: s.half_spot_voucher !== undefined ? s.half_spot_voucher : null,
       };
       this.showNewCycle = true;
     },
 
     async createCycle() {
-      if (!this.newCycle.name || !this.newCycle.start_date) return;
+      this.cycleError = '';
+      if (!this.newCycle.name.trim()) {
+        this.cycleError = 'Cycle name is required.';
+        return;
+      }
+      if (!this.newCycle.start_date) {
+        this.cycleError = 'Start date is required.';
+        return;
+      }
       this.saving = true;
       try {
-        const payload = { name: this.newCycle.name, start_date: this.newCycle.start_date, notes: this.newCycle.notes };
+        const payload = {
+          name: this.newCycle.name.trim(),
+          start_date: this.newCycle.start_date,
+          notes: this.newCycle.notes || null,
+        };
         if (this.newCycle.total_member_spots)        payload.total_member_spots   = this.newCycle.total_member_spots;
-        if (this.newCycle.total_assoc_spots != null) payload.total_assoc_spots    = this.newCycle.total_assoc_spots;
+        if (this.newCycle.total_assoc_spots != null && this.newCycle.total_assoc_spots !== '') payload.total_assoc_spots = this.newCycle.total_assoc_spots;
         if (this.newCycle.full_spot_amount)          payload.full_spot_amount     = this.newCycle.full_spot_amount;
         if (this.newCycle.half_spot_amount)          payload.half_spot_amount     = this.newCycle.half_spot_amount;
-        if (this.newCycle.association_deduction !== null) payload.association_deduction = this.newCycle.association_deduction;
-        if (this.newCycle.full_spot_voucher  !== null)   payload.full_spot_voucher  = this.newCycle.full_spot_voucher;
-        if (this.newCycle.half_spot_voucher  !== null)   payload.half_spot_voucher  = this.newCycle.half_spot_voucher;
+        if (this.newCycle.association_deduction != null && this.newCycle.association_deduction !== '') payload.association_deduction = this.newCycle.association_deduction;
+        if (this.newCycle.full_spot_voucher  != null && this.newCycle.full_spot_voucher !== '')  payload.full_spot_voucher  = this.newCycle.full_spot_voucher;
+        if (this.newCycle.half_spot_voucher  != null && this.newCycle.half_spot_voucher !== '')  payload.half_spot_voucher  = this.newCycle.half_spot_voucher;
 
         const res = await this.api('POST', '/api/draws/cycles', payload);
         this.showNewCycle = false;
-        this.showToast(`Cycle "${res.name}" created with ${res.total_weeks} weeks`);
-        // Switch to the new cycle
+        this.cycleError = '';
+        this.showToast(`✓ Cycle "${res.name}" created — ${res.total_weeks} weeks generated`);
+        this.allCycles = await this.api('GET', '/api/draws/cycles').catch(() => this.allCycles);
         this.selectedCycleId = res.id;
-        await this.load();
+        await this.loadStats();
       } catch(e) {
-        this.showToast(e.message, 'error');
+        this.cycleError = e.message || 'Failed to create cycle. Please try again.';
       } finally {
         this.saving = false;
       }
