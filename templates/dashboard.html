@@ -422,7 +422,7 @@
     </div>
 
     <!-- Scrollable form body -->
-    <form id="newCycleForm" @submit.prevent="createCycle()" class="flex-1 overflow-y-auto">
+    <form id="newCycleForm" @submit.prevent="createCycle()" onsubmit="return false" class="flex-1 overflow-y-auto">
       <div class="p-5 space-y-4">
 
         <!-- Required fields first -->
@@ -510,7 +510,7 @@
     <div class="flex gap-3 p-5 border-t flex-shrink-0">
       <button type="button" @click="showNewCycle = false; cycleError = ''"
               class="btn-secondary flex-1">Cancel</button>
-      <button type="submit" form="newCycleForm" :disabled="saving"
+      <button type="button" @click="createCycle()" :disabled="saving"
               class="btn-primary flex-1"
               x-text="saving ? 'Creating… please wait' : 'Create Cycle'"></button>
     </div>
