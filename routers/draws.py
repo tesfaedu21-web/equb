@@ -468,6 +468,25 @@ def active_members_for_sale(db: Session = Depends(get_db)):
     ]
 
 
+@router.post("/cycles/{cycle_id}/reactivate")
+def reactivate_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
+    """Restore a completed cycle back to active status. Admin only."""
+    if getattr(request.state, "user_role", None) != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+    # Close any currently active cycle first
+    other = db.query(Cycle).filter(Cycle.status == "active", Cycle.id != cycle_id).first()
+    if other:
+        other.status = "completed"
+        other.end_date = datetime.utcnow()
+    cycle.status = "active"
+    cycle.end_date = None
+    db.commit()
+    return {"ok": True, "id": cycle.id, "name": cycle.name, "status": cycle.status}
+
+
 @router.delete("/cycles/{cycle_id}")
 def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
     """Permanently delete a cycle and all its related data. Admin only."""
