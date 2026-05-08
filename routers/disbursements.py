@@ -113,12 +113,21 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
 
     net_after_all = (w.net_pot or 0) - total_service_fee - total_voucher
 
+    # Association contribution per member per week
+    assoc_deduction = getattr(settings, "association_deduction", 1000)
+    # Total association contributed by this spot over the whole cycle
+    assoc_per_week_full = assoc_deduction            # 1000
+    assoc_per_week_half = assoc_deduction / 2        # 500
+    assoc_total_full = assoc_per_week_full * total_weeks
+    assoc_total_half = assoc_per_week_half * total_weeks
+
     return {
         "week_id": week_id,
         "total_weeks": total_weeks,
         "gross_pot": w.gross_pot,
         "association_amount": w.association_amount,
         "net_pot": w.net_pot,
+        "association_deduction_per_spot": assoc_deduction,
         "full_spot_voucher_rate": getattr(settings, "full_spot_voucher", 80),
         "half_spot_voucher_rate": getattr(settings, "half_spot_voucher", 40),
         "full_voucher_total": full_voucher_total,
@@ -132,6 +141,9 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
                 "share": sa.share,
                 "service_fee": settings.full_spot_amount if sa.share == "full" else settings.half_spot_amount,
                 "voucher": full_voucher_total if sa.share == "full" else half_voucher_total,
+                # Association contribution breakdown per member
+                "association_per_week": assoc_per_week_full if sa.share == "full" else assoc_per_week_half,
+                "association_total_cycle": assoc_total_full if sa.share == "full" else assoc_total_half,
             }
             for sa in assignments
         ],

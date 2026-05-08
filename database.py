@@ -292,6 +292,22 @@ class PotDisbursement(Base):
     guarantor_3 = relationship("Member", foreign_keys=[guarantor_3_id])
 
 
+# ── Association Fund ──────────────────────────────────────────────────────────
+
+class AssociationExpense(Base):
+    """Expenses deducted from the association fund before returning to members."""
+    __tablename__ = "association_expenses"
+    id = Column(Integer, primary_key=True)
+    cycle_id = Column(Integer, ForeignKey("cycles.id"), nullable=False)
+    description = Column(String, nullable=False)   # paper, pen, meeting costs, etc.
+    amount = Column(Float, nullable=False)
+    expense_date = Column(DateTime, default=datetime.utcnow)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    cycle = relationship("Cycle")
+
+
 # ── Notifications ─────────────────────────────────────────────────────────────
 
 class NotificationSettings(Base):
