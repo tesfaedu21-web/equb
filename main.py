@@ -64,23 +64,47 @@ app.include_router(settings_router.router,      prefix="/api/settings",      tag
 app.include_router(disbursements_router.router, prefix="/api/disbursements", tags=["disbursements"])
 
 
-# ── Nightly auto-close job ────────────────────────────────────────────────────
+# ── Nightly scheduler jobs ────────────────────────────────────────────────────
 async def auto_close_past_weeks():
-    """Mark all pending payments for past draw-date weeks as missed."""
+    """
+    Nightly at 21:00 UTC (midnight EAT):
+      pending  → late    if draw_date passed but within 3 days (grace period)
+      late     → missed  if draw_date passed more than 3 days ago
+      pending  → missed  if draw_date passed more than 3 days ago (caught late)
+    """
     db = next(get_db())
     try:
+        from datetime import timedelta
         now = datetime.utcnow()
-        past_pending = (
+        late_cutoff   = now - timedelta(days=0)   # draw_date < now → at least late
+        missed_cutoff = now - timedelta(days=3)   # draw_date < now-3d → missed
+
+        # pending → late  (draw_date passed, within 3-day grace window)
+        newly_late = (
             db.query(Payment)
             .join(Week, Week.id == Payment.week_id)
-            .filter(Payment.status == "pending", Week.draw_date < now)
+            .filter(Payment.status == "pending",
+                    Week.draw_date < late_cutoff,
+                    Week.draw_date >= missed_cutoff)
             .all()
         )
-        for p in past_pending:
+        for p in newly_late:
+            p.status = "late"
+
+        # pending or late → missed  (3+ days past draw_date)
+        newly_missed = (
+            db.query(Payment)
+            .join(Week, Week.id == Payment.week_id)
+            .filter(Payment.status.in_(["pending", "late"]),
+                    Week.draw_date < missed_cutoff)
+            .all()
+        )
+        for p in newly_missed:
             p.status = "missed"
-        if past_pending:
+
+        if newly_late or newly_missed:
             db.commit()
-            print(f"[scheduler] Auto-closed {len(past_pending)} pending → missed")
+            print(f"[scheduler] {len(newly_late)} → late, {len(newly_missed)} → missed")
     except Exception as e:
         print(f"[scheduler] Error: {e}")
         db.rollback()

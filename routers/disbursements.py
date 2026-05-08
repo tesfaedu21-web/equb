@@ -169,9 +169,31 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
     if existing:
         raise HTTPException(status_code=400, detail="Disbursement already recorded for this week")
 
-    for gid in [data.guarantor_1_id, data.guarantor_2_id, data.guarantor_3_id]:
-        if not db.query(Member).filter(Member.id == gid).first():
+    guarantor_ids = [data.guarantor_1_id, data.guarantor_2_id, data.guarantor_3_id]
+
+    # Guarantors must be distinct
+    if len(set(guarantor_ids)) < 3:
+        raise HTTPException(status_code=400, detail="All three guarantors must be different people")
+
+    # Identify winner members (to block them from being their own guarantor)
+    winner_member_ids = {
+        sa.member_id for sa in w.winner_spot.spot_assignments if sa.is_active
+    } if w.winner_spot else set()
+
+    for gid in guarantor_ids:
+        g = db.query(Member).filter(Member.id == gid).first()
+        if not g:
             raise HTTPException(status_code=404, detail=f"Guarantor member {gid} not found")
+        if gid in winner_member_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{g.name} is the pot winner and cannot be their own guarantor"
+            )
+        if g.status == "left":
+            raise HTTPException(
+                status_code=400,
+                detail=f"{g.name} has left the group and cannot act as guarantor"
+            )
 
     net_amount = data.gross_amount - (data.service_fee or 0) - (data.voucher_deduction or 0)
     d = PotDisbursement(

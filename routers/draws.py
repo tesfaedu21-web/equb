@@ -386,8 +386,13 @@ def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = 
             detail="Association spot must be sold, not drawn directly. Use the sell endpoint."
         )
 
-    # Rule 6: all members of winning spot must be fully paid
+    # All members of winning spot must be active (not left) and fully paid
     for sa in [sa for sa in spot.spot_assignments if sa.is_active]:
+        if sa.member.status == "left":
+            raise HTTPException(
+                status_code=400,
+                detail=f"{sa.member.name} has left the group and cannot receive a pot draw."
+            )
         s = _check_fully_paid(sa.member, w.week_number, db)
         if not s["fully_paid"]:
             raise HTTPException(
@@ -458,8 +463,10 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
     buyer = db.query(Member).filter(Member.id == data.buyer_id).first()
     if not buyer:
         raise HTTPException(status_code=404, detail="Buyer not found")
+    if buyer.status == "left":
+        raise HTTPException(status_code=400, detail=f"{buyer.name} has left the group and cannot buy a pot")
     if buyer.status != "active":
-        raise HTTPException(status_code=400, detail="Buyer is not an active member")
+        raise HTTPException(status_code=400, detail="Buyer must be an active member (not already received)")
 
     pay_status = _check_fully_paid(buyer, w.week_number, db)
     if not pay_status["fully_paid"]:
@@ -511,6 +518,7 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
 
 @router.get("/active-spots")
 def active_spots(db: Session = Depends(get_db)):
+    """Returns only member-type active spots (association spots excluded — use sell endpoint)."""
     spots = (db.query(Spot).filter(Spot.status == "active", Spot.spot_type == "member")
              .order_by(Spot.number).all())
     return [

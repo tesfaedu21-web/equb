@@ -189,9 +189,19 @@ def available_spots(db: Session = Depends(get_db)):
 # ── Export (must be before /{member_id} routes) ──────────────────────────────
 
 @router.get("/export")
-def export_members(format: str = Query("csv", pattern="^(csv|xlsx)$"), db: Session = Depends(get_db)):
-    """Download member list as CSV or Excel."""
-    members = db.query(Member).order_by(Member.id).all()
+def export_members(format: str = Query("csv", pattern="^(csv|xlsx)$"),
+                   cycle_id: Optional[int] = None,
+                   db: Session = Depends(get_db)):
+    """Download member list as CSV or Excel. Pass cycle_id to export only that cycle's members."""
+    if cycle_id:
+        member_ids = [
+            r[0] for r in db.query(MemberSpot.member_id).filter(
+                MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True
+            ).distinct().all()
+        ]
+        members = db.query(Member).filter(Member.id.in_(member_ids)).order_by(Member.id).all()
+    else:
+        members = db.query(Member).order_by(Member.id).all()
 
     headers_row = ["Name", "Phone", "Status", "Spot Numbers", "Share Types",
                    "Weekly Contribution (ETB)", "Partners", "Notes"]
