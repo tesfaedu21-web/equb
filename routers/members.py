@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import Optional, List
-from database import get_db, Member, MemberSpot, Spot, Settings, Payment, Cycle
+from database import get_db, Member, MemberSpot, Spot, Settings, Payment, Cycle, NotificationLog
 import csv, io, openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -436,7 +436,9 @@ def delete_member_permanent(member_id: int, request: Request, db: Session = Depe
             detail=f"Cannot delete: member has {pay_count} payment record(s). "
                    "Use 'Mark as Left' to deactivate instead.",
         )
+    db.query(NotificationLog).filter(NotificationLog.member_id == member_id).delete(synchronize_session=False)
     db.query(MemberSpot).filter(MemberSpot.member_id == member_id).delete(synchronize_session=False)
+    db.flush()
     db.delete(m)
     db.commit()
     return {"ok": True}

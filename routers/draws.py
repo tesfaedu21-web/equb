@@ -595,10 +595,19 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
             ).delete(synchronize_session=False)
         db.query(Week).filter(Week.cycle_id == cycle_id).delete(synchronize_session=False)
 
+    # Delete association expenses and member-spot assignments for this cycle
+    db.query(AssociationExpense).filter(
+        AssociationExpense.cycle_id == cycle_id
+    ).delete(synchronize_session=False)
+    db.query(MemberSpot).filter(
+        MemberSpot.cycle_id == cycle_id
+    ).delete(synchronize_session=False)
+
     cycle_name = cycle.name
-    db.flush()          # push bulk deletes to DB before removing parent
-    db.expire(cycle)    # clear stale relationship cache on the cycle object
-    db.delete(cycle)
+    db.flush()          # push all bulk deletes to DB before removing parent row
+    # Use bulk delete for Cycle to avoid ORM cascade touching Member rows
+    from database import Cycle as _Cycle
+    db.query(_Cycle).filter(_Cycle.id == cycle_id).delete(synchronize_session=False)
     db.commit()
     return {"ok": True, "deleted": cycle_name}
 
