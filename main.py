@@ -112,7 +112,7 @@ async def security_headers(request: Request, call_next):
     # CSP: allow CDN resources needed by the app
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' cdn.tailwindcss.com unpkg.com; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com unpkg.com; "
         "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
         "font-src 'self' fonts.gstatic.com data:; "
         "img-src 'self' data: blob: *; "
@@ -193,7 +193,7 @@ async def login_submit(request: Request,
 
     db: Session = next(get_db())
     try:
-        user = db.query(User).filter(User.username == username, User.is_active == True).first()
+        user = db.query(User).filter(User.username == username, User.is_active).first()
         if not user or not _pwd.verify(password, user.password_hash):
             _record_attempt(ip)
             remaining = max(0, _RATE_MAX - len(_login_attempts[ip]))

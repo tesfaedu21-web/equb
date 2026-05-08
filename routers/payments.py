@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 from collections import defaultdict
 from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle
@@ -14,7 +14,7 @@ METHODS = {"cash", "bank_transfer", "cheque"}
 
 
 class PaymentUpdate(BaseModel):
-    status: str
+    status: Literal["pending", "paid", "late", "missed"]
     paid_date: Optional[str] = None
     payment_method: Optional[str] = None
     reference: Optional[str] = None
@@ -34,7 +34,7 @@ class BatchPaymentRecord(BaseModel):
 class BulkPayment(BaseModel):
     week_id: int
     member_ids: List[int]
-    status: str
+    status: Literal["pending", "paid", "late", "missed"]
     payment_method: Optional[str] = "cash"
     paid_date: Optional[str] = None
 
@@ -62,6 +62,7 @@ def payment_to_dict(p: Payment, cycle_id: Optional[int] = None) -> dict:
         "reference": p.reference,
         "status": p.status,
         "notes": p.notes,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     }
 
 
@@ -211,6 +212,15 @@ def record_batch_payment(data: BatchPaymentRecord, db: Session = Depends(get_db)
     if not payments:
         raise HTTPException(status_code=404, detail="No matching payment records found")
 
+    # Idempotency guard: reject if any week is already paid to prevent double-charge
+    already_paid = [p for p in payments if p.status == "paid"]
+    if already_paid:
+        paid_weeks = sorted([p.week.week_number for p in already_paid if p.week])
+        raise HTTPException(
+            status_code=409,
+            detail=f"Week(s) {paid_weeks} are already recorded as paid. Check for duplicate submission.",
+        )
+
     total = sum(p.amount for p in payments)
 
     batch = PaymentBatch(
@@ -234,10 +244,10 @@ def record_batch_payment(data: BatchPaymentRecord, db: Session = Depends(get_db)
 
     db.commit()
     db.refresh(batch)
-    # Send one confirmation SMS per member (covers all weeks in the batch)
-    if payments:
-        send_payment_confirmed(payments[0], db)
-    return batch_to_dict(batch)
+    sms_status = send_payment_confirmed(payments[0], db) if payments else "skipped"
+    result = batch_to_dict(batch)
+    result["sms_status"] = sms_status
+    return result
 
 
 @router.put("/{payment_id}")
@@ -259,9 +269,12 @@ def update_payment(payment_id: int, data: PaymentUpdate, db: Session = Depends(g
     if data.notes is not None:
         p.notes = data.notes
     db.commit()
+    sms_status = "skipped"
     if data.status == "paid" and was_unpaid:
-        send_payment_confirmed(p, db)
-    return payment_to_dict(p)
+        sms_status = send_payment_confirmed(p, db)
+    result = payment_to_dict(p)
+    result["sms_status"] = sms_status
+    return result
 
 
 @router.post("/bulk")

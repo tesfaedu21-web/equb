@@ -80,6 +80,7 @@ def _member_dict(m: Member, cycle_id: Optional[int] = None) -> dict:
         "partners": list(set(partners)),
         "notes": m.notes,
         "created_at": m.created_at.isoformat() if m.created_at else None,
+        "updated_at": m.updated_at.isoformat() if m.updated_at else None,
     }
 
 
@@ -435,44 +436,51 @@ def delete_member_permanent(member_id: int, request: Request, db: Session = Depe
 def create_member(data: MemberCreate, db: Session = Depends(get_db)):
     settings = db.query(Settings).first()
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
-    m = Member(name=data.name, phone=data.phone, notes=data.notes)
-    db.add(m)
-    db.flush()
+    try:
+        m = Member(name=data.name, phone=data.phone, notes=data.notes)
+        db.add(m)
+        db.flush()
 
-    for assignment in data.spots:
-        spot = db.query(Spot).filter(Spot.id == assignment.spot_id).first()
-        if not spot:
-            raise HTTPException(status_code=404, detail=f"Spot {assignment.spot_id} not found")
-        cycle_id_val = cycle.id if cycle else None
-        active_assignments = [sa for sa in spot.spot_assignments
-                              if sa.is_active and sa.cycle_id == cycle_id_val]
-        has_full = any(sa.share == "full" for sa in active_assignments)
-        half_count = sum(1 for sa in active_assignments if sa.share == "half")
+        for assignment in data.spots:
+            spot = db.query(Spot).filter(Spot.id == assignment.spot_id).first()
+            if not spot:
+                raise HTTPException(status_code=404, detail=f"Spot {assignment.spot_id} not found")
+            cycle_id_val = cycle.id if cycle else None
+            active_assignments = [sa for sa in spot.spot_assignments
+                                  if sa.is_active and sa.cycle_id == cycle_id_val]
+            has_full = any(sa.share == "full" for sa in active_assignments)
+            half_count = sum(1 for sa in active_assignments if sa.share == "half")
 
-        if has_full:
-            raise HTTPException(status_code=400,
-                detail=f"Spot #{spot.number} is fully occupied by a full-spot member — it cannot be shared.")
-        if assignment.share == "full" and half_count > 0:
-            raise HTTPException(status_code=400,
-                detail=f"Spot #{spot.number} already has a half-spot member — assign a different spot for a full spot.")
-        if assignment.share == "half" and half_count >= 2:
-            raise HTTPException(status_code=400,
-                detail=f"Spot #{spot.number} is full (2 half-spot members already).")
-        # Enforce contribution amount from settings (not client-sent value)
-        contribution = (
-            (settings.full_spot_amount if settings else 21000)
-            if assignment.share == "full"
-            else (settings.half_spot_amount if settings else 10500)
-        )
-        db.add(MemberSpot(
-            member_id=m.id, spot_id=assignment.spot_id,
-            share=assignment.share, weekly_contribution=contribution,
-            cycle_id=cycle.id if cycle else None,   # ← scoped to active cycle
-        ))
+            if has_full:
+                raise HTTPException(status_code=400,
+                    detail=f"Spot #{spot.number} is fully occupied by a full-spot member — it cannot be shared.")
+            if assignment.share == "full" and half_count > 0:
+                raise HTTPException(status_code=400,
+                    detail=f"Spot #{spot.number} already has a half-spot member — assign a different spot for a full spot.")
+            if assignment.share == "half" and half_count >= 2:
+                raise HTTPException(status_code=400,
+                    detail=f"Spot #{spot.number} is full (2 half-spot members already).")
+            # Enforce contribution amount from settings (not client-sent value)
+            contribution = (
+                (settings.full_spot_amount if settings else 21000)
+                if assignment.share == "full"
+                else (settings.half_spot_amount if settings else 10500)
+            )
+            db.add(MemberSpot(
+                member_id=m.id, spot_id=assignment.spot_id,
+                share=assignment.share, weekly_contribution=contribution,
+                cycle_id=cycle.id if cycle else None,
+            ))
 
-    db.commit()
-    db.refresh(m)
-    return _member_dict(m)
+        db.commit()
+        db.refresh(m)
+        return _member_dict(m)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create member: {e}")
 
 
 @router.get("/{member_id}")

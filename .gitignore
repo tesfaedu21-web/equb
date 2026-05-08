@@ -39,3 +39,10 @@ CUserstnegaAppDataLocalTemp*
 
 # Secrets (never commit)
 .env
+
+# Local cookie/session files from curl testing
+cookies.txt
+railway_cookies.txt
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json

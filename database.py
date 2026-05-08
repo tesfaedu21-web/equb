@@ -6,6 +6,16 @@ from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 import hashlib, secrets, os
 
+# Load .env file if it exists (for local PostgreSQL development)
+_env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 
 class _pwd:
     @staticmethod
@@ -42,6 +52,9 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -127,6 +140,7 @@ class Member(Base):
     status = Column(String, default="active")             # active | received | left
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     spot_assignments = relationship("MemberSpot", back_populates="member",
                                    foreign_keys="MemberSpot.member_id")
@@ -210,6 +224,7 @@ class Payment(Base):
     reference = Column(String, nullable=True)
     status = Column(String, default="pending")            # pending | paid | late | missed
     notes = Column(Text)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     member = relationship("Member", back_populates="payments")
     week = relationship("Week", back_populates="payments")
@@ -366,6 +381,9 @@ def _migrate(engine):
         "ALTER TABLE pot_disbursements ADD COLUMN service_fee REAL DEFAULT 0",
         # Cycle-scoped memberships: track which cycle each member-spot assignment belongs to
         "ALTER TABLE member_spots ADD COLUMN cycle_id INTEGER REFERENCES cycles(id)",
+        # Audit trail: track when records were last modified
+        "ALTER TABLE members ADD COLUMN updated_at TIMESTAMP",
+        "ALTER TABLE payments ADD COLUMN updated_at TIMESTAMP",
     ]
     with engine.connect() as conn:
         for sql in migrations:

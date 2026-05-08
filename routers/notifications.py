@@ -101,19 +101,23 @@ def _member_vars(m: Member, db: Session, week_number: int = 9999) -> dict:
 
 # ── Auto-send on payment confirmed ───────────────────────────────────────────
 
-def send_payment_confirmed(payment, db: Session) -> None:
-    """Fire-and-forget SMS when a payment is marked paid. Silently skips if no phone or SMS inactive."""
+def send_payment_confirmed(payment, db: Session) -> str:
+    """
+    Send SMS when a payment is marked paid.
+    Returns SMS status: 'sent' | 'mock' | 'failed' | 'skipped'.
+    Never raises — payment flow must not be broken by SMS issues.
+    """
     try:
         m = payment.member
         w = payment.week
         if not m or not m.phone or not w:
-            return
+            return "skipped"
         cfg = db.query(NotificationSettings).first()
         if not cfg:
-            return
+            return "skipped"
         tmpl = db.query(NotificationTemplate).filter_by(key="payment_confirmed").first()
         if not tmpl or not tmpl.is_active:
-            return
+            return "skipped"
         method_label = {"cash": "Cash", "bank_transfer": "Bank Transfer",
                         "cheque": "Cheque"}.get(payment.payment_method or "", "Cash")
         vars_ = {
@@ -131,8 +135,9 @@ def send_payment_confirmed(payment, db: Session) -> None:
             status=status, provider_response=response,
         ))
         db.commit()
+        return status
     except Exception:
-        pass   # never break the payment flow
+        return "skipped"  # never break the payment flow
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
