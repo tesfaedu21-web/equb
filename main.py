@@ -16,7 +16,11 @@ from routers import settings as settings_router
 from routers import disbursements as disbursements_router
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "equb-secret-change-in-production-2024")
-IS_PRODUCTION = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("DATABASE_URL", "").startswith("postgresql"))
+_db_url = os.environ.get("DATABASE_URL", "")
+IS_PRODUCTION = bool(
+    os.environ.get("RAILWAY_ENVIRONMENT") or
+    (_db_url.startswith("postgresql") and "localhost" not in _db_url and "127.0.0.1" not in _db_url)
+)
 
 # ── Rate limiting (in-memory, per IP) ────────────────────────────────────────
 _login_attempts: dict = defaultdict(list)   # ip -> [unix timestamps]
