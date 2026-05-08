@@ -522,10 +522,20 @@
           <span class="text-gray-500">Association (−)</span>
           <span class="text-red-500 font-semibold" x-text="fmt(activeWeek?.association_amount)"></span>
         </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500"
+                x-text="'Service Fee (' + (saleShareType==='full' ? '21,000' : '10,500') + ') (−)'"></span>
+          <span class="text-orange-600 font-semibold" x-text="fmt(saleServiceFee)"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500"
+                x-text="'Voucher (' + (saleShareType==='full' ? (appSettings.full_spot_voucher??80) : (appSettings.half_spot_voucher??40)) + '×' + (cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0) + ') (−)'"></span>
+          <span class="text-orange-600 font-semibold" x-text="fmt(saleVoucherDeduction)"></span>
+        </div>
         <template x-if="saleForm.percentage">
           <div class="flex justify-between">
             <span class="text-gray-500"
-                  x-text="(activeWeek?.is_group_week ? 'Association Fee (' : 'Seller Fee (') + saleForm.percentage + '%)'"></span>
+                  x-text="(activeWeek?.is_group_week ? 'Association Fee (' : 'Seller Fee (') + saleForm.percentage + '%) (−)'"></span>
             <span class="text-purple-600 font-semibold" x-text="fmt((activeWeek?.gross_pot||0) * saleForm.percentage / 100)"></span>
           </div>
         </template>
@@ -753,6 +763,7 @@ function draws() {
     paymentCheck: null,
     buyerPaymentCheck: null,
     batchRows: [],
+    appSettings: {},
 
     get filteredWeeks() {
       return this.weeks.filter(w => {
@@ -770,19 +781,45 @@ function draws() {
       return this.weeks.filter(w => w.status === 'pending' && w.week_number <= startWeek).length;
     },
 
+    get saleShareType() {
+      if (this.activeWeek?.is_group_week) {
+        const buyer = this.activeMembers?.find(m => m.id === this.saleForm.buyer_id);
+        return buyer?.spots?.[0]?.share || 'full';
+      }
+      return this.activeWeek?.winner_spot?.members?.[0]?.share || 'full';
+    },
+
+    get saleVoucherDeduction() {
+      const weeks = this.cycles?.find(c => c.id === this.selectedCycle)?.total_weeks || 0;
+      const rate = this.saleShareType === 'full'
+        ? (this.appSettings.full_spot_voucher ?? 80)
+        : (this.appSettings.half_spot_voucher ?? 40);
+      return rate * weeks;
+    },
+
+    get saleServiceFee() {
+      return this.saleShareType === 'full'
+        ? (this.appSettings.full_spot_amount ?? 21000)
+        : (this.appSettings.half_spot_amount ?? 10500);
+    },
+
     get buyerReceives() {
       if (!this.activeWeek) return 0;
       const net = this.activeWeek.net_pot || 0;
       const gross = this.activeWeek.gross_pot || 0;
-      if (this.saleForm.percentage) {
-        return net - (gross * this.saleForm.percentage / 100);
-      }
-      return net;
+      let amount = net;
+      if (this.saleForm.percentage) amount -= gross * this.saleForm.percentage / 100;
+      amount -= this.saleVoucherDeduction;
+      amount -= this.saleServiceFee;
+      return amount;
     },
 
     async load() {
       try {
-        this.cycles = await this.api('GET', '/api/draws/cycles');
+        [this.cycles, this.appSettings] = await Promise.all([
+          this.api('GET', '/api/draws/cycles'),
+          this.api('GET', '/api/settings').catch(() => ({})),
+        ]);
         if (this.cycles.length > 0) {
           const active = this.cycles.find(c => c.status === 'active') || this.cycles[0];
           this.selectedCycle = active.id;

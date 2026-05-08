@@ -73,7 +73,7 @@ def week_to_dict(w: Week) -> dict:
     winner_spot = None
     if w.winner_spot:
         members = [
-            {"id": sa.member.id, "name": sa.member.name}
+            {"id": sa.member.id, "name": sa.member.name, "share": sa.share}
             for sa in w.winner_spot.spot_assignments if sa.is_active
         ]
         winner_spot = {"id": w.winner_spot.id, "number": w.winner_spot.number, "members": members}
