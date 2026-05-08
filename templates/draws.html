@@ -494,24 +494,23 @@
         </template>
       </div>
 
-      <!-- Percentage (member sale only) -->
-      <template x-if="!activeWeek?.is_group_week">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Sale % (fee to seller)</label>
-          <div class="flex items-center gap-3">
-            <input x-model.number="saleForm.percentage" type="number" min="0" max="20" step="0.5" class="flex-1" placeholder="e.g. 8"/>
-            <div class="flex gap-1">
-              <template x-for="pct in [8,7,6,5,4,3,2]" :key="pct">
-                <button type="button"
-                        @click="saleForm.percentage = pct"
-                        :class="saleForm.percentage === pct ? 'bg-equb-green text-white' : 'bg-gray-100 text-gray-600'"
-                        class="px-2 py-1 rounded-lg text-xs font-semibold"
-                        x-text="pct + '%'"></button>
-              </template>
-            </div>
+      <!-- Percentage (member sale or group week sale) -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1"
+               x-text="activeWeek?.is_group_week ? 'Sale % (fee to association fund)' : 'Sale % (fee to seller)'"></label>
+        <div class="flex items-center gap-3">
+          <input x-model.number="saleForm.percentage" type="number" min="0" max="20" step="0.5" class="flex-1" placeholder="e.g. 8"/>
+          <div class="flex gap-1">
+            <template x-for="pct in [8,7,6,5,4,3,2]" :key="pct">
+              <button type="button"
+                      @click="saleForm.percentage = pct"
+                      :class="saleForm.percentage === pct ? 'bg-equb-green text-white' : 'bg-gray-100 text-gray-600'"
+                      class="px-2 py-1 rounded-lg text-xs font-semibold"
+                      x-text="pct + '%'"></button>
+            </template>
           </div>
         </div>
-      </template>
+      </div>
 
       <!-- Summary -->
       <div class="bg-gray-50 border rounded-xl p-4 text-sm space-y-2">
@@ -523,9 +522,10 @@
           <span class="text-gray-500">Association (−)</span>
           <span class="text-red-500 font-semibold" x-text="fmt(activeWeek?.association_amount)"></span>
         </div>
-        <template x-if="!activeWeek?.is_group_week && saleForm.percentage">
+        <template x-if="saleForm.percentage">
           <div class="flex justify-between">
-            <span class="text-gray-500">Seller Fee (<span x-text="saleForm.percentage"></span>%)</span>
+            <span class="text-gray-500"
+                  x-text="(activeWeek?.is_group_week ? 'Association Fee (' : 'Seller Fee (') + saleForm.percentage + '%)'"></span>
             <span class="text-purple-600 font-semibold" x-text="fmt((activeWeek?.gross_pot||0) * saleForm.percentage / 100)"></span>
           </div>
         </template>
@@ -774,7 +774,7 @@ function draws() {
       if (!this.activeWeek) return 0;
       const net = this.activeWeek.net_pot || 0;
       const gross = this.activeWeek.gross_pot || 0;
-      if (!this.activeWeek.is_group_week && this.saleForm.percentage) {
+      if (this.saleForm.percentage) {
         return net - (gross * this.saleForm.percentage / 100);
       }
       return net;

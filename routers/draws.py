@@ -483,7 +483,7 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
     if data.transaction_type == "member_sale" and data.percentage:
         seller_fee = gross * (data.percentage / 100)
         buyer_receives = (w.net_pot or 0) - seller_fee
-    elif data.transaction_type == "assoc_spot_sale" and data.percentage:
+    elif data.transaction_type in ("assoc_spot_sale", "group_week_sale") and data.percentage:
         # Profit (seller_fee) goes to association fund
         seller_fee = gross * (data.percentage / 100)
         buyer_receives = (w.net_pot or 0) - seller_fee
@@ -635,9 +635,9 @@ def association_fund(cycle_id: Optional[int] = None, db: Session = Depends(get_d
     completed_weeks = weeks_q.filter(Week.status.in_(["drawn", "sold"])).all()
     weekly_deductions = sum(w.association_amount or 0 for w in completed_weeks)
 
-    # ── Association spot sales profit ─────────────────────────────────────────
+    # ── Association spot + group-week sales profit ────────────────────────────
     tx_q = (db.query(PotTransaction)
-            .filter(PotTransaction.transaction_type == "assoc_spot_sale"))
+            .filter(PotTransaction.transaction_type.in_(["assoc_spot_sale", "group_week_sale"])))
     if cycle_id:
         week_ids = [w.id for w in weeks_q.all()]
         if week_ids:
@@ -778,7 +778,7 @@ def association_settlement(cycle_id: int, db: Session = Depends(get_db)):
     weekly_deductions = sum(w.association_amount or 0 for w in weeks if w.status in ("drawn", "sold"))
 
     assoc_txs = db.query(PotTransaction).filter(
-        PotTransaction.transaction_type == "assoc_spot_sale",
+        PotTransaction.transaction_type.in_(["assoc_spot_sale", "group_week_sale"]),
         PotTransaction.week_id.in_(week_ids),
     ).all() if week_ids else []
     spot_sales_profit = sum(t.seller_fee or 0 for t in assoc_txs)
