@@ -858,7 +858,7 @@ function members() {
     },
 
     async permanentDelete(m) {
-      if (!confirm(`⚠️ PERMANENTLY DELETE ${m.name}?\n\nThis cannot be undone. Only members with no payment records can be deleted (accidental inserts only).`)) return;
+      if (!confirm(`⚠️ PERMANENTLY DELETE ${m.name}?\n\nThis will delete ALL records for this member:\n• Payment history\n• Spot assignments\n• Pot transactions\n• Disbursement guarantor records\n\nThis CANNOT be undone.`)) return;
       try {
         await this.api('DELETE', `/api/members/permanent/${m.id}`);
         this.showToast(`${m.name} permanently deleted`, 'success');

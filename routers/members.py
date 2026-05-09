@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import Optional, List
-from database import get_db, Member, MemberSpot, Spot, Settings, Payment, Cycle, NotificationLog
+from database import (get_db, Member, MemberSpot, Spot, Settings, Payment, Cycle,
+                      NotificationLog, PotTransaction, PotDisbursement)
 import csv, io, openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -423,21 +424,49 @@ def delete_all_members(request: Request, db: Session = Depends(get_db)):
 
 @router.delete("/permanent/{member_id}")
 def delete_member_permanent(member_id: int, request: Request, db: Session = Depends(get_db)):
-    """Hard-delete a member. Admin only. Blocked if any payment records exist."""
+    """Hard-delete a member and all their records. Admin only."""
     if getattr(request.state, "user_role", None) != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
-    pay_count = db.query(Payment).filter(Payment.member_id == member_id).count()
-    if pay_count > 0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot delete: member has {pay_count} payment record(s). "
-                   "Use 'Mark as Left' to deactivate instead.",
+
+    # 1. Notification logs
+    db.query(NotificationLog).filter(
+        NotificationLog.member_id == member_id
+    ).delete(synchronize_session=False)
+
+    # 2. Disbursements where this member is a guarantor (NOT NULL — must delete row)
+    from sqlalchemy import or_
+    db.query(PotDisbursement).filter(
+        or_(
+            PotDisbursement.guarantor_1_id == member_id,
+            PotDisbursement.guarantor_2_id == member_id,
+            PotDisbursement.guarantor_3_id == member_id,
         )
-    db.query(NotificationLog).filter(NotificationLog.member_id == member_id).delete(synchronize_session=False)
-    db.query(MemberSpot).filter(MemberSpot.member_id == member_id).delete(synchronize_session=False)
+    ).delete(synchronize_session=False)
+
+    # 3. Pot transactions: null out nullable refs; delete rows where buyer (NOT NULL)
+    db.query(PotTransaction).filter(
+        PotTransaction.buyer_id == member_id
+    ).delete(synchronize_session=False)
+    db.query(PotTransaction).filter(
+        PotTransaction.seller_id == member_id
+    ).update({"seller_id": None}, synchronize_session=False)
+    db.query(PotTransaction).filter(
+        PotTransaction.original_winner_id == member_id
+    ).update({"original_winner_id": None}, synchronize_session=False)
+
+    # 4. Payments
+    db.query(Payment).filter(
+        Payment.member_id == member_id
+    ).delete(synchronize_session=False)
+
+    # 5. Spot assignments
+    db.query(MemberSpot).filter(
+        MemberSpot.member_id == member_id
+    ).delete(synchronize_session=False)
+
     db.flush()
     db.delete(m)
     db.commit()
