@@ -445,12 +445,16 @@ def daily_collection(date: Optional[str] = None, db: Session = Depends(get_db)):
         totals[method] += float(b.total_amount)
 
     grand_total = sum(totals.values())
+    all_week_numbers = sorted(set(
+        p.week.week_number for b in batches for p in b.payments if p.week
+    ))
     return {
         "date": target.isoformat(),
         "groups": groups,
         "totals": totals,
         "grand_total": grand_total,
         "total_batches": len(batches),
+        "week_numbers": all_week_numbers,
     }
 
 
