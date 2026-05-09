@@ -233,18 +233,6 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
         )
         db.add(w)
 
-    # Optional extra worker/staff payment week at end of cycle
-    if getattr(settings, "include_worker_slot", True):
-        worker_week_num = total_spots + 1
-        draw_date = start + timedelta(weeks=total_spots)
-        days_to_sunday = (6 - draw_date.weekday()) % 7
-        if days_to_sunday:
-            draw_date = draw_date + timedelta(days=days_to_sunday)
-        db.add(Week(
-            cycle_id=cycle.id, week_number=worker_week_num, draw_date=draw_date,
-            is_group_week=False, is_worker_week=True,
-            gross_pot=gross, association_amount=assoc, net_pot=net,
-        ))
 
     try:
         db.commit()

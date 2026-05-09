@@ -65,7 +65,7 @@
             <option value="">— Select Week —</option>
             <template x-for="w in weeks" :key="w.id">
               <option :value="w.id"
-                x-text="`Week ${w.week_number} — ${fmtDate(w.draw_date)}${w.is_group_week ? ' 🔔 Group' : ''}${w.is_worker_week ? ' 👷 Worker' : ''}`">
+                x-text="`Week ${w.week_number} — ${fmtDate(w.draw_date)}${w.is_group_week ? ' 🔔 Group' : ''}`">
               </option>
             </template>
           </select>
@@ -251,7 +251,7 @@
             <option value="">— Select Week —</option>
             <template x-for="w in summaryWeeks" :key="w.id">
               <option :value="w.id"
-                x-text="`Week ${w.week_number} — ${fmtDate(w.draw_date)}${w.is_group_week ? ' (Group)' : ''}${w.is_worker_week ? ' (Worker)' : ''}`">
+                x-text="`Week ${w.week_number} — ${fmtDate(w.draw_date)}${w.is_group_week ? ' (Group)' : ''}`">
               </option>
             </template>
           </select>
@@ -1149,7 +1149,7 @@ ${groupSections}
           <td style="padding:7px 10px;text-align:right;font-weight:600">${fmtNum(p.amount)}</td>
         </tr>`).join('');
 
-      const typeLabel = d.is_worker_week ? ' — Worker Week' : d.is_group_week ? ' — Group Week' : '';
+      const typeLabel = d.is_group_week ? ' — Group Week' : '';
       const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <title>Weekly Collection Summary — Week ${d.week_number}</title>

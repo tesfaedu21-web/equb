@@ -92,20 +92,6 @@
       </div>
     </div>
 
-    <!-- Worker slot toggle -->
-    <div class="flex items-center gap-3 pt-1">
-      <button type="button"
-              @click="form.include_worker_slot = !form.include_worker_slot"
-              :class="form.include_worker_slot ? 'bg-equb-green' : 'bg-gray-300'"
-              class="relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none">
-        <span :class="form.include_worker_slot ? 'translate-x-5' : 'translate-x-1'"
-              class="inline-block h-4 w-4 mt-1 transform rounded-full bg-white transition duration-200 ease-in-out"></span>
-      </button>
-      <div>
-        <span class="text-sm font-medium text-gray-700">Include Worker Payment Week</span>
-        <p class="text-xs text-gray-400">Adds one extra full-spot week at end of cycle for staff payment (takes effect on next cycle)</p>
-      </div>
-    </div>
     <div class="flex justify-end">
       <button @click="saveSettings()" :disabled="saving" class="btn-primary">
         <span x-text="saving ? 'Saving…' : 'Save Configuration'"></span>

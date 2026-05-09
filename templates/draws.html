@@ -128,9 +128,8 @@
                   </td>
                   <td class="px-5 py-3.5 text-gray-600" x-text="fmtDate(w.draw_date)"></td>
                   <td class="px-5 py-3.5">
-                    <span x-show="w.is_worker_week" class="badge bg-purple-100 text-purple-700">Worker</span>
-                    <span x-show="w.is_group_week && !w.is_worker_week" class="badge badge-group">Group Week</span>
-                    <span x-show="!w.is_group_week && !w.is_worker_week" class="badge bg-gray-100 text-gray-600">Regular</span>
+                    <span x-show="w.is_group_week" class="badge badge-group">Group Week</span>
+                    <span x-show="!w.is_group_week" class="badge bg-gray-100 text-gray-600">Regular</span>
                   </td>
                   <td class="px-5 py-3.5 font-semibold text-equb-green" x-text="fmt(w.net_pot)"></td>
                   <td class="px-5 py-3.5">
@@ -150,10 +149,7 @@
                     <span x-show="w.status === 'pending'" class="text-gray-300">—</span>
                   </td>
                   <td class="px-5 py-3.5 text-right">
-                    <template x-if="w.status === 'pending' && w.is_worker_week">
-                      <span class="text-xs text-purple-500 font-medium">Payment week only</span>
-                    </template>
-                    <template x-if="w.status === 'pending' && !w.is_worker_week && activeCycle?.draw_phase === 'active'">
+                    <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'active'">
                       <div class="flex items-center justify-end gap-2">
                         <button x-show="!w.is_group_week"
                                 @click="openDraw(w)"
@@ -163,7 +159,7 @@
                                 x-text="w.is_group_week ? 'Record Sale' : 'Sell Pot'"></button>
                       </div>
                     </template>
-                    <template x-if="w.status === 'pending' && !w.is_worker_week && activeCycle?.draw_phase === 'collection'">
+                    <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'collection'">
                       <span class="text-xs text-amber-500 font-medium">Collection</span>
                     </template>
                     <template x-if="w.status !== 'pending'">
