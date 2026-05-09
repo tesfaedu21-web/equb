@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from sqlalchemy.orm import Session
-from database import get_db, Member, MemberSpot, Week, Payment, PotTransaction, Spot, Cycle, Settings
+from database import get_db, Member, MemberSpot, Week, Payment, PotTransaction, Spot, Cycle, Settings, PotDisbursement
 
 router = APIRouter()
 
@@ -118,6 +118,17 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
         ).all()
         association_fund = sum(w.association_amount or 0 for w in completed_weeks)
 
+        # Service fee and voucher totals from disbursements for this cycle
+        disb_week_ids = [w.id for w in completed_weeks]
+        disbursements = db.query(PotDisbursement).filter(
+            PotDisbursement.week_id.in_(disb_week_ids)
+        ).all() if disb_week_ids else []
+        total_service_fee = sum(d.service_fee or 0 for d in disbursements)
+        total_voucher = sum(d.voucher_deduction or 0 for d in disbursements)
+    else:
+        total_service_fee = 0
+        total_voucher = 0
+
     total_weeks = db.query(Week).filter(Week.cycle_id == cycle.id).count() if cycle else 0
 
     # ── Current week payment snapshot ───────────────────────────────────────
@@ -163,6 +174,8 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
         "last_draw": last_draw,
         "total_collected": total_collected,
         "association_fund": association_fund,
+        "total_service_fee": total_service_fee,
+        "total_voucher": total_voucher,
         "cycle": {
             "id": cycle.id,
             "name": cycle.name,
@@ -204,6 +217,40 @@ def recent_transactions(limit: int = 20, cycle_id: Optional[int] = None, db: Ses
         }
         for t in txs
     ]
+
+
+@router.get("/ledger")
+def ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Chronological ledger: disbursements for a cycle."""
+    if not cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle_id = cycle.id if cycle else None
+    if not cycle_id:
+        return []
+    week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
+    if not week_ids:
+        return []
+    disbs = (db.query(PotDisbursement)
+             .filter(PotDisbursement.week_id.in_(week_ids))
+             .order_by(PotDisbursement.cheque_date).all())
+    rows = []
+    for d in disbs:
+        winner_names = ", ".join(
+            sa.member.name for sa in d.winner_spot.spot_assignments if sa.is_active
+        ) if d.winner_spot else "—"
+        rows.append({
+            "week_number": d.week.week_number if d.week else None,
+            "cheque_date": d.cheque_date.isoformat(),
+            "winner": winner_names,
+            "gross_amount": d.gross_amount,
+            "association_amount": d.week.association_amount if d.week else 0,
+            "service_fee": d.service_fee or 0,
+            "voucher_deduction": d.voucher_deduction or 0,
+            "net_amount": d.net_amount,
+            "cheque_number": d.cheque_number,
+            "status": d.status,
+        })
+    return rows
 
 
 @router.get("/weekly-summary/{week_id}")
