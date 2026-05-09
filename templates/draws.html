@@ -330,7 +330,14 @@
               <div class="text-sm font-medium text-gray-800" x-text="fmtDate(row.draw_date)"></div>
               <div class="text-xs text-gray-400">
                 <span x-show="row.is_group_week" class="text-amber-600 font-medium">Group Week — record sale below</span>
-                <span x-show="!row.is_group_week">Net pot: <span x-text="fmt(row.net_pot)"></span></span>
+                <span x-show="!row.is_group_week">
+                  Net pot: <span x-text="fmt(row.net_pot)"></span>
+                  <template x-if="row.winner_spot_id">
+                    <span class="text-equb-green font-semibold ml-1">
+                      → Winner receives: <span x-text="fmt(drawWinnerReceives(row.winner_spot_id, row.net_pot))"></span>
+                    </span>
+                  </template>
+                </span>
               </div>
             </div>
           </div>
@@ -423,9 +430,35 @@
         </div>
       </template>
 
-      <div class="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700">
-        <strong>Pot Amount:</strong> <span x-text="fmt(activeWeek?.net_pot)"></span>
-        (gross <span x-text="fmt(activeWeek?.gross_pot)"></span> − assoc. <span x-text="fmt(activeWeek?.association_amount)"></span>)
+      <!-- Pot breakdown -->
+      <div class="bg-gray-50 border rounded-xl p-4 text-sm space-y-2">
+        <div class="flex justify-between">
+          <span class="text-gray-500">Gross Pot</span>
+          <span class="font-semibold" x-text="fmt(activeWeek?.gross_pot)"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Association (−)</span>
+          <span class="text-red-500 font-semibold" x-text="fmt(activeWeek?.association_amount)"></span>
+        </div>
+        <template x-if="drawForm.winner_spot_id">
+          <div class="flex justify-between">
+            <span class="text-gray-500"
+                  x-text="'Service Fee (' + (_spotShare(drawForm.winner_spot_id)==='full' ? '21,000' : '10,500') + ') (−)'"></span>
+            <span class="text-orange-600 font-semibold" x-text="fmt(drawServiceFee(drawForm.winner_spot_id))"></span>
+          </div>
+        </template>
+        <template x-if="drawForm.winner_spot_id">
+          <div class="flex justify-between">
+            <span class="text-gray-500"
+                  x-text="'Voucher (' + (_spotShare(drawForm.winner_spot_id)==='full' ? (appSettings.full_spot_voucher??80) : (appSettings.half_spot_voucher??40)) + '×' + (cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0) + ') (−)'"></span>
+            <span class="text-orange-600 font-semibold" x-text="fmt(drawVoucherDeduction(drawForm.winner_spot_id))"></span>
+          </div>
+        </template>
+        <div class="flex justify-between border-t pt-2 mt-2">
+          <span class="text-gray-700 font-semibold">Winner Receives</span>
+          <span class="font-bold text-equb-green text-base"
+                x-text="drawForm.winner_spot_id ? fmt(drawWinnerReceives(drawForm.winner_spot_id, activeWeek?.net_pot)) : fmt(activeWeek?.net_pot)"></span>
+        </div>
       </div>
       <div class="flex gap-3 pt-2">
         <button type="button" @click="showDrawModal = false" class="btn-secondary flex-1">Cancel</button>
@@ -812,6 +845,28 @@ function draws() {
       amount -= this.saleVoucherDeduction;
       amount -= this.saleServiceFee;
       return amount;
+    },
+
+    // ── Draw modal deduction helpers ──────────────────────────────────────────
+    _spotShare(spotId) {
+      const spot = this.activeSpots?.find(s => s.id === spotId);
+      return spot?.share || 'full';
+    },
+    drawShareType(spotId) { return this._spotShare(spotId); },
+    drawServiceFee(spotId) {
+      return this._spotShare(spotId) === 'full'
+        ? (this.appSettings.full_spot_amount ?? 21000)
+        : (this.appSettings.half_spot_amount ?? 10500);
+    },
+    drawVoucherDeduction(spotId) {
+      const weeks = this.cycles?.find(c => c.id === this.selectedCycle)?.total_weeks || 0;
+      const rate = this._spotShare(spotId) === 'full'
+        ? (this.appSettings.full_spot_voucher ?? 80)
+        : (this.appSettings.half_spot_voucher ?? 40);
+      return rate * weeks;
+    },
+    drawWinnerReceives(spotId, netPot) {
+      return (netPot || 0) - this.drawServiceFee(spotId) - this.drawVoucherDeduction(spotId);
     },
 
     async load() {

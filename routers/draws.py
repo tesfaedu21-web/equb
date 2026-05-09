@@ -525,9 +525,12 @@ def active_spots(db: Session = Depends(get_db)):
         {
             "id": s.id, "number": s.number, "type": s.spot_type,
             "members": [
-                {"id": sa.member.id, "name": sa.member.name}
+                {"id": sa.member.id, "name": sa.member.name, "share": sa.share}
                 for sa in s.spot_assignments if sa.is_active
             ],
+            "share": (s.spot_assignments[0].share
+                      if any(sa.is_active for sa in s.spot_assignments)
+                      else "full"),
         }
         for s in spots
     ]
