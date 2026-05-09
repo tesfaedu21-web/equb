@@ -11,8 +11,8 @@
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Members</h1>
       <p class="text-sm text-gray-500 mt-0.5">
-        <span x-show="selectedCycle" x-text="'Cycle: ' + (allCycles.find(c=>c.id==selectedCycle)?.name || '')"></span>
-        <span x-show="!selectedCycle">All members (no cycle selected)</span>
+        <span x-show="selectedCycle" x-text="(allCycles.find(c=>c.id==selectedCycle)?.name || '')"></span>
+        <span x-show="!selectedCycle">All members</span>
       </p>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
@@ -31,12 +31,12 @@
         </button>
         <div x-show="exportOpen" @click.outside="exportOpen = false" x-cloak
              class="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50">
-          <a href="/api/members/export?format=csv"
+          <a :href="'/api/members/export?format=csv' + (selectedCycle ? '&cycle_id=' + selectedCycle : '')"
              @click="exportOpen = false"
              class="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
             <span class="text-base">📄</span> Export CSV
           </a>
-          <a href="/api/members/export?format=xlsx"
+          <a :href="'/api/members/export?format=xlsx' + (selectedCycle ? '&cycle_id=' + selectedCycle : '')"
              @click="exportOpen = false"
              class="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
             <span class="text-base">📊</span> Export Excel
@@ -58,18 +58,7 @@
         Import
       </button>
 
-      <!-- Delete All (admin only) -->
-      <button x-show="isAdmin" @click="deleteAllMembers()"
-              class="btn-secondary flex items-center gap-2 text-red-500 hover:text-red-700 hover:border-red-300"
-              title="Wipe all members (admin only)">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-        </svg>
-        Delete All
-      </button>
-
-      <button @click="selectedCycle ? openAdd() : showToast('Select a cycle first', 'error')"
+      <button @click="selectedCycle ? openAdd() : showToast('Please select a cycle first', 'error')"
               class="btn-primary flex items-center gap-2"
               :class="!selectedCycle ? 'opacity-60 cursor-not-allowed' : ''">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,7 +106,7 @@
   <div class="grid grid-cols-4 gap-3">
     <div class="card py-4 text-center" :class="!selectedCycle && allCycles.length > 0 ? 'opacity-40' : ''">
       <div class="text-2xl font-bold text-gray-900" x-text="memberStats.total || 0"></div>
-      <div class="text-xs text-gray-400 mt-1">Total <span x-show="selectedCycle" x-text="'in ' + (allCycles.find(c=>c.id==selectedCycle)?.name || 'cycle')"></span><span x-show="!selectedCycle" class="text-amber-500">(all)</span></div>
+      <div class="text-xs text-gray-400 mt-1">Total</div>
     </div>
     <div class="card py-4 text-center" :class="!selectedCycle && allCycles.length > 0 ? 'opacity-40' : ''">
       <div class="text-2xl font-bold text-green-600" x-text="memberStats.active || 0"></div>
@@ -137,9 +126,9 @@
   <div class="card">
     <div class="flex flex-col sm:flex-row gap-3 items-center">
       <input x-model="search" @input.debounce.300ms="load()" type="text"
-             placeholder="Search by name, phone or spot #…" class="flex-1"/>
+             placeholder="Search members..." class="flex-1"/>
       <select x-model="filterStatus" @change="load()" class="sm:w-40">
-        <option value="">All Status</option>
+        <option value="">All Statuses</option>
         <option value="active">Active</option>
         <option value="received">Received</option>
         <option value="left">Left</option>
@@ -613,6 +602,7 @@ function members() {
     allCycles: [],
     selectedCycle: '',
     settings: { full_spot_amount: 21000, half_spot_amount: 10500 },
+    isAdmin: false,
     search: '',
     filterStatus: '',
     viewMode: 'table',
@@ -653,9 +643,12 @@ function members() {
     },
 
     async init() {
-      // Step 1: load cycles and auto-select active one FIRST
-      await this.loadCycles();
-      // Step 2: then load members, spots, settings in parallel
+      // Load user role + cycles first, then members/spots/settings in parallel
+      const [me] = await Promise.all([
+        this.api('GET', '/api/auth/me').catch(() => ({})),
+        this.loadCycles(),
+      ]);
+      this.isAdmin = me.role === 'admin';
       await Promise.all([this.load(), this.loadSpots(), this.loadSettings()]);
     },
 
@@ -862,16 +855,6 @@ function members() {
       try {
         await this.api('DELETE', `/api/members/permanent/${m.id}`);
         this.showToast(`${m.name} permanently deleted`, 'success');
-        await this.load();
-      } catch(e) { this.showToast(e.message, 'error'); }
-    },
-
-    async deleteAllMembers() {
-      if (!confirm('⚠️ DELETE ALL MEMBERS?\n\nThis will permanently remove ALL members and their spot assignments.\n\nMembers with payment history will be marked as "Left" instead.\n\nThis CANNOT be undone. Are you sure?')) return;
-      if (!confirm('🔴 FINAL CONFIRMATION\n\nYou are about to wipe all members. Type OK in your mind and click OK only if you are 100% sure.')) return;
-      try {
-        const res = await this.api('DELETE', '/api/members/permanent/all');
-        this.showToast(res.message || 'All members deleted', 'success');
         await this.load();
       } catch(e) { this.showToast(e.message, 'error'); }
     },

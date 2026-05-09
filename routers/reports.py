@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
+from datetime import datetime
 from sqlalchemy.orm import Session
-from database import get_db, Member, MemberSpot, Week, Payment, PotTransaction, Spot, Cycle, Settings, PotDisbursement
+from database import get_db, Member, MemberSpot, Week, Payment, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense
 
 router = APIRouter()
 
@@ -323,6 +324,222 @@ def association_fund_detail(cycle_id: Optional[int] = None, db: Session = Depend
         })
 
     return {"total": total, "weeks": breakdown}
+
+
+@router.get("/balance-sheet")
+def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Full financial position for a cycle."""
+    if not cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        if not cycle:
+            return {}
+        cycle_id = cycle.id
+
+    week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
+    if not week_ids:
+        return {
+            "total_collected": 0, "total_cheques": 0,
+            "total_voucher": 0, "voucher_paid": 0, "voucher_outstanding": 0,
+            "total_service_fee": 0, "association_fund": 0,
+            "association_expenses": 0, "association_balance": 0,
+            "cash_balance": 0, "pending_draw_balance": 0,
+        }
+
+    # Cash IN — actual member payments
+    paid_payments = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids), Payment.status == "paid"
+    ).all()
+    total_collected = sum(p.amount for p in paid_payments)
+
+    # Disbursements
+    disbs = db.query(PotDisbursement).filter(
+        PotDisbursement.week_id.in_(week_ids)
+    ).all()
+    total_cheques      = sum(d.net_amount for d in disbs)
+    total_voucher      = sum(d.voucher_deduction or 0 for d in disbs)
+    voucher_paid_amt   = sum(d.voucher_deduction or 0 for d in disbs if d.voucher_paid)
+    voucher_outstanding= total_voucher - voucher_paid_amt
+    total_service_fee  = sum(d.service_fee or 0 for d in disbs)
+
+    # Association fund (from drawn/sold weeks)
+    completed_weeks = db.query(Week).filter(
+        Week.cycle_id == cycle_id,
+        Week.status.in_(["drawn", "sold"])
+    ).all()
+    association_fund = sum(w.association_amount or 0 for w in completed_weeks)
+
+    # Association expenses paid out
+    expenses = db.query(AssociationExpense).filter(
+        AssociationExpense.cycle_id == cycle_id
+    ).all()
+    association_expenses = sum(e.amount for e in expenses)
+    association_balance  = association_fund - association_expenses
+
+    # Cash held by association = In - Cheques - Vouchers paid - Expenses
+    cash_out = total_cheques + voucher_paid_amt + association_expenses
+    cash_balance = total_collected - cash_out
+
+    # Pending draw balance = what's been collected but not yet disbursed
+    disbursed_week_ids = {d.week_id for d in disbs}
+    pending_weeks = [wid for wid in week_ids if wid not in disbursed_week_ids]
+    pending_draw_balance = sum(
+        p.amount for p in paid_payments if p.week_id in pending_weeks
+    )
+
+    return {
+        "total_collected":       total_collected,
+        "total_cheques":         total_cheques,
+        "total_voucher":         total_voucher,
+        "voucher_paid":          voucher_paid_amt,
+        "voucher_outstanding":   voucher_outstanding,
+        "total_service_fee":     total_service_fee,
+        "association_fund":      association_fund,
+        "association_expenses":  association_expenses,
+        "association_balance":   association_balance,
+        "cash_balance":          cash_balance,
+        "pending_draw_balance":  pending_draw_balance,
+        "disbursements_count":   len(disbs),
+    }
+
+
+@router.get("/vouchers")
+def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """List of all disbursements with voucher tracking status."""
+    if not cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        if not cycle:
+            return []
+        cycle_id = cycle.id
+
+    week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
+    if not week_ids:
+        return []
+
+    disbs = (db.query(PotDisbursement)
+             .filter(PotDisbursement.week_id.in_(week_ids))
+             .order_by(PotDisbursement.cheque_date).all())
+    rows = []
+    for d in disbs:
+        winner = ", ".join(
+            sa.member.name for sa in d.winner_spot.spot_assignments if sa.is_active
+        ) if d.winner_spot else "—"
+        rows.append({
+            "id":                d.id,
+            "week_number":       d.week.week_number if d.week else None,
+            "cheque_date":       d.cheque_date.isoformat(),
+            "winner":            winner,
+            "voucher_deduction": d.voucher_deduction or 0,
+            "voucher_paid":      bool(d.voucher_paid),
+            "voucher_paid_date": d.voucher_paid_date.isoformat() if d.voucher_paid_date else None,
+        })
+    return rows
+
+
+@router.put("/vouchers/{disbursement_id}/mark-paid")
+def mark_voucher_paid(disbursement_id: int, db: Session = Depends(get_db)):
+    """Mark a week's voucher amount as paid to the vendor."""
+    d = db.query(PotDisbursement).filter(PotDisbursement.id == disbursement_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Disbursement not found")
+    d.voucher_paid = True
+    d.voucher_paid_date = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "voucher_paid_date": d.voucher_paid_date.isoformat()}
+
+
+@router.put("/vouchers/{disbursement_id}/unmark-paid")
+def unmark_voucher_paid(disbursement_id: int, db: Session = Depends(get_db)):
+    d = db.query(PotDisbursement).filter(PotDisbursement.id == disbursement_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Disbursement not found")
+    d.voucher_paid = False
+    d.voucher_paid_date = None
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/general-ledger")
+def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Chronological ledger of every financial event for a cycle."""
+    if not cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        if not cycle:
+            return []
+        cycle_id = cycle.id
+
+    week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
+    if not week_ids:
+        return []
+
+    entries = []
+
+    # 1. Member collections per week
+    weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
+    week_map = {w.id: w for w in weeks}
+    payments = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids), Payment.status == "paid"
+    ).all()
+    by_week = {}
+    for p in payments:
+        by_week.setdefault(p.week_id, 0)
+        by_week[p.week_id] += p.amount
+    for wid, total in sorted(by_week.items(), key=lambda x: week_map[x[0]].week_number):
+        w = week_map[wid]
+        entries.append({
+            "date":        w.draw_date.isoformat(),
+            "type":        "collection",
+            "description": f"Week {w.week_number} — Member Contributions",
+            "credit":      total,
+            "debit":       0,
+        })
+
+    # 2. Winner cheques (disbursements)
+    disbs = (db.query(PotDisbursement)
+             .filter(PotDisbursement.week_id.in_(week_ids))
+             .order_by(PotDisbursement.cheque_date).all())
+    for d in disbs:
+        winner = ", ".join(
+            sa.member.name for sa in d.winner_spot.spot_assignments if sa.is_active
+        ) if d.winner_spot else "—"
+        wk = week_map.get(d.week_id)
+        entries.append({
+            "date":        d.cheque_date.isoformat(),
+            "type":        "cheque",
+            "description": f"Week {wk.week_number if wk else '?'} — Cheque #{d.cheque_number} → {winner}",
+            "credit":      0,
+            "debit":       d.net_amount,
+        })
+        # Voucher payment (if paid to vendor)
+        if d.voucher_paid and d.voucher_deduction:
+            entries.append({
+                "date":        (d.voucher_paid_date or d.cheque_date).isoformat(),
+                "type":        "voucher",
+                "description": f"Week {wk.week_number if wk else '?'} — Voucher Paid to Vendor",
+                "credit":      0,
+                "debit":       d.voucher_deduction,
+            })
+
+    # 3. Association expenses
+    expenses = db.query(AssociationExpense).filter(
+        AssociationExpense.cycle_id == cycle_id
+    ).order_by(AssociationExpense.expense_date).all()
+    for e in expenses:
+        entries.append({
+            "date":        e.expense_date.isoformat(),
+            "type":        "expense",
+            "description": f"Association Expense — {e.description}",
+            "credit":      0,
+            "debit":       e.amount,
+        })
+
+    # Sort chronologically and add running balance
+    entries.sort(key=lambda x: x["date"])
+    balance = 0.0
+    for e in entries:
+        balance = balance + e["credit"] - e["debit"]
+        e["balance"] = balance
+
+    return entries
 
 
 @router.get("/collection-trend")

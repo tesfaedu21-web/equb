@@ -205,10 +205,12 @@ class PaymentBatch(Base):
     payment_method = Column(String, default="cash")       # cash | bank_transfer | cheque
     reference = Column(String, nullable=True)
     notes = Column(Text)
+    collected_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     member = relationship("Member")
     payments = relationship("Payment", back_populates="batch")
+    collected_by = relationship("User", foreign_keys=[collected_by_id])
 
 
 class Payment(Base):
@@ -224,11 +226,13 @@ class Payment(Base):
     reference = Column(String, nullable=True)
     status = Column(String, default="pending")            # pending | paid | late | missed
     notes = Column(Text)
+    collected_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     member = relationship("Member", back_populates="payments")
     week = relationship("Week", back_populates="payments")
     batch = relationship("PaymentBatch", back_populates="payments")
+    collected_by = relationship("User", foreign_keys=[collected_by_id])
 
 
 # ── Pot transactions ──────────────────────────────────────────────────────────
@@ -282,6 +286,8 @@ class PotDisbursement(Base):
     guarantor_2_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     guarantor_3_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     status = Column(String, default="issued")             # issued | collected
+    voucher_paid = Column(Boolean, default=False)
+    voucher_paid_date = Column(DateTime, nullable=True)
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -400,6 +406,10 @@ def _migrate(engine):
         # Audit trail: track when records were last modified
         "ALTER TABLE members ADD COLUMN updated_at TIMESTAMP",
         "ALTER TABLE payments ADD COLUMN updated_at TIMESTAMP",
+        "ALTER TABLE pot_disbursements ADD COLUMN voucher_paid INTEGER DEFAULT 0",
+        "ALTER TABLE pot_disbursements ADD COLUMN voucher_paid_date TIMESTAMP",
+        "ALTER TABLE payments ADD COLUMN collected_by_id INTEGER REFERENCES users(id)",
+        "ALTER TABLE payment_batches ADD COLUMN collected_by_id INTEGER REFERENCES users(id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

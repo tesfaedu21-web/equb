@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional, List, Literal
 from datetime import datetime
 from collections import defaultdict
-from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle
+from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle, User
 from routers.notifications import send_payment_confirmed
 
 router = APIRouter()
@@ -62,6 +62,8 @@ def payment_to_dict(p: Payment, cycle_id: Optional[int] = None) -> dict:
         "reference": p.reference,
         "status": p.status,
         "notes": p.notes,
+        "collected_by_id": p.collected_by_id,
+        "collected_by_name": p.collected_by.full_name if p.collected_by else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     }
 
@@ -78,6 +80,7 @@ def batch_to_dict(b: PaymentBatch) -> dict:
         "reference": b.reference,
         "notes": b.notes,
         "week_numbers": sorted([p.week.week_number for p in b.payments if p.week]),
+        "collected_by_name": b.collected_by.full_name if b.collected_by else None,
     }
 
 
@@ -192,7 +195,7 @@ def outstanding_weeks(member_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/batch-record")
-def record_batch_payment(data: BatchPaymentRecord, db: Session = Depends(get_db)):
+def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session = Depends(get_db)):
     """
     Record one physical payment event for a member covering multiple weeks.
     Partial payment is allowed — only the weeks in week_ids are marked paid.
@@ -222,6 +225,7 @@ def record_batch_payment(data: BatchPaymentRecord, db: Session = Depends(get_db)
         )
 
     total = sum(p.amount for p in payments)
+    cashier_id = getattr(request.state, "user_id", None)
 
     batch = PaymentBatch(
         member_id=data.member_id,
@@ -231,6 +235,7 @@ def record_batch_payment(data: BatchPaymentRecord, db: Session = Depends(get_db)
         payment_method=data.payment_method,
         reference=data.reference,
         notes=data.notes,
+        collected_by_id=cashier_id,
     )
     db.add(batch)
     db.flush()
@@ -241,6 +246,7 @@ def record_batch_payment(data: BatchPaymentRecord, db: Session = Depends(get_db)
         p.payment_method = data.payment_method
         p.reference = data.reference
         p.batch_id = batch.id
+        p.collected_by_id = cashier_id
 
     db.commit()
     db.refresh(batch)
@@ -251,7 +257,7 @@ def record_batch_payment(data: BatchPaymentRecord, db: Session = Depends(get_db)
 
 
 @router.put("/{payment_id}")
-def update_payment(payment_id: int, data: PaymentUpdate, db: Session = Depends(get_db)):
+def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: Session = Depends(get_db)):
     p = db.query(Payment).filter(Payment.id == payment_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Payment not found")
@@ -268,6 +274,8 @@ def update_payment(payment_id: int, data: PaymentUpdate, db: Session = Depends(g
         p.paid_date = datetime.utcnow()
     if data.notes is not None:
         p.notes = data.notes
+    if data.status == "paid" and was_unpaid:
+        p.collected_by_id = getattr(request.state, "user_id", None)
     db.commit()
     sms_status = "skipped"
     if data.status == "paid" and was_unpaid:
@@ -278,8 +286,9 @@ def update_payment(payment_id: int, data: PaymentUpdate, db: Session = Depends(g
 
 
 @router.post("/bulk")
-def bulk_update(data: BulkPayment, db: Session = Depends(get_db)):
+def bulk_update(data: BulkPayment, request: Request, db: Session = Depends(get_db)):
     paid_date = datetime.fromisoformat(data.paid_date) if data.paid_date else datetime.utcnow()
+    cashier_id = getattr(request.state, "user_id", None)
     updated = 0
     for mid in data.member_ids:
         p = db.query(Payment).filter(
@@ -300,6 +309,7 @@ def bulk_update(data: BulkPayment, db: Session = Depends(get_db)):
                 p.payment_method = data.payment_method
             if data.status == "paid":
                 p.paid_date = paid_date
+                p.collected_by_id = cashier_id
                 send_payment_confirmed(p, db)
             updated += 1
     db.commit()
@@ -429,6 +439,7 @@ def daily_collection(date: Optional[str] = None, db: Session = Depends(get_db)):
             "week_numbers": week_numbers,
             "total_amount": float(b.total_amount),
             "reference": b.reference,
+            "collected_by_name": b.collected_by.full_name if b.collected_by else None,
         }
         groups[method].append(entry)
         totals[method] += float(b.total_amount)
