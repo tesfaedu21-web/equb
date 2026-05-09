@@ -623,11 +623,11 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    q = db.query(Payment).filter(Payment.member_id == member_id)
+    q = db.query(Payment).filter(Payment.member_id == member_id).join(Week)
     if cycle_id:
-        q = q.join(Week).filter(Week.cycle_id == cycle_id)
+        q = q.filter(Week.cycle_id == cycle_id)
 
-    ps = q.join(Week).order_by(Week.week_number).all()
+    ps = q.order_by(Week.week_number).all()
     spot_numbers = [sa.spot.number for sa in member.spot_assignments
                     if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)]
 
