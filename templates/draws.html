@@ -440,24 +440,20 @@
           <span class="text-gray-500">Association (−)</span>
           <span class="text-red-500 font-semibold" x-text="fmt(activeWeek?.association_amount)"></span>
         </div>
-        <template x-if="drawForm.winner_spot_id">
-          <div class="flex justify-between">
-            <span class="text-gray-500"
-                  x-text="'Service Fee (' + (_spotShare(drawForm.winner_spot_id)==='full' ? '21,000' : '10,500') + ') (−)'"></span>
-            <span class="text-orange-600 font-semibold" x-text="fmt(drawServiceFee(drawForm.winner_spot_id))"></span>
-          </div>
-        </template>
-        <template x-if="drawForm.winner_spot_id">
-          <div class="flex justify-between">
-            <span class="text-gray-500"
-                  x-text="'Voucher (' + (_spotShare(drawForm.winner_spot_id)==='full' ? (appSettings.full_spot_voucher??80) : (appSettings.half_spot_voucher??40)) + '×' + (cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0) + ') (−)'"></span>
-            <span class="text-orange-600 font-semibold" x-text="fmt(drawVoucherDeduction(drawForm.winner_spot_id))"></span>
-          </div>
-        </template>
+        <div class="flex justify-between">
+          <span class="text-gray-500"
+                x-text="'Service Fee (' + (_spotShare(drawForm.winner_spot_id)==='full' ? '21,000' : '10,500') + ') (−)'"></span>
+          <span class="text-orange-600 font-semibold" x-text="fmt(drawServiceFee(drawForm.winner_spot_id))"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500"
+                x-text="'Voucher (' + (_spotShare(drawForm.winner_spot_id)==='full' ? (appSettings.full_spot_voucher??80) : (appSettings.half_spot_voucher??40)) + '×' + (cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0) + ') (−)'"></span>
+          <span class="text-orange-600 font-semibold" x-text="fmt(drawVoucherDeduction(drawForm.winner_spot_id))"></span>
+        </div>
         <div class="flex justify-between border-t pt-2 mt-2">
           <span class="text-gray-700 font-semibold">Winner Receives</span>
           <span class="font-bold text-equb-green text-base"
-                x-text="drawForm.winner_spot_id ? fmt(drawWinnerReceives(drawForm.winner_spot_id, activeWeek?.net_pot)) : fmt(activeWeek?.net_pot)"></span>
+                x-text="fmt(drawWinnerReceives(drawForm.winner_spot_id, activeWeek?.net_pot))"></span>
         </div>
       </div>
       <div class="flex gap-3 pt-2">
