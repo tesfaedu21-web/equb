@@ -291,3 +291,27 @@ async def settings_page(request: Request):
     if getattr(request.state, "user_role", "") != "admin":
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "settings.html", _ctx(request))
+
+
+# ── ONE-TIME SETUP — REMOVE AFTER FIRST USE ───────────────────────────────────
+@app.get("/setup-admin-equb2024", response_class=HTMLResponse)
+async def setup_admin(token: str = ""):
+    if token != "equb-init-7x9k":
+        return HTMLResponse("<h2>Invalid token</h2>", status_code=403)
+    db: Session = next(get_db())
+    try:
+        existing = db.query(User).filter(User.username == "admin").first()
+        if existing:
+            return HTMLResponse("<h2>Admin already exists. Login at /login</h2>")
+        u = User(
+            username="admin",
+            full_name="Admin",
+            role="admin",
+            is_active=True,
+            password_hash=_pwd.hash("Equb@2024!"),
+        )
+        db.add(u)
+        db.commit()
+        return HTMLResponse("<h2>Admin created! Username: admin / Password: Equb@2024! — Go to /login and change it immediately.</h2>")
+    finally:
+        db.close()
