@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
-from database import get_db, Member, MemberSpot, Week, Payment, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense
+from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense
 
 router = APIRouter()
 
@@ -626,34 +626,70 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
     q = db.query(Payment).filter(Payment.member_id == member_id).join(Week)
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)
-
     ps = q.order_by(Week.week_number).all()
+
     spot_numbers = [sa.spot.number for sa in member.spot_assignments
                     if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)]
 
+    # ── Batch payment history (grouped by payment event) ─────────────────────
+    batches = (db.query(PaymentBatch)
+               .filter(PaymentBatch.member_id == member_id)
+               .order_by(PaymentBatch.payment_date).all())
+    batch_rows = []
+    for b in batches:
+        bp = b.payments
+        if cycle_id:
+            bp = [p for p in bp if p.week and p.week.cycle_id == cycle_id]
+        if not bp:
+            continue
+        week_numbers = sorted([p.week.week_number for p in bp if p.week])
+        batch_rows.append({
+            "payment_date":     b.payment_date.isoformat(),
+            "weeks_covered":    week_numbers,
+            "weeks_count":      len(week_numbers),
+            "total_amount":     float(sum(p.amount for p in bp)),
+            "payment_method":   b.payment_method,
+            "reference":        b.reference,
+            "collected_by_name": b.collected_by.full_name if b.collected_by else None,
+        })
+    # Payments marked paid directly (no batch)
+    for p in ps:
+        if p.status == "paid" and not p.batch_id and p.week:
+            batch_rows.append({
+                "payment_date":     p.paid_date.isoformat() if p.paid_date else None,
+                "weeks_covered":    [p.week.week_number],
+                "weeks_count":      1,
+                "total_amount":     float(p.amount),
+                "payment_method":   p.payment_method,
+                "reference":        p.reference,
+                "collected_by_name": p.collected_by.full_name if p.collected_by else None,
+            })
+    batch_rows.sort(key=lambda x: x["payment_date"] or "")
+
+    # ── Unpaid / outstanding weeks ────────────────────────────────────────────
+    unpaid = [
+        {
+            "week_number": p.week.week_number,
+            "draw_date":   p.week.draw_date.isoformat(),
+            "status":      p.status,
+            "amount":      float(p.amount),
+        }
+        for p in ps if p.status in ("pending", "missed", "late") and p.week
+    ]
+
     return {
-        "member_id":   member.id,
-        "member_name": member.name,
-        "phone":       member.phone,
+        "member_id":    member.id,
+        "member_name":  member.name,
+        "phone":        member.phone,
         "spot_numbers": spot_numbers,
-        "payments": [
-            {
-                "week_number":    p.week.week_number,
-                "draw_date":      p.week.draw_date.isoformat(),
-                "amount":         float(p.amount),
-                "status":         p.status,
-                "payment_method": p.payment_method,
-                "paid_date":      p.paid_date.isoformat() if p.paid_date else None,
-                "reference":      p.reference,
-            }
-            for p in ps
-        ],
+        "batches":      batch_rows,
+        "unpaid":       unpaid,
         "summary": {
             "paid":                sum(1 for p in ps if p.status == "paid"),
             "missed":              sum(1 for p in ps if p.status == "missed"),
             "late":                sum(1 for p in ps if p.status == "late"),
             "pending":             sum(1 for p in ps if p.status == "pending"),
             "total_paid_amount":   float(sum(p.amount for p in ps if p.status == "paid")),
-            "total_missed_amount": float(sum(p.amount for p in ps if p.status == "missed")),
+            "total_owed_amount":   float(sum(p.amount for p in ps if p.status in ("missed", "late", "pending"))),
         },
     }

@@ -780,58 +780,109 @@ function members() {
       try {
         const d = await this.api('GET', `/api/reports/member/${m.id}/statement${qs}`);
         const fmtNum = n => Number(n||0).toLocaleString('en-ET') + ' ETB';
-        const fmtDt  = s => s ? this.fmtDate(s) : '—';
-        const statusBadge = s => ({
-          paid:    '<span style="color:#15803d;font-weight:600">✓ Paid</span>',
-          missed:  '<span style="color:#991b1b;font-weight:600">✗ Missed</span>',
-          late:    '<span style="color:#9a3412;font-weight:600">⚠ Late</span>',
-          pending: '<span style="color:#854d0e">Pending</span>',
-        }[s] || s);
-        const methodLabel = m => ({cash:'Cash',bank_transfer:'Bank Transfer',cheque:'Cheque'}[m]||m||'—');
-        const rows = d.payments.map((p,i) => `
-          <tr style="border-bottom:1px solid #f0f0f0">
-            <td style="padding:6px 10px;color:#999">${i+1}</td>
-            <td style="padding:6px 10px;font-weight:500">Week ${p.week_number}</td>
-            <td style="padding:6px 10px;color:#666;font-size:12px">${fmtDt(p.draw_date)}</td>
-            <td style="padding:6px 10px">${statusBadge(p.status)}</td>
-            <td style="padding:6px 10px;color:#888;font-size:12px">${p.status==='paid' ? methodLabel(p.payment_method) : '—'}</td>
-            <td style="padding:6px 10px;color:#888;font-size:11px;font-family:monospace">${p.reference||'—'}</td>
-            <td style="padding:6px 10px;color:#888;font-size:12px">${p.status==='paid' ? fmtDt(p.paid_date) : '—'}</td>
-            <td style="padding:6px 10px;text-align:right;font-weight:600;${p.status==='paid'?'color:#15803d':p.status==='missed'?'color:#991b1b':'color:#999'}">${fmtNum(p.amount)}</td>
-          </tr>`).join('');
+        const fmtDt  = s => {
+          if (!s) return '—';
+          const dt = s.includes('T') ? s : s + 'T00:00:00';
+          return this.fmtDate(dt);
+        };
+        const methodLabel = v => ({cash:'Cash',bank_transfer:'Bank Transfer',cheque:'Cheque'}[v]||v||'—');
+        const gregToEth = dateStr => {
+          if (!dateStr) return '';
+          const [y,mo,da] = dateStr.split('T')[0].split('-').map(Number);
+          const mn = ['መስከረም','ጥቅምት','ህዳር','ታህሳስ','ጥር','የካቲት','መጋቢት','ሚያዝያ','ግንቦት','ሰኔ','ሐምሌ','ነሐሴ','ጳጉሜ'];
+          const a=Math.floor((14-mo)/12),yy=y+4800-a,mm=mo+12*a-3;
+          const jdn=da+Math.floor((153*mm+2)/5)+365*yy+Math.floor(yy/4)-Math.floor(yy/100)+Math.floor(yy/400)-32045;
+          const diff=jdn-1724221,k=Math.floor(diff/1461),n=diff%1461,s=4*k+1;
+          const l0=s%4===3?366:365,l1=(s+1)%4===3?366:365,l2=(s+2)%4===3?366:365;
+          let ey,dn;
+          if(n<l0){ey=s;dn=n;}else if(n<l0+l1){ey=s+1;dn=n-l0;}else if(n<l0+l1+l2){ey=s+2;dn=n-l0-l1;}else{ey=s+3;dn=n-l0-l1-l2;}
+          return `${dn%30+1} ${mn[Math.min(Math.floor(dn/30),12)]} ${ey}`;
+        };
+
         const cycleName = this.allCycles.find(c=>c.id==this.selectedCycle)?.name || 'All Cycles';
+
+        // ── Payment history rows (one row per collection event / batch) ───────
+        const batchRows = d.batches.map((b,i) => `
+          <tr style="border-bottom:1px solid #f0f0f0">
+            <td style="padding:7px 10px;color:#999;font-size:12px">${i+1}</td>
+            <td style="padding:7px 10px">
+              <div style="font-weight:700;color:#078930;font-size:13px">${gregToEth(b.payment_date)}</div>
+              <div style="font-size:11px;color:#aaa;margin-top:1px">${fmtDt(b.payment_date)}</div>
+            </td>
+            <td style="padding:7px 10px">
+              <div style="font-weight:600;font-size:13px">Week ${b.weeks_covered.join(', ')}</div>
+              <div style="font-size:11px;color:#888">${b.weeks_count} week${b.weeks_count>1?'s':''}</div>
+            </td>
+            <td style="padding:7px 10px;font-size:12px;color:#555">${methodLabel(b.payment_method)}</td>
+            <td style="padding:7px 10px;font-size:11px;color:#999;font-family:monospace">${b.reference||'—'}</td>
+            <td style="padding:7px 10px;font-size:12px;color:#555">${b.collected_by_name||'—'}</td>
+            <td style="padding:7px 10px;text-align:right;font-weight:700;color:#15803d;font-size:13px">${fmtNum(b.total_amount)}</td>
+          </tr>`).join('');
+
+        // ── Outstanding / unpaid weeks rows ───────────────────────────────────
+        const unpaidRows = d.unpaid.map((p,i) => `
+          <tr style="border-bottom:1px solid #f0f0f0">
+            <td style="padding:6px 10px;color:#999;font-size:12px">${i+1}</td>
+            <td style="padding:6px 10px;font-weight:600">Week ${p.week_number}</td>
+            <td style="padding:6px 10px;color:#666;font-size:12px">${fmtDt(p.draw_date)}</td>
+            <td style="padding:6px 10px">${
+              p.status==='missed' ? '<span style="color:#991b1b;font-weight:600">✗ Missed</span>' :
+              p.status==='late'   ? '<span style="color:#9a3412;font-weight:600">⚠ Late</span>' :
+                                    '<span style="color:#854d0e">Pending</span>'}</td>
+            <td style="padding:6px 10px;text-align:right;font-weight:600;color:#991b1b">${fmtNum(p.amount)}</td>
+          </tr>`).join('');
+
         const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Payment Statement — ${d.member_name}</title>
 <style>
   body{font-family:Arial,sans-serif;padding:28px;color:#111}
-  h1{font-size:18px;margin:0 0 4px}
-  .sub{color:#666;font-size:13px;margin-bottom:16px}
+  h1{font-size:19px;margin:0 0 3px}
+  h2{font-size:13px;font-weight:700;color:#444;margin:20px 0 6px;padding-bottom:4px;border-bottom:2px solid #e5e7eb;text-transform:uppercase;letter-spacing:.05em}
+  .sub{color:#666;font-size:12px;margin-bottom:14px}
   .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
   .card{border:1px solid #e5e7eb;border-radius:8px;padding:10px;text-align:center}
-  .card .label{font-size:11px;color:#999;text-transform:uppercase;margin-bottom:4px}
+  .card .label{font-size:10px;color:#999;text-transform:uppercase;margin-bottom:4px}
   .card .val{font-size:18px;font-weight:700}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  thead th{background:#f9fafb;padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase;border-bottom:2px solid #e5e7eb}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:4px}
+  thead th{background:#f9fafb;padding:7px 10px;text-align:left;font-size:10px;color:#888;text-transform:uppercase;border-bottom:2px solid #e5e7eb}
+  tfoot td{padding:8px 10px;border-top:2px solid #e5e7eb;background:#f9fafb;font-weight:700}
+  .empty{text-align:center;padding:14px;color:#aaa;font-size:12px;border:1px dashed #e5e7eb;border-radius:6px;margin-top:4px}
   @media print{body{padding:0}}
 </style></head><body>
-<h1 class="amharic">Payment Statement — ${d.member_name}</h1>
-<div class="sub">
-  Spot(s): ${d.spot_numbers.join(', ')||'—'} &nbsp;·&nbsp;
-  ${d.phone||'No phone'} &nbsp;·&nbsp; ${cycleName}
-</div>
+<h1>${d.member_name}</h1>
+<div class="sub">Spot(s): ${d.spot_numbers.join(', ')||'—'} &nbsp;·&nbsp; ${d.phone||'No phone'} &nbsp;·&nbsp; ${cycleName}</div>
 <div class="cards">
   <div class="card"><div class="label">Paid Weeks</div><div class="val" style="color:#15803d">${d.summary.paid}</div></div>
   <div class="card"><div class="label">Missed</div><div class="val" style="color:#991b1b">${d.summary.missed}</div></div>
-  <div class="card"><div class="label">Pending</div><div class="val" style="color:#854d0e">${d.summary.pending}</div></div>
-  <div class="card" style="background:#f0fdf4;border-color:#86efac"><div class="label">Total Paid</div><div class="val" style="color:#15803d;font-size:14px">${fmtNum(d.summary.total_paid_amount)}</div></div>
+  <div class="card"><div class="label">Pending/Late</div><div class="val" style="color:#854d0e">${d.summary.pending + d.summary.late}</div></div>
+  <div class="card" style="background:#f0fdf4;border-color:#86efac"><div class="label">Total Paid</div><div class="val" style="color:#15803d;font-size:15px">${fmtNum(d.summary.total_paid_amount)}</div></div>
 </div>
+
+<h2>Payment History</h2>
+${d.batches.length > 0 ? `
 <table>
 <thead><tr>
-  <th>#</th><th>Week</th><th>Draw Date</th><th>Status</th><th>Method</th><th>Ref</th><th>Paid Date</th><th style="text-align:right">Amount</th>
+  <th>#</th><th>Payment Date</th><th>Weeks Paid</th><th>Method</th><th>Ref</th><th>Cashier</th><th style="text-align:right">Amount</th>
 </tr></thead>
-<tbody>${rows}</tbody>
-</table>
-<div style="margin-top:20px;font-size:11px;color:#bbb;text-align:right">Printed: ${new Date().toLocaleString()}</div>
+<tbody>${batchRows}</tbody>
+<tfoot><tr>
+  <td colspan="6" style="text-align:right;color:#555">Total Paid</td>
+  <td style="text-align:right;color:#15803d">${fmtNum(d.summary.total_paid_amount)}</td>
+</tr></tfoot>
+</table>` : '<div class="empty">No payments recorded yet</div>'}
+
+${d.unpaid.length > 0 ? `
+<h2 style="color:#991b1b">Outstanding Weeks (${d.unpaid.length})</h2>
+<table>
+<thead><tr><th>#</th><th>Week</th><th>Draw Date</th><th>Status</th><th style="text-align:right">Amount Owed</th></tr></thead>
+<tbody>${unpaidRows}</tbody>
+<tfoot><tr>
+  <td colspan="4" style="text-align:right;color:#555">Total Outstanding</td>
+  <td style="text-align:right;color:#991b1b">${fmtNum(d.summary.total_owed_amount)}</td>
+</tr></tfoot>
+</table>` : '<div style="margin-top:10px;color:#15803d;font-size:13px;font-weight:600">✓ No outstanding weeks</div>'}
+
+<div style="margin-top:24px;font-size:11px;color:#bbb;text-align:right">Printed: ${new Date().toLocaleString()}</div>
 </body></html>`;
         const win = window.open('','_blank','width=950,height=700');
         win.document.write(html);
