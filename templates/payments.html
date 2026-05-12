@@ -946,8 +946,10 @@ function payments() {
       this.outstanding = [];
       this.showPayModal = true;
       await this.loadOutstanding();
-      // Pre-select all outstanding weeks in order: oldest missing first, current week last
-      this.batch.week_ids = this.outstanding.map(o => o.week_id);
+      // Pre-select missed/late weeks only — leave current (pending) week unchecked
+      this.batch.week_ids = this.outstanding
+        .filter(o => o.status === 'missed' || o.status === 'late')
+        .map(o => o.week_id);
     },
 
     // Open from Debtors tab "Pay" button
@@ -965,8 +967,10 @@ function payments() {
       this.outstanding = [];
       this.showPayModal = true;
       await this.loadOutstanding();
-      // Pre-select all outstanding weeks in order: oldest missing first, current week last
-      this.batch.week_ids = this.outstanding.map(o => o.week_id);
+      // Pre-select missed/late weeks only — leave current (pending) week unchecked
+      this.batch.week_ids = this.outstanding
+        .filter(o => o.status === 'missed' || o.status === 'late')
+        .map(o => o.week_id);
     },
 
     // Open from "New Payment" header button
