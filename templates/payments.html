@@ -699,12 +699,15 @@
               </div>
             </div>
             <div class="border rounded-xl divide-y max-h-56 overflow-y-auto">
-              <template x-for="p in outstanding" :key="p.id">
-                <label class="flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors"
-                       :class="batch.week_ids.includes(p.week_id) ? 'bg-equb-pale/60' : 'hover:bg-gray-50'">
+              <template x-for="(p, idx) in outstanding" :key="p.id">
+                <label class="flex items-center gap-3 px-4 py-2.5 transition-colors"
+                       :class="isWeekEnabled(idx)
+                         ? (batch.week_ids.includes(p.week_id) ? 'bg-equb-pale/60 cursor-pointer' : 'hover:bg-gray-50 cursor-pointer')
+                         : 'opacity-40 cursor-not-allowed bg-gray-50'">
                   <input type="checkbox"
                          :checked="batch.week_ids.includes(p.week_id)"
-                         @change="toggleWeek(p.week_id)"
+                         :disabled="!isWeekEnabled(idx)"
+                         @change="toggleWeek(idx, p.week_id)"
                          class="w-auto rounded accent-equb-green"/>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
@@ -715,10 +718,14 @@
                             class="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">Missed</span>
                       <span x-show="p.status === 'late'"
                             class="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">Late</span>
+                      <span x-show="!isWeekEnabled(idx)"
+                            class="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">Pay previous first</span>
                     </div>
                     <div class="text-xs text-gray-400 mt-0.5" x-text="fmtDate(p.draw_date || p.paid_date || '')"></div>
                   </div>
-                  <span class="font-bold text-gray-700 text-sm shrink-0" x-text="fmt(p.amount)"></span>
+                  <span class="font-bold text-sm shrink-0"
+                        :class="isWeekEnabled(idx) ? 'text-gray-700' : 'text-gray-300'"
+                        x-text="fmt(p.amount)"></span>
                 </label>
               </template>
             </div>
@@ -946,10 +953,6 @@ function payments() {
       this.outstanding = [];
       this.showPayModal = true;
       await this.loadOutstanding();
-      // Pre-select missed/late weeks only — leave current (pending) week unchecked
-      this.batch.week_ids = this.outstanding
-        .filter(o => o.status === 'missed' || o.status === 'late')
-        .map(o => o.week_id);
     },
 
     // Open from Debtors tab "Pay" button
@@ -967,10 +970,6 @@ function payments() {
       this.outstanding = [];
       this.showPayModal = true;
       await this.loadOutstanding();
-      // Pre-select missed/late weeks only — leave current (pending) week unchecked
-      this.batch.week_ids = this.outstanding
-        .filter(o => o.status === 'missed' || o.status === 'late')
-        .map(o => o.week_id);
     },
 
     // Open from "New Payment" header button
@@ -997,10 +996,21 @@ function payments() {
       finally { this.loadingOutstanding = false; }
     },
 
-    toggleWeek(wid) {
-      const idx = this.batch.week_ids.indexOf(wid);
-      if (idx === -1) this.batch.week_ids.push(wid);
-      else this.batch.week_ids.splice(idx, 1);
+    isWeekEnabled(idx) {
+      // Week at position idx is only enabled when all previous weeks are checked
+      for (let i = 0; i < idx; i++) {
+        if (!this.batch.week_ids.includes(this.outstanding[i].week_id)) return false;
+      }
+      return true;
+    },
+    toggleWeek(idx, wid) {
+      if (this.batch.week_ids.includes(wid)) {
+        // Unchecking: also uncheck all weeks after this one
+        const removeIds = this.outstanding.slice(idx).map(o => o.week_id);
+        this.batch.week_ids = this.batch.week_ids.filter(id => !removeIds.includes(id));
+      } else {
+        this.batch.week_ids.push(wid);
+      }
     },
     selectAllWeeks() { this.batch.week_ids = this.outstanding.map(p => p.week_id); },
 
