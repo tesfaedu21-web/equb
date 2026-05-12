@@ -657,8 +657,19 @@
           <template x-if="voucherInfo">
             <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-1">
               <div class="font-semibold text-amber-800 mb-1">Deduction Breakdown</div>
-              <div class="flex justify-between text-gray-600">
-                <span>Gross Pot (net_pot after assoc.)</span>
+              <!-- Real gross pot before any deduction -->
+              <div class="flex justify-between text-gray-600 font-medium">
+                <span>Gross Pot (total collected)</span>
+                <span x-text="fmt((voucherInfo.net_pot||0) + (voucherInfo.association_amount||0))"></span>
+              </div>
+              <!-- Association fund deduction -->
+              <div class="flex justify-between text-red-600 pl-2">
+                <span x-text="'− Association Fund (የማህበር ቁጠባ)'"></span>
+                <span x-text="'−' + fmt(voucherInfo.association_amount)"></span>
+              </div>
+              <!-- Net pot after association -->
+              <div class="flex justify-between text-gray-600 border-t border-amber-100 pt-1">
+                <span>Net Pot (after assoc.)</span>
                 <span x-text="fmt(voucherInfo.net_pot)"></span>
               </div>
               <template x-for="a in voucherInfo.assignments" :key="a.member">
