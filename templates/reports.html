@@ -50,8 +50,24 @@
             class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all">General Ledger</button>
   </div>
 
+  <!-- Skeleton (shown while loading) -->
+  <div x-show="loading" class="space-y-4">
+    <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <template x-for="i in [1,2,3,4,5,6]" :key="i">
+        <div class="card text-center space-y-2 py-5">
+          <div class="skeleton h-3 w-24 mx-auto rounded-full"></div>
+          <div class="skeleton h-7 w-20 mx-auto rounded-lg"></div>
+        </div>
+      </template>
+    </div>
+    <div class="card" style="height:200px;">
+      <div class="skeleton h-4 w-48 rounded-full mb-4"></div>
+      <div class="skeleton rounded-xl" style="height:148px;"></div>
+    </div>
+  </div>
+
   <!-- ── SUMMARY TAB ─────────────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='summary'" x-cloak class="space-y-6" data-print-section>
+  <div x-show="activeTab==='summary' && !loading" x-cloak class="space-y-6" data-print-section>
 
     <!-- KPI cards -->
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -84,6 +100,17 @@
       <div class="card text-center">
         <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Collection Rate</div>
         <div class="text-2xl font-bold text-purple-500" x-text="(paymentSummary.collection_rate || 0) + '%'"></div>
+      </div>
+    </div>
+
+    <!-- Weekly collection chart -->
+    <div class="card" x-show="(paymentSummary.weeks || []).length > 0">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-gray-700">Weekly Collection — Paid vs Outstanding</h3>
+        <span class="text-xs font-bold text-equb-green" x-text="(paymentSummary.collection_rate || 0) + '% overall'"></span>
+      </div>
+      <div style="position:relative;height:160px;">
+        <canvas id="reportsCollectionChart"></canvas>
       </div>
     </div>
 
@@ -226,7 +253,7 @@
   </div>
 
   <!-- ── BALANCE SHEET TAB ───────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='balance'" x-cloak class="space-y-6" data-print-section>
+  <div x-show="activeTab==='balance' && !loading" x-cloak class="space-y-6" data-print-section>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
@@ -392,7 +419,7 @@
   </div>
 
   <!-- ── VOUCHERS TAB ────────────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='vouchers'" x-cloak class="space-y-6" data-print-section>
+  <div x-show="activeTab==='vouchers' && !loading" x-cloak class="space-y-6" data-print-section>
 
     <!-- Summary cards -->
     <div class="grid grid-cols-3 gap-4">
@@ -469,7 +496,7 @@
   </div>
 
   <!-- ── GENERAL LEDGER TAB ─────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='ledger'" x-cloak data-print-section>
+  <div x-show="activeTab==='ledger' && !loading" x-cloak data-print-section>
     <div class="card p-0 overflow-hidden">
       <div class="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
         <div>
@@ -584,6 +611,7 @@ function reports() {
     activeTab: 'summary',
     savingVoucher: null,
     savingExpense: false,
+    loading: true,
     newExpense: { description: '', amount: null, expense_date: '', notes: '' },
 
     async load() {
@@ -596,6 +624,7 @@ function reports() {
     },
 
     async loadAll() {
+      this.loading = true;
       try {
         const cqs = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
         const cycleId = this.selectedCycle;
@@ -625,7 +654,71 @@ function reports() {
           const active = this.allCycles.find(c => c.status === 'active') || this.allCycles[0];
           if (active) this.paymentSummary = await this.api('GET', `/api/payments/summary/cycle/${active.id}`).catch(() => ({}));
         }
+        await this.$nextTick();
+        this._drawReportsChart();
       } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.loading = false; }
+    },
+
+    _drawReportsChart() {
+      if (!window.Chart) return;
+      const canvas = document.getElementById('reportsCollectionChart');
+      if (!canvas) return;
+      if (window._equbReportsChart) window._equbReportsChart.destroy();
+      const weeks = this.paymentSummary.weeks || [];
+      if (!weeks.length) return;
+      window._equbReportsChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: weeks.map(w => 'W' + w.week_number),
+          datasets: [
+            {
+              label: 'Paid',
+              data: weeks.map(w => w.paid),
+              backgroundColor: weeks.map(w => w.is_group_week ? 'rgba(168,85,247,0.75)' : 'rgba(7,137,48,0.75)'),
+              borderRadius: 4,
+              borderSkipped: false,
+            },
+            {
+              label: 'Remaining',
+              data: weeks.map(w => Math.max(0, w.expected - w.paid)),
+              backgroundColor: 'rgba(226,232,240,0.7)',
+              borderRadius: 4,
+              borderSkipped: false,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { font: { size: 11 }, color: '#6b7280', boxWidth: 10, boxHeight: 10 }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(3,12,6,0.92)',
+              titleColor: '#fff',
+              bodyColor: '#86efac',
+              cornerRadius: 10,
+              callbacks: {
+                title: items => 'Week ' + (weeks[items[0].dataIndex]?.week_number || ''),
+                label: item => {
+                  const w = weeks[item.dataIndex];
+                  const rate = w.expected ? Math.round(w.paid / w.expected * 100) : 0;
+                  return item.datasetIndex === 0
+                    ? ` Paid: ${item.raw.toLocaleString()} ETB (${rate}%)`
+                    : ` Remaining: ${item.raw.toLocaleString()} ETB`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: { stacked: true, ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false }, border: { display: false } },
+            y: { stacked: true, ticks: { color: '#9ca3af', font: { size: 11 }, callback: v => v >= 1000 ? (v/1000).toFixed(0)+'K' : v }, grid: { color: 'rgba(0,0,0,0.04)' }, border: { display: false } }
+          }
+        }
+      });
     },
 
     async toggleVoucher(v) {

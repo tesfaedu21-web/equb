@@ -295,6 +295,32 @@
       cursor: pointer;
     }
 
+    /* ── Date input ──────────────────────────────────────────────────────── */
+    input[type="date"] {
+      color-scheme: light;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23078930' stroke-width='2'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
+      background-size: 16px;
+      background-repeat: no-repeat;
+      cursor: pointer;
+      opacity: 0.7;
+      padding: 0 2px;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+    input[type="date"]::-webkit-inner-spin-button,
+    input[type="date"]::-webkit-clear-button { display: none; }
+
+    /* ── Focus-visible (keyboard nav) ────────────────────────────────────── */
+    :focus-visible {
+      outline: 2px solid #078930 !important;
+      outline-offset: 2px !important;
+    }
+    button:focus:not(:focus-visible),
+    a:focus:not(:focus-visible),
+    input:focus:not(:focus-visible),
+    select:focus:not(:focus-visible) { outline: none; }
+
     /* ── Mobile top bar ─────────────────────────────────────────────────── */
     .mobile-topbar {
       background: rgba(255,255,255,0.92);
@@ -703,5 +729,47 @@ function app() {
 </script>
 
 {% block scripts %}{% endblock %}
+
+<script>
+// ── ARIA modal focus management ───────────────────────────────────────────
+(function() {
+  const FOCUSABLE = 'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])';
+  let _lastFocus = null;
+
+  function trapFocus(box, e) {
+    const els = [...box.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent !== null);
+    if (!els.length) return;
+    if (e.shiftKey ? document.activeElement === els[0] : document.activeElement === els[els.length-1]) {
+      e.preventDefault();
+      (e.shiftKey ? els[els.length-1] : els[0]).focus();
+    }
+  }
+
+  const observer = new MutationObserver(() => {
+    document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
+      const box = backdrop.querySelector('.modal-box');
+      if (!box) return;
+      const visible = backdrop.style.display !== 'none' && !backdrop.hasAttribute('x-cloak');
+      if (visible && !box.dataset.ariaReady) {
+        box.setAttribute('role', 'dialog');
+        box.setAttribute('aria-modal', 'true');
+        box.setAttribute('tabindex', '-1');
+        box.dataset.ariaReady = '1';
+        _lastFocus = document.activeElement;
+        setTimeout(() => {
+          const first = box.querySelector(FOCUSABLE);
+          (first || box).focus();
+        }, 80);
+        box.addEventListener('keydown', e => { if (e.key === 'Tab') trapFocus(box, e); });
+      }
+      if (!visible && box.dataset.ariaReady) {
+        delete box.dataset.ariaReady;
+        if (_lastFocus) { _lastFocus.focus(); _lastFocus = null; }
+      }
+    });
+  });
+  observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['style'] });
+})();
+</script>
 </body>
 </html>
