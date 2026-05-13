@@ -12,6 +12,37 @@ router = APIRouter()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _actual_assoc_collected(db: Session, completed_week_ids: list, cycle_id: int) -> float:
+    """
+    Compute the association fund actually collected from paid member payments.
+    Full-spot member who paid → contributes association_deduction per week.
+    Half-spot member who paid → contributes association_deduction / 2 per week.
+    Only counts weeks they actually paid (not missed/pending).
+    """
+    if not completed_week_ids:
+        return 0.0
+    settings = db.query(Settings).first()
+    assoc_ded = (settings.association_deduction or 1000) if settings else 1000
+
+    paid_payments = db.query(Payment).filter(
+        Payment.week_id.in_(completed_week_ids),
+        Payment.status == "paid",
+    ).all()
+
+    # Build member → list of MemberSpot for this cycle
+    ms_by_member: dict = {}
+    for ms in db.query(MemberSpot).filter(
+        MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True
+    ).all():
+        ms_by_member.setdefault(ms.member_id, []).append(ms)
+
+    total = 0.0
+    for p in paid_payments:
+        for ms in ms_by_member.get(p.member_id, []):
+            total += assoc_ded if ms.share == "full" else assoc_ded / 2
+    return total
+
+
 def _check_fully_paid(member: Member, up_to_week_number: int, db: Session,
                        cycle_id: Optional[int] = None) -> dict:
     q = (db.query(Payment).join(Week)
@@ -566,6 +597,17 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
     )
     db.add(tx)
 
+    # Mark buyer's week payment as paid — they settled by acquiring the pot
+    buyer_payment = db.query(Payment).filter(
+        Payment.member_id == buyer.id,
+        Payment.week_id == week_id,
+    ).first()
+    if buyer_payment and buyer_payment.status != "paid":
+        buyer_payment.status = "paid"
+        buyer_payment.payment_method = "pot_sale"
+        buyer_payment.paid_date = datetime.utcnow()
+        buyer_payment.reference = f"Pot purchase week {w.week_number}"
+
     # Mark buyer's spot as received (current cycle only)
     buyer.status = "received"
     for sa in buyer.spot_assignments:
@@ -720,10 +762,11 @@ def association_fund(cycle_id: Optional[int] = None, db: Session = Depends(get_d
 
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first() if cycle_id else None
 
-    # ── Weekly deductions (from drawn/sold weeks) ─────────────────────────────
+    # ── Weekly deductions (actual collected, not theoretical) ─────────────────
     weeks_q = db.query(Week).filter(Week.cycle_id == cycle_id) if cycle_id else db.query(Week)
     completed_weeks = weeks_q.filter(Week.status.in_(["drawn", "sold"])).all()
-    weekly_deductions = sum(w.association_amount or 0 for w in completed_weeks)
+    completed_week_ids = [w.id for w in completed_weeks]
+    weekly_deductions = _actual_assoc_collected(db, completed_week_ids, cycle_id) if cycle_id else 0.0
 
     # ── Association spot + group-week sales profit ────────────────────────────
     tx_q = (db.query(PotTransaction)
@@ -865,7 +908,8 @@ def association_settlement(cycle_id: int, db: Session = Depends(get_db)):
     # Get fund totals (reuse the association_fund logic)
     weeks = db.query(Week).filter(Week.cycle_id == cycle_id).all()
     week_ids = [w.id for w in weeks]
-    weekly_deductions = sum(w.association_amount or 0 for w in weeks if w.status in ("drawn", "sold"))
+    completed_week_ids_settle = [w.id for w in weeks if w.status in ("drawn", "sold")]
+    weekly_deductions = _actual_assoc_collected(db, completed_week_ids_settle, cycle_id)
 
     assoc_txs = db.query(PotTransaction).filter(
         PotTransaction.transaction_type.in_(["assoc_spot_sale", "group_week_sale"]),

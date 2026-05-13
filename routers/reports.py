@@ -113,12 +113,15 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
             Payment.status == "paid"
         ).all()
         total_collected = sum(p.amount for p in paid)
-        # Association fund: sum actual association_amount from each drawn/sold week
+        # Association fund: from actual paid member payments (not theoretical week amounts)
         completed_weeks = db.query(Week).filter(
             Week.cycle_id == cycle.id,
             Week.status.in_(["drawn", "sold"])
         ).all()
-        association_fund = sum(w.association_amount or 0 for w in completed_weeks)
+        from routers.draws import _actual_assoc_collected
+        association_fund = _actual_assoc_collected(
+            db, [w.id for w in completed_weeks], cycle.id
+        )
 
         # Service fee and voucher totals from disbursements for this cycle
         disb_week_ids = [w.id for w in completed_weeks]
@@ -363,12 +366,15 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
     voucher_outstanding= total_voucher - voucher_paid_amt
     total_service_fee  = sum(d.service_fee or 0 for d in disbs)
 
-    # Association fund (from drawn/sold weeks)
+    # Association fund: from actual paid member payments
     completed_weeks = db.query(Week).filter(
         Week.cycle_id == cycle_id,
         Week.status.in_(["drawn", "sold"])
     ).all()
-    association_fund = sum(w.association_amount or 0 for w in completed_weeks)
+    from routers.draws import _actual_assoc_collected
+    association_fund = _actual_assoc_collected(
+        db, [w.id for w in completed_weeks], cycle_id
+    )
 
     # Association expenses paid out
     expenses = db.query(AssociationExpense).filter(

@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import func as sqla_func
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
-from database import get_db, PotDisbursement, Week, Member, Settings, Spot
+from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot
 
 router = APIRouter()
 
@@ -199,12 +200,40 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
                 detail=f"{g.name} has left the group and cannot act as guarantor"
             )
 
-    net_amount = data.gross_amount - (data.service_fee or 0) - (data.voucher_deduction or 0)
+    # ── Service fee: always auto-calculated from winner's share type ─────────
+    settings = db.query(Settings).first()
+    if not settings:
+        raise HTTPException(status_code=500, detail="Settings not configured")
+    assignments = [sa for sa in w.winner_spot.spot_assignments
+                   if sa.is_active and sa.cycle_id == w.cycle_id] if w.winner_spot else []
+    service_fee = sum(
+        settings.full_spot_amount if sa.share == "full" else settings.half_spot_amount
+        for sa in assignments
+    )
+
+    # ── Cash sufficiency check ────────────────────────────────────────────────
+    cycle_week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == w.cycle_id).all()]
+    total_collected = db.query(sqla_func.sum(Payment.amount)).filter(
+        Payment.week_id.in_(cycle_week_ids), Payment.status == "paid"
+    ).scalar() or 0.0
+    already_disbursed = db.query(sqla_func.sum(PotDisbursement.gross_amount)).filter(
+        PotDisbursement.week_id.in_(cycle_week_ids)
+    ).scalar() or 0.0
+    available = total_collected - already_disbursed
+    if data.gross_amount > available + 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient funds: {available:,.0f} ETB available, "
+                   f"{data.gross_amount:,.0f} ETB requested. "
+                   f"Ensure more members have paid before disbursing."
+        )
+
+    net_amount = data.gross_amount - service_fee - (data.voucher_deduction or 0)
     d = PotDisbursement(
         week_id=data.week_id,
         winner_spot_id=w.winner_spot_id,
         gross_amount=data.gross_amount,
-        service_fee=data.service_fee or 0,
+        service_fee=service_fee,
         voucher_deduction=data.voucher_deduction or 0,
         net_amount=net_amount,
         cheque_number=data.cheque_number,

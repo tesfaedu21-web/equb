@@ -712,8 +712,13 @@
               <input x-model.number="disbForm.gross_amount" type="number" step="100"/>
             </div>
             <div>
-              <label class="block text-xs text-gray-500 mb-1">Service Fee (−)</label>
-              <input x-model.number="disbForm.service_fee" type="number" step="100"/>
+              <label class="block text-xs text-gray-500 mb-1">
+                Service Fee (−)
+                <span class="ml-1 text-xs text-equb-green font-semibold">Auto</span>
+              </label>
+              <input x-model.number="disbForm.service_fee" type="number" step="100" readonly
+                     class="bg-gray-50 cursor-not-allowed text-gray-400"
+                     title="Auto-calculated: full spot = full amount, half spot = half amount"/>
             </div>
             <div>
               <label class="block text-xs text-gray-500 mb-1">Voucher Deduction (−)</label>
