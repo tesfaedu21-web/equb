@@ -217,8 +217,11 @@ async def auth_middleware(request: Request, call_next):
 async def csrf_middleware(request: Request, call_next):
     if (request.url.path.startswith("/api/")
             and request.method in ("POST", "PUT", "DELETE", "PATCH")):
-        if request.headers.get("X-Requested-With") != "XMLHttpRequest":
-            return JSONResponse({"detail": "CSRF check failed"}, status_code=403)
+        content_type = request.headers.get("content-type", "")
+        # Multipart file uploads can't originate cross-site (browser file API restriction)
+        if not content_type.startswith("multipart/form-data"):
+            if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+                return JSONResponse({"detail": "CSRF check failed"}, status_code=403)
     return await call_next(request)
 
 
