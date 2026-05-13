@@ -642,7 +642,7 @@ function app() {
       const loader = document.getElementById('global-loader');
       this._loadingCount++;
       if (loader) loader.style.display = 'block';
-      const opts = {method, headers:{'Content-Type':'application/json'}};
+      const opts = {method, headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}};
       if(body) opts.body = JSON.stringify(body);
       try {
         const res = await fetch(url, opts);

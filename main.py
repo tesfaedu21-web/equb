@@ -213,6 +213,15 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def csrf_middleware(request: Request, call_next):
+    if (request.url.path.startswith("/api/")
+            and request.method in ("POST", "PUT", "DELETE", "PATCH")):
+        if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+            return JSONResponse({"detail": "CSRF check failed"}, status_code=403)
+    return await call_next(request)
+
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,

@@ -521,12 +521,17 @@ def init_db():
         _seed_templates(db)
         _backfill_cycle_settings(db)
         if db.query(User).count() == 0:
-            db.add(User(username="admin", password_hash=_pwd.hash("admin123"),
-                        full_name="Administrator", role="admin"))
-            db.add(User(username="cashier", password_hash=_pwd.hash("cashier123"),
-                        full_name="Cashier", role="cashier"))
+            import secrets as _sec
+            _auto_pw = _sec.token_urlsafe(12)
+            db.add(User(username="admin", password_hash=_pwd.hash(_auto_pw),
+                        full_name="Administrator", role="admin", is_active=True))
             db.commit()
-            print("[init] Default users created — admin:admin123 / cashier:cashier123")
+            print("\n" + "=" * 60)
+            print("[FIRST RUN] Admin account created!")
+            print(f"  Username : admin")
+            print(f"  Password : {_auto_pw}")
+            print("  Change this immediately via Settings → User Accounts")
+            print("=" * 60 + "\n")
         if db.query(Spot).count() == 0:
             s = Settings.__new__(Settings)
             cfg = db.query(Settings).first()

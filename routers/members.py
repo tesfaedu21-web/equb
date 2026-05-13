@@ -40,10 +40,6 @@ class MemberCreate(BaseModel):
     spots: List[SpotAssignment] = []
     notes: Optional[str] = None
 
-    @classmethod
-    def model_post_init(cls, __context):
-        pass
-
     def model_post_init(self, __context):
         self.phone = _validate_phone(self.phone)
         if not self.name or not self.name.strip():
@@ -119,7 +115,9 @@ def _member_dict(m: Member, cycle_id: Optional[int] = None) -> dict:
 
 @router.get("")
 def list_members(search: str = "", status: str = "",
-                 cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+                 cycle_id: Optional[int] = None,
+                 limit: int = 500, offset: int = 0,
+                 db: Session = Depends(get_db)):
     q = db.query(Member)
     if search:
         try:
@@ -147,7 +145,7 @@ def list_members(search: str = "", status: str = "",
             ).distinct().all()
         ]
         q = q.filter(Member.id.in_(member_ids_in_cycle))
-    members = q.order_by(Member.name).all()
+    members = q.order_by(Member.name).offset(offset).limit(limit).all()
     return [_member_dict(m, cycle_id) for m in members]
 
 
@@ -379,6 +377,8 @@ async def import_members(file: UploadFile = File(...), db: Session = Depends(get
     """Import members from CSV or Excel. Returns per-row results."""
     filename = (file.filename or "").lower()
     content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large (max 5 MB)")
 
     rows = []
     try:

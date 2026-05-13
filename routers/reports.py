@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -465,6 +466,66 @@ def unmark_voucher_paid(disbursement_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Disbursement not found")
     d.voucher_paid = False
     d.voucher_paid_date = None
+    db.commit()
+    return {"ok": True}
+
+
+# ── Association Expenses ──────────────────────────────────────────────────────
+
+class ExpenseCreate(BaseModel):
+    description: str
+    amount: float
+    expense_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.get("/association-expenses")
+def list_expenses(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    if not cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle_id = cycle.id if cycle else None
+    if not cycle_id:
+        return []
+    exps = (db.query(AssociationExpense)
+              .filter(AssociationExpense.cycle_id == cycle_id)
+              .order_by(AssociationExpense.expense_date)
+              .all())
+    return [{"id": e.id, "description": e.description, "amount": e.amount,
+             "expense_date": e.expense_date.isoformat() if e.expense_date else None,
+             "notes": e.notes} for e in exps]
+
+
+@router.post("/association-expenses")
+def add_expense(data: ExpenseCreate, request: Request, db: Session = Depends(get_db)):
+    if getattr(request.state, "user_role", None) != "admin":
+        raise HTTPException(403, "Admin only")
+    cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    if not cycle:
+        raise HTTPException(404, "No active cycle")
+    exp = AssociationExpense(
+        cycle_id=cycle.id,
+        description=data.description.strip(),
+        amount=data.amount,
+        expense_date=(datetime.fromisoformat(data.expense_date)
+                      if data.expense_date else datetime.utcnow()),
+        notes=data.notes,
+    )
+    db.add(exp)
+    db.commit()
+    db.refresh(exp)
+    return {"id": exp.id, "description": exp.description, "amount": exp.amount,
+            "expense_date": exp.expense_date.isoformat() if exp.expense_date else None,
+            "notes": exp.notes}
+
+
+@router.delete("/association-expenses/{expense_id}")
+def delete_expense(expense_id: int, request: Request, db: Session = Depends(get_db)):
+    if getattr(request.state, "user_role", None) != "admin":
+        raise HTTPException(403, "Admin only")
+    exp = db.query(AssociationExpense).filter(AssociationExpense.id == expense_id).first()
+    if not exp:
+        raise HTTPException(404, "Expense not found")
+    db.delete(exp)
     db.commit()
     return {"ok": True}
 
