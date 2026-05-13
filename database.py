@@ -1,6 +1,6 @@
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
-    DateTime, ForeignKey, Text, UniqueConstraint,
+    DateTime, ForeignKey, Text, UniqueConstraint, Index,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
@@ -166,6 +166,10 @@ class MemberSpot(Base):
     cycle_id scopes the membership to a specific cycle — same member can join different cycles.
     """
     __tablename__ = "member_spots"
+    __table_args__ = (
+        UniqueConstraint("member_id", "spot_id", "cycle_id", name="uq_member_spot_cycle"),
+        Index("ix_member_spots_cycle_active", "cycle_id", "is_active"),
+    )
     id = Column(Integer, primary_key=True)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     spot_id = Column(Integer, ForeignKey("spots.id"), nullable=False)
@@ -185,6 +189,9 @@ class MemberSpot(Base):
 
 class Week(Base):
     __tablename__ = "weeks"
+    __table_args__ = (
+        Index("ix_weeks_cycle_status", "cycle_id", "status"),
+    )
     id = Column(Integer, primary_key=True)
     cycle_id = Column(Integer, ForeignKey("cycles.id"), nullable=False)
     week_number = Column(Integer, nullable=False)
@@ -228,6 +235,10 @@ class PaymentBatch(Base):
 class Payment(Base):
     """Weekly payment record per member (amount = total for all their spots that week)."""
     __tablename__ = "payments"
+    __table_args__ = (
+        Index("ix_payments_week_status", "week_id", "status"),
+        Index("ix_payments_member_status", "member_id", "status"),
+    )
     id = Column(Integer, primary_key=True)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     week_id = Column(Integer, ForeignKey("weeks.id"), nullable=False)
@@ -458,6 +469,13 @@ def _migrate(engine):
         "ALTER TABLE cycles ADD COLUMN total_assoc_spots INTEGER",
         "ALTER TABLE cycles ADD COLUMN group_week_interval INTEGER",
         "ALTER TABLE cycles ADD COLUMN include_worker_slot INTEGER",
+        # Performance indexes
+        "CREATE INDEX IF NOT EXISTS ix_weeks_cycle_status ON weeks(cycle_id, status)",
+        "CREATE INDEX IF NOT EXISTS ix_payments_week_status ON payments(week_id, status)",
+        "CREATE INDEX IF NOT EXISTS ix_payments_member_status ON payments(member_id, status)",
+        "CREATE INDEX IF NOT EXISTS ix_member_spots_cycle_active ON member_spots(cycle_id, is_active)",
+        # Prevent double-assignment of same member to same spot in same cycle
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_member_spot_cycle ON member_spots(member_id, spot_id, cycle_id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

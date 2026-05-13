@@ -52,7 +52,7 @@ def _to_dict(d: PotDisbursement) -> dict:
             if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
         ] if d.winner_spot else [],
         "gross_amount": d.gross_amount,
-        "service_fee": getattr(d, "service_fee", 0) or 0,
+        "service_fee": d.service_fee or 0,
         "voucher_deduction": d.voucher_deduction,
         "net_amount": d.net_amount,
         "cheque_number": d.cheque_number,

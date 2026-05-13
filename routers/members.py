@@ -18,11 +18,37 @@ class SpotAssignment(BaseModel):
     weekly_contribution: float = 21000
 
 
+import re as _re
+
+_PHONE_RE = _re.compile(r"^\+?[1-9]\d{6,14}$")
+
+def _validate_phone(v: Optional[str]) -> Optional[str]:
+    if v is None:
+        return None
+    cleaned = _re.sub(r"[\s\-()]", "", v)
+    if cleaned and not _PHONE_RE.match(cleaned):
+        raise ValueError(
+            "Phone must be a valid number (e.g. +251912345678). "
+            "Only digits, +, spaces, dashes and parentheses allowed."
+        )
+    return cleaned or None
+
+
 class MemberCreate(BaseModel):
     name: str
     phone: Optional[str] = None
     spots: List[SpotAssignment] = []
     notes: Optional[str] = None
+
+    @classmethod
+    def model_post_init(cls, __context):
+        pass
+
+    def model_post_init(self, __context):
+        self.phone = _validate_phone(self.phone)
+        if not self.name or not self.name.strip():
+            raise ValueError("Name is required")
+        self.name = self.name.strip()
 
 
 class MemberUpdate(BaseModel):
@@ -30,6 +56,12 @@ class MemberUpdate(BaseModel):
     phone: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+
+    def model_post_init(self, __context):
+        if self.phone is not None:
+            self.phone = _validate_phone(self.phone)
+        if self.name is not None:
+            self.name = self.name.strip()
 
 
 class SpotAdd(BaseModel):

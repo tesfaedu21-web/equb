@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
-from datetime import datetime
+from datetime import datetime, date as _date
 from collections import defaultdict
-from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle, User
+from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle
 from routers.notifications import send_payment_confirmed
 
 router = APIRouter()
@@ -193,9 +193,8 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
             db.bulk_save_objects(new_records)
             db.commit()
 
-    from datetime import datetime as _dt
     from sqlalchemy import or_
-    now = _dt.utcnow()
+    now = datetime.utcnow()
     q = (db.query(Payment)
          .filter(Payment.member_id == member_id,
                  Payment.status.in_(["pending", "late", "missed"]))
@@ -352,8 +351,7 @@ def member_batches(member_id: int, limit: int = 50, db: Session = Depends(get_db
 @router.get("/outstanding-members")
 def outstanding_members(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """All members (active or received) that have unpaid past-due weeks in the given cycle."""
-    from datetime import datetime as _dt
-    now = _dt.utcnow()
+    now = datetime.utcnow()
 
     if not cycle_id:
         active = db.query(Cycle).filter(Cycle.status == "active").first()
@@ -433,7 +431,6 @@ def cycle_payment_summary(cycle_id: int, db: Session = Depends(get_db)):
 def daily_collection(date: Optional[str] = None, cycle_id: Optional[int] = None,
                      db: Session = Depends(get_db)):
     """Return all PaymentBatches recorded on a given date, grouped by payment method."""
-    from datetime import date as _date
     if date:
         try:
             target = _date.fromisoformat(date)

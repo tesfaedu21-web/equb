@@ -152,8 +152,7 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
     # ── Debtors count (members with any past-due unpaid weeks) ──────────────
     debtors_count = 0
     if cycle:
-        from datetime import datetime as _dt
-        now_dt = _dt.utcnow()
+        now_dt = datetime.utcnow()
         debtors_count = (
             db.query(Payment.member_id)
             .join(Week, Week.id == Payment.week_id)
@@ -558,20 +557,29 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
 @router.get("/collection-trend")
 def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Week-by-week collection totals for the trend chart."""
+    from collections import defaultdict
     if not cycle_id:
         c = db.query(Cycle).filter(Cycle.status == "active").first()
         if not c:
             return []
         cycle_id = c.id
     weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
+    if not weeks:
+        return []
+    week_ids = [w.id for w in weeks]
+    # Single query for all payments in the cycle
+    all_payments = db.query(Payment).filter(Payment.week_id.in_(week_ids)).all()
+    by_week: dict = defaultdict(list)
+    for p in all_payments:
+        by_week[p.week_id].append(p)
     result = []
     for w in weeks:
-        ps = db.query(Payment).filter(Payment.week_id == w.id).all()
+        ps = by_week[w.id]
         result.append({
-            "week_number": w.week_number,
-            "draw_date": w.draw_date.isoformat(),
-            "is_group_week": w.is_group_week,
-            "week_status": w.status,
+            "week_number":  w.week_number,
+            "draw_date":    w.draw_date.isoformat(),
+            "is_group_week":w.is_group_week,
+            "week_status":  w.status,
             "paid":         float(sum(p.amount for p in ps if p.status == "paid")),
             "missed":       float(sum(p.amount for p in ps if p.status == "missed")),
             "paid_count":   sum(1 for p in ps if p.status == "paid"),
@@ -585,46 +593,62 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
 @router.get("/member-ranking")
 def member_ranking(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Members ranked by payment consistency (on-time rate)."""
+    from collections import defaultdict
     if not cycle_id:
         c = db.query(Cycle).filter(Cycle.status == "active").first()
         if not c:
             return []
         cycle_id = c.id
 
-    member_ids = [r[0] for r in db.query(MemberSpot.member_id).filter(
+    # Single query for all cycle memberships (spots per member)
+    memberships = db.query(MemberSpot).filter(
         MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True
-    ).distinct().all()]
+    ).all()
+    if not memberships:
+        return []
+    member_ids = list({ms.member_id for ms in memberships})
+    spots_by_member: dict = defaultdict(list)
+    for ms in memberships:
+        if ms.spot:
+            spots_by_member[ms.member_id].append(ms.spot.number)
 
+    # Single query for all members
+    members = {m.id: m for m in db.query(Member).filter(Member.id.in_(member_ids)).all()}
+
+    # Single query for all completed-week payments
     completed_week_ids = [r[0] for r in db.query(Week.id).filter(
         Week.cycle_id == cycle_id, Week.status.in_(["drawn", "sold"])
     ).all()]
 
+    payments_by_member: dict = defaultdict(list)
+    if completed_week_ids:
+        for p in db.query(Payment).filter(
+            Payment.member_id.in_(member_ids),
+            Payment.week_id.in_(completed_week_ids),
+        ).all():
+            payments_by_member[p.member_id].append(p.status)
+
     result = []
     for mid in member_ids:
-        member = db.query(Member).filter(Member.id == mid).first()
+        member = members.get(mid)
         if not member:
             continue
-        ps = db.query(Payment).filter(
-            Payment.member_id == mid,
-            Payment.week_id.in_(completed_week_ids),
-        ).all() if completed_week_ids else []
-        paid   = sum(1 for p in ps if p.status == "paid")
-        missed = sum(1 for p in ps if p.status in ["missed"])
-        late   = sum(1 for p in ps if p.status == "late")
-        total  = len(ps)
+        statuses = payments_by_member[mid]
+        paid   = statuses.count("paid")
+        missed = statuses.count("missed")
+        late   = statuses.count("late")
+        total  = len(statuses)
         rate   = round(paid / total * 100, 1) if total else 100.0
-        spot_numbers = [sa.spot.number for sa in member.spot_assignments
-                        if sa.is_active and sa.cycle_id == cycle_id]
         result.append({
-            "member_id":   mid,
-            "member_name": member.name,
-            "phone":       member.phone,
-            "spot_numbers": spot_numbers,
-            "paid_weeks":  paid,
+            "member_id":    mid,
+            "member_name":  member.name,
+            "phone":        member.phone,
+            "spot_numbers": sorted(spots_by_member[mid]),
+            "paid_weeks":   paid,
             "missed_weeks": missed,
-            "late_weeks":  late,
-            "total_weeks": total,
-            "rate":        rate,
+            "late_weeks":   late,
+            "total_weeks":  total,
+            "rate":         rate,
         })
     return sorted(result, key=lambda x: (-x["rate"], -x["paid_weeks"]))
 

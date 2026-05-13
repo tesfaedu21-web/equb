@@ -469,6 +469,16 @@ def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = 
     if w.cycle.draw_phase != "active":
         raise HTTPException(status_code=400, detail="Draws have not been started yet by admin")
 
+    # Guard: block draw if all member spots in this cycle have already received a pot
+    active_spots_left = db.query(Spot).filter(
+        Spot.status == "active", Spot.spot_type == "member"
+    ).count()
+    if active_spots_left == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="All member spots have already received a pot this cycle. No further draws possible."
+        )
+
     spot = db.query(Spot).filter(Spot.id == data.winner_spot_id).first()
     if not spot:
         raise HTTPException(status_code=404, detail="Spot not found")
@@ -678,6 +688,90 @@ def active_members_for_sale(cycle_id: Optional[int] = None, db: Session = Depend
             "spot_count": len(sas),
         }
     return [_member_dict(m) for m in members]
+
+
+@router.get("/cycles/{cycle_id}/closure-checklist")
+def closure_checklist(cycle_id: int, db: Session = Depends(get_db)):
+    """
+    Pre-close health check for a cycle.
+    Returns a list of checklist items — each with ok=True/False and a detail message.
+    Admin should verify all items are ok=True before closing a cycle.
+    """
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+
+    weeks = db.query(Week).filter(Week.cycle_id == cycle_id).all()
+    week_ids = [w.id for w in weeks]
+    total_weeks = len(weeks)
+    drawn_weeks = sum(1 for w in weeks if w.status in ("drawn", "sold"))
+
+    # 1. All weeks drawn/sold?
+    all_drawn = drawn_weeks == total_weeks
+    items = [{
+        "check": "All weeks drawn or sold",
+        "ok": all_drawn,
+        "detail": f"{drawn_weeks}/{total_weeks} weeks completed"
+            + ("" if all_drawn else f" — {total_weeks - drawn_weeks} still pending"),
+    }]
+
+    # 2. All members paid up (no pending/late/missed)?
+    unpaid_count = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids),
+        Payment.status.in_(["pending", "late", "missed"])
+    ).count() if week_ids else 0
+    items.append({
+        "check": "All member payments settled",
+        "ok": unpaid_count == 0,
+        "detail": "All payments settled" if unpaid_count == 0
+            else f"{unpaid_count} unpaid payment record(s) remain",
+    })
+
+    # 3. All drawn weeks have a disbursement?
+    disbursed_week_ids = {r[0] for r in db.query(PotDisbursement.week_id).filter(
+        PotDisbursement.week_id.in_(week_ids)
+    ).all()} if week_ids else set()
+    drawn_week_ids = {w.id for w in weeks if w.status in ("drawn", "sold")}
+    undisbursed = drawn_week_ids - disbursed_week_ids
+    items.append({
+        "check": "All pots disbursed (cheques issued)",
+        "ok": len(undisbursed) == 0,
+        "detail": "All cheques issued" if not undisbursed
+            else f"{len(undisbursed)} drawn week(s) without a cheque record",
+    })
+
+    # 4. All vouchers paid to vendor?
+    disbs = db.query(PotDisbursement).filter(
+        PotDisbursement.week_id.in_(week_ids)
+    ).all() if week_ids else []
+    unpaid_vouchers = [d for d in disbs if d.voucher_deduction and not d.voucher_paid]
+    items.append({
+        "check": "All vouchers paid to vendor",
+        "ok": len(unpaid_vouchers) == 0,
+        "detail": "All vouchers settled" if not unpaid_vouchers
+            else f"{len(unpaid_vouchers)} voucher(s) not yet paid to vendor",
+    })
+
+    # 5. Association fund distribution planned?
+    from database import AssociationExpense
+    assoc_expenses = db.query(AssociationExpense).filter(
+        AssociationExpense.cycle_id == cycle_id
+    ).count()
+    items.append({
+        "check": "Association fund reviewed (expenses logged)",
+        "ok": assoc_expenses > 0 or drawn_weeks == 0,
+        "detail": f"{assoc_expenses} expense record(s) logged" if assoc_expenses
+            else "No association expenses recorded — confirm fund distribution",
+    })
+
+    all_ok = all(i["ok"] for i in items)
+    return {
+        "cycle_id": cycle_id,
+        "cycle_name": cycle.name,
+        "cycle_status": cycle.status,
+        "all_clear": all_ok,
+        "items": items,
+    }
 
 
 @router.post("/cycles/{cycle_id}/reactivate")

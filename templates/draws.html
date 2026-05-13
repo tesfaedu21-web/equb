@@ -19,6 +19,14 @@
           <option :value="c.id" x-text="`${c.name} (${c.drawn_weeks}/${c.total_weeks})`"></option>
         </template>
       </select>
+      <!-- Closure Checklist (admin only) -->
+      <button x-show="isAdmin && selectedCycle" @click="openChecklist()"
+              class="p-2 rounded-xl text-gray-300 hover:text-green-700 hover:bg-green-50 transition-colors" title="Cycle closure checklist">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+        </svg>
+      </button>
       <!-- Delete Cycle (admin only) -->
       <button x-show="isAdmin && selectedCycle" @click="deleteCycle()"
               class="p-2 rounded-xl text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete this cycle (admin)">
@@ -228,7 +236,7 @@
         <span class="text-xs text-gray-400">All cycles</span>
       </div>
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm min-w-[700px]">
           <thead class="bg-gray-50 border-b">
             <tr>
               <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Week</th>
@@ -774,6 +782,41 @@
   </div>
 </div><!-- end disbursement modal -->
 
+<!-- Cycle Closure Checklist Modal -->
+<div x-show="showChecklist" x-cloak class="modal-backdrop" @click.self="showChecklist = false">
+  <div class="modal-box max-w-lg">
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-gray-900">Cycle Closure Checklist</h2>
+        <button @click="showChecklist = false" class="text-gray-400 hover:text-gray-600">✕</button>
+      </div>
+      <div x-show="checklistLoading" class="text-center py-8 text-gray-400">Loading…</div>
+      <div x-show="!checklistLoading && checklist">
+        <div class="mb-4 flex items-center gap-2">
+          <span x-show="checklist?.all_clear" class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm font-semibold">All Clear — Safe to Close</span>
+          <span x-show="!checklist?.all_clear" class="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-semibold">Action Required</span>
+        </div>
+        <div class="space-y-2">
+          <template x-for="item in checklist?.items || []" :key="item.check">
+            <div class="flex items-start gap-3 p-3 rounded-xl" :class="item.ok ? 'bg-green-50' : 'bg-amber-50'">
+              <span class="mt-0.5 text-lg leading-none" x-text="item.ok ? '✅' : '⚠️'"></span>
+              <div>
+                <div class="text-sm font-medium text-gray-800" x-text="item.check"></div>
+                <div class="text-xs text-gray-500 mt-0.5" x-text="item.detail"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="flex gap-3 mt-5">
+        <button @click="showChecklist = false" class="btn-secondary flex-1">Close</button>
+        <button x-show="checklist?.all_clear" @click="showChecklist = false; deleteCycle()"
+                class="btn-danger flex-1">Close Cycle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Delete Cycle Confirmation Modal -->
 <div x-show="showDeleteConfirm" x-cloak class="modal-backdrop" @click.self="showDeleteConfirm = false">
   <div class="modal-box max-w-md">
@@ -841,6 +884,9 @@ function draws() {
     showDisbursementModal: false,
     showDeleteConfirm: false,
     deleteCycleTarget: null,
+    showChecklist: false,
+    checklistLoading: false,
+    checklist: null,
     activeWeek: null,
     saving: false,
     startDrawsWeek: null,
@@ -1143,6 +1189,16 @@ function draws() {
         this.showToast('Marked as collected');
         await this.loadCycleAndWeeks();
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async openChecklist() {
+      this.showChecklist = true;
+      this.checklist = null;
+      this.checklistLoading = true;
+      try {
+        this.checklist = await this.api('GET', `/api/draws/cycles/${this.selectedCycle}/closure-checklist`);
+      } catch(e) { this.showToast(e.message, 'error'); this.showChecklist = false; }
+      finally { this.checklistLoading = false; }
     },
 
     deleteCycle() {

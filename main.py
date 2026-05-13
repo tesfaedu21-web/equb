@@ -1,7 +1,7 @@
 import os
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Request, Form
 from fastapi.templating import Jinja2Templates
@@ -74,7 +74,6 @@ async def auto_close_past_weeks():
     """
     db = next(get_db())
     try:
-        from datetime import timedelta
         now = datetime.utcnow()
         late_cutoff   = now - timedelta(days=0)   # draw_date < now → at least late
         missed_cutoff = now - timedelta(days=3)   # draw_date < now-3d → missed
@@ -116,19 +115,57 @@ async def auto_close_past_weeks():
         db.close()
 
 
+async def send_pre_draw_reminders():
+    """
+    Daily at 18:00 UTC (9 PM EAT): SMS any member with unpaid weeks whose next draw
+    is within 48 hours. Helps members pay before the draw so they remain eligible.
+    """
+    db = next(get_db())
+    try:
+        from routers.notifications import send_payment_reminder
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        cutoff = now + timedelta(hours=48)
+        upcoming_weeks = (
+            db.query(Week)
+            .filter(Week.status == "pending", Week.draw_date >= now, Week.draw_date <= cutoff)
+            .all()
+        )
+        sent = 0
+        for w in upcoming_weeks:
+            unpaid = (
+                db.query(Payment)
+                .filter(Payment.week_id == w.id, Payment.status.in_(["pending", "late"]))
+                .all()
+            )
+            for p in unpaid:
+                try:
+                    send_payment_reminder(p, db)
+                    sent += 1
+                except Exception:
+                    pass
+        if sent:
+            print(f"[scheduler] Pre-draw reminders sent: {sent}")
+    except Exception as e:
+        print(f"[scheduler] Pre-draw reminder error: {e}")
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 async def startup():
     init_db()
-    # Schedule nightly auto-close at 21:00 UTC (midnight Addis Ababa UTC+3)
+    # Schedule nightly jobs (UTC times = EAT - 3h)
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
         scheduler = AsyncIOScheduler()
-        scheduler.add_job(auto_close_past_weeks, CronTrigger(hour=21, minute=0))
+        scheduler.add_job(auto_close_past_weeks,   CronTrigger(hour=21, minute=0))
+        scheduler.add_job(send_pre_draw_reminders, CronTrigger(hour=18, minute=0))
         scheduler.start()
         print("[scheduler] Nightly auto-close job scheduled (21:00 UTC = midnight EAT)")
+        print("[scheduler] Pre-draw reminder job scheduled (18:00 UTC = 9 PM EAT)")
     except ImportError:
-        print("[scheduler] APScheduler not installed — skipping auto-close job")
+        print("[scheduler] APScheduler not installed — skipping scheduled jobs")
 
 
 # ── Security headers ──────────────────────────────────────────────────────────
@@ -302,7 +339,8 @@ async def settings_page(request: Request):
 async def setup_admin(token: str = ""):
     if os.environ.get("SETUP_DISABLED", "").lower() in ("1", "true", "yes"):
         return HTMLResponse("<h2>Setup endpoint is disabled</h2>", status_code=403)
-    if token != "equb-init-7x9k":
+    expected = os.environ.get("SETUP_TOKEN", "equb-init-7x9k")
+    if not token or token != expected:
         return HTMLResponse("<h2>Invalid token</h2>", status_code=403)
     db: Session = next(get_db())
     try:
