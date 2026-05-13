@@ -659,9 +659,11 @@
       <!-- Member selector (shown only when opened from "New Payment" button) -->
       <div x-show="!batch._fromRow">
         <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Member</label>
-        <select x-model.number="batch.member_id" @change="loadOutstanding()" class="amharic">
+        <input x-model="memberSearch" type="text" placeholder="Search by name or spot number…"
+               class="mb-2 text-sm" />
+        <select x-model.number="batch.member_id" @change="loadOutstanding()" class="amharic" size="1">
           <option :value="null">— Select member —</option>
-          <template x-for="m in allMembers" :key="m.id">
+          <template x-for="m in filteredMembers" :key="m.id">
             <option :value="m.id"
               x-text="m.spot_numbers && m.spot_numbers.length ? `${m.name}  (Spot ${m.spot_numbers.join(', ')})` : m.name">
             </option>
@@ -822,6 +824,7 @@ function payments() {
   return {
     cycles: [], weeks: [], payments: [], allMembers: [], outstanding: [],
     debtors: [], debtorSearch: '', loadingDebtors: false,
+    memberSearch: '',
     selectedCycle: '', selectedWeek: '',
     search: '', filterStatus: '', selected: [],
     activeTab: 'week',
@@ -845,6 +848,15 @@ function payments() {
         const s = !this.search || p.member_name.toLowerCase().includes(this.search.toLowerCase());
         const st = !this.filterStatus || p.status === this.filterStatus;
         return s && st;
+      });
+    },
+    get filteredMembers() {
+      if (!this.memberSearch) return this.allMembers;
+      const q = this.memberSearch.toLowerCase().trim();
+      return this.allMembers.filter(m => {
+        const byName = m.name.toLowerCase().includes(q);
+        const bySpot = m.spot_numbers && m.spot_numbers.some(sn => String(sn).includes(q));
+        return byName || bySpot;
       });
     },
     get filteredDebtors() {
@@ -911,7 +923,8 @@ function payments() {
             await this.loadPayments();
           }
         }
-        this.allMembers = await this.api('GET', '/api/members');
+        const cycleParam = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
+        this.allMembers = await this.api('GET', `/api/members${cycleParam}`);
         this.loadDebtors();
       } catch(e) { this.showToast(e.message, 'error'); }
     },
@@ -982,6 +995,7 @@ function payments() {
         _currentWeekId: this.currentWeekId,
       };
       this.outstanding = [];
+      this.memberSearch = '';
       this.showPayModal = true;
     },
 
