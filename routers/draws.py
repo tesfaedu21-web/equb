@@ -266,7 +266,6 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
     full_voucher         = data.full_spot_voucher    if data.full_spot_voucher    is not None else getattr(gs, 'full_spot_voucher', 80)
     half_voucher         = data.half_spot_voucher    if data.half_spot_voucher    is not None else getattr(gs, 'half_spot_voucher', 40)
     interval             = getattr(gs, "group_week_interval", 4)
-    incl_worker          = getattr(gs, "include_worker_slot", True)
 
     existing = db.query(Cycle).filter(Cycle.status == "active").first()
     if existing:
@@ -298,7 +297,6 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
         total_member_spots=n_member,
         total_assoc_spots=n_assoc,
         group_week_interval=interval,
-        include_worker_slot=incl_worker,
     )
     db.add(cycle)
     db.flush()

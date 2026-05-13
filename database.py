@@ -117,7 +117,8 @@ class Cycle(Base):
     total_member_spots   = Column(Integer, nullable=True)
     total_assoc_spots    = Column(Integer, nullable=True)
     group_week_interval  = Column(Integer, nullable=True)
-    include_worker_slot  = Column(Boolean, nullable=True)
+    # include_worker_slot is intentionally NOT mapped here — stored as INTEGER in PG,
+    # conflicts with Boolean type. Remains a global Settings flag only.
 
     weeks = relationship("Week", back_populates="cycle", order_by="Week.week_number")
     memberships = relationship("MemberSpot", back_populates="cycle")
@@ -425,7 +426,7 @@ def cycle_cfg(cycle, global_s):
         total_member_spots   = _pick(getattr(cv, 'total_member_spots', None),   getattr(gs, 'total_member_spots', None),   113)
         total_assoc_spots    = _pick(getattr(cv, 'total_assoc_spots', None),    getattr(gs, 'total_assoc_spots', None),    5)
         group_week_interval  = _pick(getattr(cv, 'group_week_interval', None),  getattr(gs, 'group_week_interval', None),  4)
-        include_worker_slot  = _pick(getattr(cv, 'include_worker_slot', None),  getattr(gs, 'include_worker_slot', None),  True)
+        include_worker_slot  = _pick(None,                                       getattr(gs, 'include_worker_slot', None),  True)
     return Cfg()
 
 
@@ -483,7 +484,6 @@ def _backfill_cycle_settings(db):
         c.total_member_spots   = gs.total_member_spots
         c.total_assoc_spots    = gs.total_assoc_spots
         c.group_week_interval  = getattr(gs, 'group_week_interval', 4)
-        c.include_worker_slot  = getattr(gs, 'include_worker_slot', True)
     if cycles:
         db.commit()
         print(f"[init] Backfilled settings into {len(cycles)} existing cycle(s)")
