@@ -90,24 +90,19 @@ def list_members(search: str = "", status: str = "",
                  cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     q = db.query(Member)
     if search:
-        # Try to parse search as a spot number for exact/prefix spot lookup
-        spot_member_ids = []
         try:
+            # Numeric input → exact spot number match only (no name/phone mixing)
             spot_num = int(search.strip())
             spot_match = db.query(Spot).filter(Spot.number == spot_num).first()
+            spot_member_ids = []
             if spot_match:
                 spot_member_ids = [
-                    ms.member_id for ms in spot_match.spot_assignments if ms.is_active
+                    ms.member_id for ms in spot_match.spot_assignments
+                    if ms.is_active and (cycle_id is None or ms.cycle_id == cycle_id)
                 ]
+            q = q.filter(Member.id.in_(spot_member_ids)) if spot_member_ids else q.filter(Member.id == -1)
         except ValueError:
-            pass
-        if spot_member_ids:
-            q = q.filter(or_(
-                Member.name.ilike(f"%{search}%"),
-                Member.phone.ilike(f"%{search}%"),
-                Member.id.in_(spot_member_ids),
-            ))
-        else:
+            # Text input → name or phone search
             q = q.filter(or_(Member.name.ilike(f"%{search}%"), Member.phone.ilike(f"%{search}%")))
     if status:
         q = q.filter(Member.status == status)
