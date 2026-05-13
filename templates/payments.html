@@ -890,14 +890,8 @@ function payments() {
     },
 
     weekLabel(w) {
-      const base = `Week ${w.week_number} — ${this.fmtDate(w.draw_date)}`;
       const tag = w.is_group_week ? ' 🔔 Group' : '';
-      // Mark current (first pending) and previous (last drawn/sold) weeks
-      const firstPending = this.weeks.find(x => x.status === 'pending');
-      const lastDrawn = [...this.weeks].reverse().find(x => x.status === 'drawn' || x.status === 'sold');
-      if (firstPending && w.id === firstPending.id) return `▶ ${base}${tag}  ← Current`;
-      if (lastDrawn   && w.id === lastDrawn.id)    return `${base}${tag}  ← Previous`;
-      return `${base}${tag}`;
+      return `Week ${w.week_number} — ${this.fmtDate(w.draw_date)}${tag}`;
     },
 
     gregToEth(dateStr) {
