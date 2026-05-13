@@ -410,7 +410,11 @@ async def import_members(file: UploadFile = File(...), db: Session = Depends(get
                 if not spot:
                     spot_msg = f"Spot #{spot_num} not found — created without spot"
                 else:
-                    active_count = sum(1 for sa in spot.spot_assignments if sa.is_active)
+                    # Count only within the active cycle, not old cycles
+                    active_count = sum(
+                        1 for sa in spot.spot_assignments
+                        if sa.is_active and sa.cycle_id == active_cycle_id
+                    )
                     if active_count >= 2:
                         spot_msg = f"Spot #{spot_num} is full — created without spot"
                     else:
