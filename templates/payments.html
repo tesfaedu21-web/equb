@@ -935,9 +935,7 @@ function payments() {
           this.selectedCycle = active.id;
           this.summaryCycle = active.id;  // pre-populate summary cycle
           await Promise.all([this.loadWeeks(), this.loadSummaryWeeks()]);
-            // Current collection week = first (lowest-numbered) pending week
-          const pending = this.weeks.find(w => w.status === 'pending');
-          const target = pending || this.weeks[this.weeks.length - 1];
+          const target = this._currentWeek();
           if (target) {
             this.selectedWeek = target.id;
             this.currentWeekId = target.id;
@@ -951,9 +949,25 @@ function payments() {
       } catch(e) { this.showToast(e.message, 'error'); }
     },
 
+    // Return the week that matches today's date: the latest week whose draw_date ≤ today.
+    // Falls back to the first week if the cycle hasn't started yet.
+    _currentWeek() {
+      const today = new Date();
+      today.setHours(23, 59, 59, 0);
+      const match = [...this.weeks].reverse().find(w => new Date(w.draw_date) <= today);
+      return match || this.weeks[0] || null;
+    },
+
     async loadWeeks() {
       if (!this.selectedCycle) return;
       this.weeks = await this.api('GET', `/api/draws/cycles/${this.selectedCycle}/weeks`).catch(() => []);
+      // Auto-select the week matching today whenever the cycle changes
+      const target = this._currentWeek();
+      if (target) {
+        this.selectedWeek = target.id;
+        this.currentWeekId = target.id;
+        await this.loadPayments();
+      }
     },
 
     async loadPayments() {
