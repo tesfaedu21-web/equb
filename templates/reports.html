@@ -6,12 +6,12 @@
 <div x-data="reports()" x-init="load()" class="p-8 space-y-6">
 
   <!-- Header -->
-  <div class="flex items-center justify-between flex-wrap gap-3">
+  <div class="flex items-center justify-between flex-wrap gap-3 no-print">
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Reports</h1>
       <p class="text-sm text-gray-500 mt-0.5">Financial summary and accounting</p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-wrap">
       <span class="text-sm text-gray-500">Cycle:</span>
       <select x-model="selectedCycle" @change="loadAll()" class="w-56 text-sm">
         <option value="">— Active Cycle —</option>
@@ -20,11 +20,17 @@
                   x-text="c.name + (c.status === 'active' ? ' ✓' : '')"></option>
         </template>
       </select>
+      <button @click="printReport()" class="btn-secondary text-xs flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+        </svg>
+        Print Report
+      </button>
     </div>
   </div>
 
   <!-- Tabs -->
-  <div class="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+  <div class="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit no-print">
     <button @click="activeTab='summary'"
             :class="activeTab==='summary' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'"
             class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all">Summary</button>
@@ -45,7 +51,7 @@
   </div>
 
   <!-- ── SUMMARY TAB ─────────────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='summary'" x-cloak class="space-y-6">
+  <div x-show="activeTab==='summary'" x-cloak class="space-y-6" data-print-section>
 
     <!-- KPI cards -->
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -220,7 +226,7 @@
   </div>
 
   <!-- ── BALANCE SHEET TAB ───────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='balance'" x-cloak class="space-y-6">
+  <div x-show="activeTab==='balance'" x-cloak class="space-y-6" data-print-section>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
@@ -386,7 +392,7 @@
   </div>
 
   <!-- ── VOUCHERS TAB ────────────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='vouchers'" x-cloak class="space-y-6">
+  <div x-show="activeTab==='vouchers'" x-cloak class="space-y-6" data-print-section>
 
     <!-- Summary cards -->
     <div class="grid grid-cols-3 gap-4">
@@ -463,7 +469,7 @@
   </div>
 
   <!-- ── GENERAL LEDGER TAB ─────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='ledger'" x-cloak>
+  <div x-show="activeTab==='ledger'" x-cloak data-print-section>
     <div class="card p-0 overflow-hidden">
       <div class="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
         <div>
@@ -535,6 +541,32 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+@media print {
+  /* Hide everything except report content */
+  body > div > aside,
+  .mobile-topbar, .page-top-accent,
+  .no-print { display: none !important; }
+  main { width: 100% !important; overflow: visible !important; }
+  body { background: white !important; font-size: 12px; }
+  .card {
+    box-shadow: none !important; border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important; break-inside: avoid;
+  }
+  /* Tab sections — all visible in print */
+  [data-print-section] { display: block !important; margin-top: 24px; }
+  /* Page breaks before major sections */
+  [data-print-section]:not(:first-of-type) { page-break-before: auto; }
+  table { font-size: 11px; }
+  th, td { padding: 4px 8px !important; }
+  .badge { font-size: 10px; padding: 1px 6px; }
+  /* Print title */
+  .print-title { display: block !important; font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .print-subtitle { display: block !important; font-size: 12px; color: #6b7280; margin-bottom: 16px; }
+  h3 { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+}
+.print-title, .print-subtitle { display: none; }
+</style>
 <script>
 function reports() {
   return {
@@ -628,6 +660,18 @@ function reports() {
         this.showToast('Expense deleted');
         await this.loadAll();
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    printReport() {
+      // Force-show all tab sections (override Alpine x-show inline styles)
+      const sections = document.querySelectorAll('[data-print-section]');
+      const origStyles = [];
+      sections.forEach(s => { origStyles.push(s.style.display); s.style.display = 'block'; });
+      window.print();
+      // Restore after print dialog
+      setTimeout(() => {
+        sections.forEach((s, i) => { s.style.display = origStyles[i]; });
+      }, 500);
     },
   }
 }

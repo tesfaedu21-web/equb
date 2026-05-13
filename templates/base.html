@@ -269,7 +269,30 @@
 
     /* ── Mobile sidebar drawer ───────────────────────────────────────────── */
     .sidebar-drawer {
-      transition: transform 0.28s cubic-bezier(.4,0,.2,1);
+      transition: transform 0.28s cubic-bezier(.4,0,.2,1), width 0.25s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ── Sidebar collapse (desktop) ─────────────────────────────────────── */
+    .sidebar.collapsed { width: 68px !important; overflow: hidden; }
+    .sidebar.collapsed .nav-label { display: none; }
+    .sidebar.collapsed .nav-section { display: none; }
+    .sidebar.collapsed .brand-text { display: none; }
+    .sidebar.collapsed .cal-toggle { display: none; }
+    .sidebar.collapsed .user-detail { display: none; }
+    .sidebar.collapsed .nav-link { justify-content: center; padding: 9px 0; }
+    .sidebar.collapsed .nav-link .icon { width: 22px; height: 22px; margin: 0; }
+    .sidebar.collapsed .collapse-icon { transform: scaleX(-1); }
+    @media (max-width: 767px) { .sidebar.collapsed { width: 256px !important; } }
+
+    /* ── Custom select arrow ─────────────────────────────────────────────── */
+    select {
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 16px;
+      padding-right: 36px !important;
+      cursor: pointer;
     }
 
     /* ── Mobile top bar ─────────────────────────────────────────────────── */
@@ -340,6 +363,7 @@
     .print-only { display: none; }
   </style>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 
 <!-- Server-side context -->
@@ -397,7 +421,7 @@
   <aside class="sidebar sidebar-drawer w-64 flex flex-col flex-shrink-0 overflow-y-auto
                 fixed md:sticky md:top-0 md:h-screen inset-y-0 left-0 z-30 md:z-10
                 -translate-x-full md:translate-x-0"
-         :class="sidebarOpen ? 'translate-x-0' : ''"
+         :class="[sidebarOpen ? 'translate-x-0' : '', sidebarCollapsed ? 'collapsed' : '']"
          @keydown.escape.window="sidebarOpen = false">
 
     <!-- Ethiopian flag top stripe -->
@@ -416,14 +440,14 @@
         </div>
         <img x-show="logoUrl" :src="logoUrl" :alt="groupName"
              class="w-10 h-10 rounded-2xl object-cover shadow-lg flex-shrink-0 border border-white/10"/>
-        <div class="min-w-0">
+        <div class="min-w-0 brand-text">
           <div class="text-white font-bold text-base leading-tight truncate amharic" x-text="groupName"></div>
           <div class="text-green-400/70 text-xs font-medium truncate mt-0.5" x-text="groupTagline"></div>
         </div>
       </div>
 
       <!-- Calendar toggle -->
-      <div class="flex items-center rounded-xl p-0.5 text-xs" style="background:rgba(255,255,255,0.07);">
+      <div class="cal-toggle flex items-center rounded-xl p-0.5 text-xs" style="background:rgba(255,255,255,0.07);">
         <button @click="useEthCal=true; localStorage.setItem('useEthCal','true')"
           :class="useEthCal ? 'bg-equb-green text-white shadow' : 'text-green-400/60 hover:text-green-300'"
           class="flex-1 py-1.5 rounded-[9px] font-bold transition-all text-center amharic tracking-wide text-xs">ዓ.ም</button>
@@ -435,64 +459,75 @@
 
     <!-- Nav -->
     <nav class="flex-1 px-3 py-1 space-y-0.5 relative z-10">
-      <a href="/" @click="sidebarOpen = false" class="nav-link {% block nav_dashboard %}{% endblock %}">
+      <a href="/" @click="sidebarOpen = false" class="nav-link {% block nav_dashboard %}{% endblock %}" title="Dashboard">
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
             d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
         </svg>
-        Dashboard
+        <span class="nav-label">Dashboard</span>
       </a>
-      <a href="/members" @click="sidebarOpen = false" class="nav-link {% block nav_members %}{% endblock %}">
+      <a href="/members" @click="sidebarOpen = false" class="nav-link {% block nav_members %}{% endblock %}" title="Members">
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
             d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
         </svg>
-        Members
+        <span class="nav-label">Members</span>
       </a>
-      <a href="/draws" @click="sidebarOpen = false" class="nav-link {% block nav_draws %}{% endblock %}">
+      <a href="/draws" @click="sidebarOpen = false" class="nav-link {% block nav_draws %}{% endblock %}" title="Draws">
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
             d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
         </svg>
-        Draws
+        <span class="nav-label">Draws</span>
       </a>
-      <a href="/payments" @click="sidebarOpen = false" class="nav-link {% block nav_payments %}{% endblock %}">
+      <a href="/payments" @click="sidebarOpen = false" class="nav-link {% block nav_payments %}{% endblock %}" title="Payments">
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
             d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
         </svg>
-        Payments
+        <span class="nav-label">Payments</span>
       </a>
-      <a href="/reports" @click="sidebarOpen = false" class="nav-link {% block nav_reports %}{% endblock %}">
+      <a href="/reports" @click="sidebarOpen = false" class="nav-link {% block nav_reports %}{% endblock %}" title="Reports">
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
             d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
         </svg>
-        Reports
+        <span class="nav-label">Reports</span>
       </a>
 
       <!-- Admin-only -->
       <template x-if="isAdmin">
         <div class="space-y-0.5 pt-1">
           <div class="nav-section">Admin</div>
-          <a href="/notifications" @click="sidebarOpen = false" class="nav-link {% block nav_notifications %}{% endblock %}">
+          <a href="/notifications" @click="sidebarOpen = false" class="nav-link {% block nav_notifications %}{% endblock %}" title="Notifications">
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
                 d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
             </svg>
-            Notifications
+            <span class="nav-label">Notifications</span>
           </a>
-          <a href="/settings" @click="sidebarOpen = false" class="nav-link {% block nav_settings %}{% endblock %}">
+          <a href="/settings" @click="sidebarOpen = false" class="nav-link {% block nav_settings %}{% endblock %}" title="Settings">
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
                 d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
-            Settings
+            <span class="nav-label">Settings</span>
           </a>
         </div>
       </template>
     </nav>
+
+    <!-- Collapse toggle (desktop only) -->
+    <div class="hidden md:flex px-3 py-2">
+      <button @click="toggleSidebar()" :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+              class="w-full flex items-center justify-center gap-2 p-2 rounded-xl text-green-500/40 hover:text-green-400 hover:bg-white/5 transition-all">
+        <svg class="w-4 h-4 collapse-icon transition-transform duration-250 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
+        </svg>
+        <span class="nav-label text-xs font-medium">Collapse</span>
+      </button>
+    </div>
 
     <!-- User card -->
     <div class="px-3 pb-4 pt-3 relative z-10" style="border-top: 1px solid rgba(255,255,255,0.07);">
@@ -505,7 +540,7 @@
           <div class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 bg-green-400"
                style="border-color: #04100a"></div>
         </div>
-        <div class="flex-1 min-w-0">
+        <div class="flex-1 min-w-0 user-detail">
           <div class="text-white text-sm font-semibold truncate leading-tight" x-text="userName"></div>
           <div class="text-xs mt-0.5"
                :class="isAdmin ? 'text-amber-400/80' : 'text-green-400/60'"
@@ -598,6 +633,7 @@ function app() {
     toast: {show:false, msg:'', type:'success'},
     sessionWarning: false,
     sidebarOpen: false,
+    sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true',
     useEthCal: localStorage.getItem('useEthCal') !== 'false',
     userName:    ctx.userName    || 'User',
     userRole:    ctx.userRole    || 'cashier',
@@ -606,6 +642,11 @@ function app() {
     logoUrl:     ctx.logoUrl     || '',
 
     get isAdmin() { return this.userRole === 'admin'; },
+
+    toggleSidebar() {
+      this.sidebarCollapsed = !this.sidebarCollapsed;
+      localStorage.setItem('sidebarCollapsed', this.sidebarCollapsed);
+    },
 
     initApp() {
       // Warn at 50 min, expire at 60 min (server session = 3600s)
