@@ -85,10 +85,15 @@
     </select>
 
     <!-- No cycles message -->
-    <span x-show="allCycles.length === 0" class="flex items-center gap-3">
+    <span x-show="allCycles.length === 0" class="flex items-center gap-3 flex-wrap">
       <span class="text-sm text-red-600 font-medium">No cycles found.</span>
       <a href="/draws" class="btn-primary text-xs py-1.5 px-3">➕ Create a Cycle in Draws</a>
       <span class="text-xs text-gray-400">Members below are unfiltered (legacy data).</span>
+      <button x-show="members.length > 0"
+              @click="purgeAllMembers()"
+              class="text-xs py-1.5 px-3 rounded-lg bg-red-600 text-white hover:bg-red-700 font-medium">
+        🗑 Delete All Members
+      </button>
     </span>
 
     <!-- Status badge -->
@@ -761,6 +766,15 @@ function members() {
         };
         this.showToast('Spot added');
         await Promise.all([this.load(), this.loadSpots()]);
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async purgeAllMembers() {
+      if (!confirm(`Delete all ${this.members.length} members? This cannot be undone.`)) return;
+      try {
+        const r = await this.api('DELETE', '/api/members/permanent/all');
+        this.showToast(`${r.hard_deleted} members deleted`);
+        await this.load();
       } catch(e) { this.showToast(e.message, 'error'); }
     },
 

@@ -734,11 +734,6 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
         AssociationExpense.cycle_id == cycle_id
     ).delete(synchronize_session=False)
 
-    # Find members who belong to this cycle
-    cycle_member_ids = [r[0] for r in db.query(MemberSpot.member_id).filter(
-        MemberSpot.cycle_id == cycle_id
-    ).distinct().all()]
-
     # Delete member-spot assignments for this cycle
     db.query(MemberSpot).filter(
         MemberSpot.cycle_id == cycle_id
@@ -746,16 +741,15 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
 
     db.flush()  # flush so the MemberSpot deletions are visible for the next query
 
-    # Delete Member records that have no remaining spot assignments in any other cycle
-    if cycle_member_ids:
-        still_assigned = {r[0] for r in db.query(MemberSpot.member_id).filter(
-            MemberSpot.member_id.in_(cycle_member_ids)
-        ).all()}
-        orphan_ids = [mid for mid in cycle_member_ids if mid not in still_assigned]
-        if orphan_ids:
-            from database import Member as _Member, NotificationLog as _NLog
-            db.query(_NLog).filter(_NLog.member_id.in_(orphan_ids)).delete(synchronize_session=False)
-            db.query(_Member).filter(_Member.id.in_(orphan_ids)).delete(synchronize_session=False)
+    # Delete ALL members that now have no spot assignment in any remaining cycle
+    # (covers cycle members, never-assigned members, and NULL-cycle legacy members)
+    remaining_assigned = {r[0] for r in db.query(MemberSpot.member_id).all()}
+    all_member_ids = [r[0] for r in db.query(Member.id).all()]
+    orphan_ids = [mid for mid in all_member_ids if mid not in remaining_assigned]
+    if orphan_ids:
+        from database import NotificationLog as _NLog
+        db.query(_NLog).filter(_NLog.member_id.in_(orphan_ids)).delete(synchronize_session=False)
+        db.query(Member).filter(Member.id.in_(orphan_ids)).delete(synchronize_session=False)
 
     cycle_name = cycle.name
     db.flush()
