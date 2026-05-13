@@ -212,12 +212,19 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
     n_assoc  = data.total_assoc_spots  if data.total_assoc_spots  is not None else settings.total_assoc_spots
     total_spots = n_member + n_assoc
 
+    # Persist the chosen spot counts back to settings for future reference
+    settings.total_member_spots = n_member
+    settings.total_assoc_spots  = n_assoc
+
     cycle = Cycle(name=data.name, start_date=start, notes=data.notes, draw_phase="collection")
     db.add(cycle)
     db.flush()
 
-    # Calculate pot amounts ONCE — same for all weeks in this cycle
-    gross, assoc, net = _calculate_pot(db)
+    # Calculate pot using the cycle's own spot counts (not the Spot table size)
+    # Theoretical: all spots pay full rate; adjusted per-member once assignments exist
+    gross = (n_member + n_assoc) * settings.full_spot_amount
+    assoc = n_member * settings.association_deduction
+    net   = gross - assoc
 
     interval = getattr(settings, "group_week_interval", 4)
     for i in range(1, total_spots + 1):
