@@ -66,13 +66,12 @@ def _calculate_pot(db: Session, cycle_id: Optional[int] = None):
     """
     Calculate gross/assoc/net pot.
 
-    When cycle_id is given, uses actual member assignments for that cycle:
-      - full assignment  → full_spot_amount gross, association_deduction (1000) each
-      - half assignment  → half_spot_amount gross, association_deduction/2 (500) each
-      - association spots → full_spot_amount gross, no association deduction (group-owned)
+    Formula: Gross = member contributions only (full × full_amount + half × half_amount).
+    Association spots do NOT add to gross — their draw is funded by the association fund.
 
-    When cycle_id is None (cycle not yet created), falls back to the theoretical
-    all-spots × full_spot_amount calculation.
+    Gross  = full_count × full_amount + half_count × half_amount
+    Assoc  = full_count × assoc_ded  + half_count × (assoc_ded / 2)
+    Net    = Gross − Assoc
     """
     gs = db.query(Settings).first()
 
@@ -85,21 +84,18 @@ def _calculate_pot(db: Session, cycle_id: Optional[int] = None):
         ).all()
         full_count = sum(1 for a in assignments if a.share == "full")
         half_count = sum(1 for a in assignments if a.share == "half")
-        assoc_spot_count = db.query(Spot).filter(Spot.spot_type == "association").count()
 
         gross = (full_count * cfg.full_spot_amount
-                 + half_count * cfg.half_spot_amount
-                 + assoc_spot_count * cfg.full_spot_amount)
+                 + half_count * cfg.half_spot_amount)
         assoc = (full_count * cfg.association_deduction
                  + half_count * (cfg.association_deduction / 2))
         net = gross - assoc
     else:
         cfg = cycle_cfg(None, gs)
-        total_spots  = db.query(Spot).filter(Spot.status == "active").count()
         member_spots = db.query(Spot).filter(
             Spot.status == "active", Spot.spot_type == "member"
         ).count()
-        gross = total_spots * cfg.full_spot_amount
+        gross = member_spots * cfg.full_spot_amount
         assoc = member_spots * cfg.association_deduction
         net   = gross - assoc
 

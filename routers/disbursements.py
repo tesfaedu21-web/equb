@@ -90,12 +90,20 @@ def get_disbursement_for_week(week_id: int, db: Session = Depends(get_db)):
 def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
     """
     Return the full deduction breakdown for the winner of this week.
-    Formula (full spot example with 118 weeks, 113 member spots):
-      gross     = 118 × 21,000 = 2,478,000
-      assoc     = 113 × 1,000  =   113,000   (already in net_pot)
-      service   =  1  × 21,000 =    21,000   (funds worker week)
-      voucher   = 118 ×     80 =     9,440
-      net       = 2,478,000 − 113,000 − 21,000 − 9,440 = 2,334,560
+
+    Net = Gross − Assoc_fund − Service_fee − Voucher
+      Gross       = member_count × spot_amount (full or half per member)
+      Assoc_fund  = member_count × assoc_deduction (full or half per member)
+      Service_fee = winner's weekly amount × 1
+      Voucher     = (member_spots + assoc_spots) × voucher_rate (full or half for winner)
+
+    Example (113 member spots, 5 assoc spots, all full, 21,000/1,000/80):
+      Gross   = 113 × 21,000 = 2,373,000
+      Assoc   = 113 × 1,000  =   113,000
+      Net_pot =               2,260,000
+      Service =   1 × 21,000 =    21,000
+      Voucher = 118 ×     80 =     9,440
+      Net     =               2,229,560
     """
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w or not w.winner_spot_id:
@@ -105,11 +113,14 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
     gs    = db.query(Settings).first()
     cfg   = cycle_cfg(cycle, gs)
 
-    # Total weeks in this cycle (including worker week if present)
+    # Voucher accumulates over every draw week (member spots + assoc spots).
+    # Worker week is excluded — it is not a spot draw.
+    total_spots = cfg.total_member_spots + cfg.total_assoc_spots
+    # Total weeks members actually pay into (includes worker week if present)
     total_weeks = db.query(Week).filter(Week.cycle_id == w.cycle_id).count()
 
-    full_voucher_total = cfg.full_spot_voucher * total_weeks
-    half_voucher_total = cfg.half_spot_voucher * total_weeks
+    full_voucher_total = cfg.full_spot_voucher * total_spots
+    half_voucher_total = cfg.half_spot_voucher * total_spots
 
     assignments = [sa for sa in w.winner_spot.spot_assignments
                    if sa.is_active and sa.cycle_id == w.cycle_id]
@@ -128,11 +139,13 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
     assoc_deduction     = cfg.association_deduction
     assoc_per_week_full = assoc_deduction
     assoc_per_week_half = assoc_deduction / 2
+    # Association total uses total_weeks (every payment week, including worker week)
     assoc_total_full    = assoc_per_week_full * total_weeks
     assoc_total_half    = assoc_per_week_half * total_weeks
 
     return {
         "week_id": week_id,
+        "total_spots": total_spots,
         "total_weeks": total_weeks,
         "gross_pot": w.gross_pot,
         "association_amount": w.association_amount,
