@@ -467,6 +467,28 @@ def _migrate(engine):
                 pass  # column already exists
 
 
+def _backfill_cycle_settings(db):
+    """Copy global Settings into any Cycle row that still has NULL settings.
+    Runs once on startup; safe to run repeatedly (skips cycles already filled)."""
+    gs = db.query(Settings).first()
+    if not gs:
+        return
+    cycles = db.query(Cycle).filter(Cycle.full_spot_amount == None).all()
+    for c in cycles:
+        c.full_spot_amount     = gs.full_spot_amount
+        c.half_spot_amount     = gs.half_spot_amount
+        c.association_deduction = gs.association_deduction
+        c.full_spot_voucher    = getattr(gs, 'full_spot_voucher', 80)
+        c.half_spot_voucher    = getattr(gs, 'half_spot_voucher', 40)
+        c.total_member_spots   = gs.total_member_spots
+        c.total_assoc_spots    = gs.total_assoc_spots
+        c.group_week_interval  = getattr(gs, 'group_week_interval', 4)
+        c.include_worker_slot  = getattr(gs, 'include_worker_slot', True)
+    if cycles:
+        db.commit()
+        print(f"[init] Backfilled settings into {len(cycles)} existing cycle(s)")
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate(engine)
@@ -479,6 +501,7 @@ def init_db():
             db.add(NotificationSettings())
             db.commit()
         _seed_templates(db)
+        _backfill_cycle_settings(db)
         if db.query(User).count() == 0:
             db.add(User(username="admin", password_hash=_pwd.hash("admin123"),
                         full_name="Administrator", role="admin"))
