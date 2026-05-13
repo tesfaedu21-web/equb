@@ -68,7 +68,7 @@ def _calculate_pot(db: Session, cycle_id: Optional[int] = None):
     return gross, assoc, net
 
 
-def week_to_dict(w: Week) -> dict:
+def week_to_dict(w: Week, settings: Optional[Settings] = None) -> dict:
     tx = w.transactions[0] if w.transactions else None
     winner_spot = None
     if w.winner_spot:
@@ -99,6 +99,10 @@ def week_to_dict(w: Week) -> dict:
         "gross_pot": w.gross_pot,
         "association_amount": w.association_amount,
         "net_pot": w.net_pot,
+        "assoc_contribution": (
+            (settings.total_assoc_spots or 0) * (settings.full_spot_amount or 0)
+            if settings else 0
+        ),
         "status": w.status,
         "winner_spot": winner_spot,
         "transaction": transaction,
@@ -338,7 +342,8 @@ def recalculate_pot(cycle_id: int, request: Request, db: Session = Depends(get_d
 @router.get("/cycles/{cycle_id}/weeks")
 def list_weeks(cycle_id: int, db: Session = Depends(get_db)):
     weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
-    return [week_to_dict(w) for w in weeks]
+    s = db.query(Settings).first()
+    return [week_to_dict(w, s) for w in weeks]
 
 
 # ── Payment checks ────────────────────────────────────────────────────────────

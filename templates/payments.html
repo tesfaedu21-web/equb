@@ -852,12 +852,9 @@ function payments() {
     get currentWeek() {
       return this.weeks.find(w => w.id === parseInt(this.selectedWeek)) || null;
     },
-    // Association spots are funded by the association fund — separate from the gross pot.
-    // = total_assoc_spots × full_spot_amount, read from appSettings.
+    // Association spots funded by the association fund — embedded in week data.
     get assocFundContribution() {
-      const nAssoc = this.appSettings?.total_assoc_spots || 0;
-      const fullAmt = this.appSettings?.full_spot_amount || 0;
-      return nAssoc * fullAmt;
+      return this.currentWeek?.assoc_contribution || 0;
     },
     get filteredPayments() {
       return this.payments.filter(p => {
