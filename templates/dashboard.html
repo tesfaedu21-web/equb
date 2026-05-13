@@ -473,19 +473,28 @@
 
         <!-- Amounts -->
         <div class="border-t pt-4">
-          <div class="text-sm font-semibold text-gray-700 mb-3">💰 Weekly Contribution Amounts</div>
+          <div class="text-sm font-semibold text-gray-700 mb-1">💰 Weekly Contribution Amounts</div>
+          <p class="text-xs text-gray-400 mb-3">
+            Leave blank to keep current values
+            (<span x-text="fmt(stats.settings?.full_spot_amount||21000)"></span> full /
+             <span x-text="fmt(stats.settings?.half_spot_amount||10500)"></span> half).
+            Type a new amount only if you want to change it.
+          </p>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">Full Spot (ETB)</label>
-              <input x-model.number="newCycle.full_spot_amount" type="number" min="1" :placeholder="'e.g. ' + (stats.settings?.full_spot_amount || 21000)"/>
+              <input x-model.number="newCycle.full_spot_amount" type="number" min="1"
+                     :placeholder="stats.settings?.full_spot_amount || 21000"/>
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">Half Spot (ETB)</label>
-              <input x-model.number="newCycle.half_spot_amount" type="number" min="1" :placeholder="'e.g. ' + (stats.settings?.half_spot_amount || 10500)"/>
+              <input x-model.number="newCycle.half_spot_amount" type="number" min="1"
+                     :placeholder="stats.settings?.half_spot_amount || 10500"/>
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">Association Deduction (ETB)</label>
-              <input x-model.number="newCycle.association_deduction" type="number" min="0" :placeholder="'e.g. ' + (stats.settings?.association_deduction ?? 1000)"/>
+              <input x-model.number="newCycle.association_deduction" type="number" min="0"
+                     :placeholder="stats.settings?.association_deduction ?? 1000"/>
             </div>
           </div>
         </div>
@@ -583,11 +592,13 @@ function dashboard() {
         name: '', start_date: '', notes: '',
         total_member_spots: s.total_member_spots || null,
         total_assoc_spots: s.total_assoc_spots !== undefined ? s.total_assoc_spots : null,
-        full_spot_amount: s.full_spot_amount || null,
-        half_spot_amount: s.half_spot_amount || null,
-        association_deduction: s.association_deduction !== undefined ? s.association_deduction : null,
-        full_spot_voucher: s.full_spot_voucher !== undefined ? s.full_spot_voucher : null,
-        half_spot_voucher: s.half_spot_voucher !== undefined ? s.half_spot_voucher : null,
+        // Leave amount fields empty — current settings shown as placeholder only.
+        // Only send new values if the admin explicitly types them.
+        full_spot_amount: null,
+        half_spot_amount: null,
+        association_deduction: null,
+        full_spot_voucher: null,
+        half_spot_voucher: null,
       };
       this.showNewCycle = true;
     },

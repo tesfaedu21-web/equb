@@ -92,10 +92,19 @@
       </div>
     </div>
 
-    <div class="flex justify-end">
-      <button @click="saveSettings()" :disabled="saving" class="btn-primary">
-        <span x-text="saving ? 'Saving…' : 'Save Configuration'"></span>
-      </button>
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-xs text-amber-700 flex-1">
+        <strong>After saving:</strong> click "Apply to Active Cycle" to update existing member payment amounts in the current cycle.
+      </div>
+      <div class="flex gap-2">
+        <button @click="saveSettings()" :disabled="saving" class="btn-primary">
+          <span x-text="saving ? 'Saving…' : 'Save Configuration'"></span>
+        </button>
+        <button @click="applyToActiveCycle()" :disabled="applying"
+                class="btn-secondary text-amber-700 border-amber-300 hover:bg-amber-50">
+          <span x-text="applying ? 'Applying…' : 'Apply to Active Cycle'"></span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -215,7 +224,7 @@ function settings() {
   return {
     form: {},
     users: [],
-    saving: false,
+    saving: false, applying: false,
     showUserModal: false,
     editUserId: null,
     userForm: { full_name:'', username:'', password:'', role:'cashier' },
@@ -237,6 +246,16 @@ function settings() {
         this.showToast('Settings saved — reload to see branding changes');
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.saving = false; }
+    },
+
+    async applyToActiveCycle() {
+      if (!confirm('This will update all member spot contributions and pending payment amounts in the active cycle to match the current settings. Continue?')) return;
+      this.applying = true;
+      try {
+        const r = await this.api('POST', '/api/members/apply-settings-to-cycle');
+        this.showToast(`Done — ${r.spots_updated} spots and ${r.payments_updated} pending payments updated to ${r.full_spot_amount.toLocaleString()} / ${r.half_spot_amount.toLocaleString()} ETB`);
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.applying = false; }
     },
 
     openAddUser() {

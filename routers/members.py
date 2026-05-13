@@ -187,6 +187,63 @@ def available_spots(db: Session = Depends(get_db)):
     return result
 
 
+# ── Apply current settings to active cycle spots ─────────────────────────────
+
+@router.post("/apply-settings-to-cycle")
+def apply_settings_to_cycle(request: Request, db: Session = Depends(get_db)):
+    """Reapply full_spot_amount / half_spot_amount from Settings to all active
+    MemberSpot records in the active cycle. Use after changing spot amounts."""
+    if getattr(request.state, "user_role", None) != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    settings = db.query(Settings).first()
+    if not settings:
+        raise HTTPException(status_code=500, detail="Settings not configured")
+    cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    if not cycle:
+        raise HTTPException(status_code=404, detail="No active cycle")
+
+    spots = db.query(MemberSpot).filter(
+        MemberSpot.cycle_id == cycle.id,
+        MemberSpot.is_active == True,
+    ).all()
+
+    full_amt = settings.full_spot_amount or 21000
+    half_amt = settings.half_spot_amount or 10500
+    updated = 0
+    for ms in spots:
+        new_amt = full_amt if ms.share == "full" else half_amt
+        if ms.weekly_contribution != new_amt:
+            ms.weekly_contribution = new_amt
+            updated += 1
+
+    # Also recompute existing pending/missed payments for this cycle
+    payments_updated = 0
+    from database import Payment, Week
+    pending_payments = (
+        db.query(Payment)
+        .join(Week, Week.id == Payment.week_id)
+        .filter(Week.cycle_id == cycle.id, Payment.status.in_(["pending", "missed"]))
+        .all()
+    )
+    member_amounts: dict = {}
+    for ms in spots:
+        member_amounts.setdefault(ms.member_id, 0)
+        member_amounts[ms.member_id] += ms.weekly_contribution
+    for p in pending_payments:
+        correct = member_amounts.get(p.member_id, 0)
+        if correct and p.amount != correct:
+            p.amount = correct
+            payments_updated += 1
+
+    db.commit()
+    return {
+        "spots_updated": updated,
+        "payments_updated": payments_updated,
+        "full_spot_amount": full_amt,
+        "half_spot_amount": half_amt,
+    }
+
+
 # ── Export (must be before /{member_id} routes) ──────────────────────────────
 
 @router.get("/export")
