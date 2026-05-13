@@ -933,7 +933,7 @@ function draws() {
     },
 
     async openBatchDraw() {
-      this.activeSpots = await this.api('GET', '/api/draws/active-spots').catch(() => []);
+      this.activeSpots = await this.api('GET', `/api/draws/active-spots?cycle_id=${this.selectedCycle}`).catch(() => []);
       const startWeek = this.activeCycle?.draw_start_week || 1;
       this.batchRows = this.weeks
         .filter(w => w.status === 'pending' && w.week_number <= startWeek)
@@ -961,7 +961,7 @@ function draws() {
       this.activeWeek = w;
       this.drawForm = { winner_spot_id: null };
       this.paymentCheck = null;
-      this.activeSpots = await this.api('GET', '/api/draws/active-spots').catch(() => []);
+      this.activeSpots = await this.api('GET', `/api/draws/active-spots?cycle_id=${this.selectedCycle}`).catch(() => []);
       this.showDrawModal = true;
     },
 

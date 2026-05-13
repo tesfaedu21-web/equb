@@ -377,8 +377,26 @@ def check_buyer_payment(week_id: int, member_id: int, db: Session = Depends(get_
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    # Check member status eligibility
+    ineligible_reason = None
+    if m.status == "left":
+        ineligible_reason = f"{m.name} has left the group"
+    elif m.status == "received":
+        ineligible_reason = f"{m.name} already received a pot this cycle"
+    elif m.status != "active":
+        ineligible_reason = f"{m.name} is not an active member"
+
     s = _check_fully_paid(m, w.week_number, db)
-    return {"member_id": member_id, "name": m.name, "week_number": w.week_number, **s}
+    if not s["fully_paid"] and not ineligible_reason:
+        ineligible_reason = f"Has {s['unpaid_count']} unpaid week(s)"
+
+    eligible = ineligible_reason is None
+    return {
+        "member_id": member_id, "name": m.name, "week_number": w.week_number,
+        "eligible": eligible, "ineligible_reason": ineligible_reason,
+        **s,
+    }
 
 
 # ── Single draw ───────────────────────────────────────────────────────────────
@@ -549,7 +567,7 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
 # ── Active lists for UI ───────────────────────────────────────────────────────
 
 @router.get("/active-spots")
-def active_spots(db: Session = Depends(get_db)):
+def active_spots(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Returns only member-type active spots (association spots excluded — use sell endpoint)."""
     spots = (db.query(Spot).filter(Spot.status == "active", Spot.spot_type == "member")
              .order_by(Spot.number).all())
@@ -558,11 +576,14 @@ def active_spots(db: Session = Depends(get_db)):
             "id": s.id, "number": s.number, "type": s.spot_type,
             "members": [
                 {"id": sa.member.id, "name": sa.member.name, "share": sa.share}
-                for sa in s.spot_assignments if sa.is_active
+                for sa in s.spot_assignments
+                if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)
             ],
-            "share": (s.spot_assignments[0].share
-                      if any(sa.is_active for sa in s.spot_assignments)
-                      else "full"),
+            "share": next(
+                (sa.share for sa in s.spot_assignments
+                 if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)),
+                "full"
+            ),
         }
         for s in spots
     ]
