@@ -148,12 +148,15 @@ def payments_for_member(member_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/member/{member_id}/outstanding")
-def outstanding_weeks(member_id: int, db: Session = Depends(get_db)):
+def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
+                      db: Session = Depends(get_db)):
     """
     Return all unpaid weeks for a member.
     Auto-generates missing payment records for every week in the active cycle
     so that per-member missed weeks are always tracked regardless of whether
     that week's payment page was ever opened.
+    include_week_id: always include this week even if draw_date is in the future
+    (used when the cashier clicks a specific week row to record payment for it).
     """
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
@@ -185,13 +188,19 @@ def outstanding_weeks(member_id: int, db: Session = Depends(get_db)):
             db.commit()
 
     from datetime import datetime as _dt
+    from sqlalchemy import or_
     now = _dt.utcnow()
-    payments = (db.query(Payment)
-                .filter(Payment.member_id == member_id,
-                        Payment.status.in_(["pending", "late", "missed"]))
-                .join(Week)
-                .filter(Week.draw_date <= now)
-                .order_by(Week.week_number).all())
+    q = (db.query(Payment)
+         .filter(Payment.member_id == member_id,
+                 Payment.status.in_(["pending", "late", "missed"]))
+         .join(Week))
+    if include_week_id:
+        # Always include the explicitly requested week (e.g. current collection week)
+        # even if its draw_date is in the future
+        q = q.filter(or_(Week.draw_date <= now, Payment.week_id == include_week_id))
+    else:
+        q = q.filter(Week.draw_date <= now)
+    payments = q.order_by(Week.week_number).all()
     return {
         "member_id": member_id,
         "member_name": member.name,

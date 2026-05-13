@@ -1014,9 +1014,17 @@ function payments() {
       if (!this.batch.member_id) return;
       this.loadingOutstanding = true;
       try {
-        const res = await this.api('GET', `/api/payments/member/${this.batch.member_id}/outstanding`);
+        // Pass the clicked week so it's always included, even if draw_date is future
+        const wid = this.batch._currentWeekId;
+        const qs = wid ? `?include_week_id=${wid}` : '';
+        const res = await this.api('GET', `/api/payments/member/${this.batch.member_id}/outstanding${qs}`);
         this.outstanding = res.outstanding;
         if (!this.batch._fromRow) this.batch.week_ids = [];
+        // Auto-select the clicked week if it's now in the list
+        if (this.batch._fromRow && wid && !this.batch.week_ids.includes(wid)) {
+          const found = this.outstanding.find(p => p.week_id === wid);
+          if (found) this.batch.week_ids = [wid];
+        }
       } catch(e) { this.outstanding = []; this.showToast(e.message, 'error'); }
       finally { this.loadingOutstanding = false; }
     },
