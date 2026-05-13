@@ -65,7 +65,7 @@
             <option value="">— Select Week —</option>
             <template x-for="w in weeks" :key="w.id">
               <option :value="w.id"
-                x-text="`Week ${w.week_number} — ${fmtDate(w.draw_date)}${w.is_group_week ? ' 🔔 Group' : ''}`">
+                x-text="weekLabel(w)">
               </option>
             </template>
           </select>
@@ -889,6 +889,17 @@ function payments() {
       return { cash: 'Cash', bank_transfer: 'Bank Transfer', cheque: 'Cheque' }[m] || m;
     },
 
+    weekLabel(w) {
+      const base = `Week ${w.week_number} — ${this.fmtDate(w.draw_date)}`;
+      const tag = w.is_group_week ? ' 🔔 Group' : '';
+      // Mark current (first pending) and previous (last drawn/sold) weeks
+      const firstPending = this.weeks.find(x => x.status === 'pending');
+      const lastDrawn = [...this.weeks].reverse().find(x => x.status === 'drawn' || x.status === 'sold');
+      if (firstPending && w.id === firstPending.id) return `▶ ${base}${tag}  ← Current`;
+      if (lastDrawn   && w.id === lastDrawn.id)    return `${base}${tag}  ← Previous`;
+      return `${base}${tag}`;
+    },
+
     gregToEth(dateStr) {
       if (!dateStr) return '';
       const [y, m, d] = dateStr.split('-').map(Number);
@@ -924,8 +935,8 @@ function payments() {
           this.selectedCycle = active.id;
           this.summaryCycle = active.id;  // pre-populate summary cycle
           await Promise.all([this.loadWeeks(), this.loadSummaryWeeks()]);
-          // Find current pending week (most recent pending, or last week)
-          const pending = [...this.weeks].reverse().find(w => w.status === 'pending');
+            // Current collection week = first (lowest-numbered) pending week
+          const pending = this.weeks.find(w => w.status === 'pending');
           const target = pending || this.weeks[this.weeks.length - 1];
           if (target) {
             this.selectedWeek = target.id;
@@ -1116,8 +1127,11 @@ function payments() {
     async loadSummaryWeeks() {
       if (!this.summaryCycle) return;
       this.summaryWeeks = await this.api('GET', `/api/draws/cycles/${this.summaryCycle}/weeks`).catch(() => []);
-      this.summaryWeekId = '';
+      // Default to the most recently drawn/sold week (previous collection week)
+      const lastDrawn = [...this.summaryWeeks].reverse().find(w => w.status === 'drawn' || w.status === 'sold');
+      this.summaryWeekId = lastDrawn ? lastDrawn.id : '';
       this.summaryData = null;
+      if (this.summaryWeekId) await this.loadSummary();
     },
 
     async loadSummary() {
