@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
-from database import (get_db, Member, Payment, Week, Cycle,
+from database import (get_db, Member, Payment, Week, Cycle, MemberSpot,
                       NotificationSettings, NotificationTemplate, NotificationLog)
 
 router = APIRouter()
@@ -86,11 +86,14 @@ def _render(template: str, vars: dict) -> str:
     return template
 
 
-def _member_vars(m: Member, db: Session, week_number: int = 9999) -> dict:
-    unpaid = (db.query(Payment).join(Week)
-              .filter(Payment.member_id == m.id,
-                      Payment.status.in_(["pending", "late", "missed"]),
-                      Week.week_number <= week_number).all())
+def _member_vars(m: Member, db: Session, week_number: int = 9999, cycle_id: Optional[int] = None) -> dict:
+    q = (db.query(Payment).join(Week)
+         .filter(Payment.member_id == m.id,
+                 Payment.status.in_(["pending", "late", "missed"]),
+                 Week.week_number <= week_number))
+    if cycle_id:
+        q = q.filter(Week.cycle_id == cycle_id)
+    unpaid = q.all()
     return {
         "member_name": m.name,
         "unpaid_count": str(len(unpaid)),
@@ -297,6 +300,9 @@ def send_to_members(data: SendRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Template not found")
     cfg = db.query(NotificationSettings).first()
 
+    active = db.query(Cycle).filter(Cycle.status == "active").first()
+    active_cycle_id = active.id if active else None
+
     results = []
     for mid in data.member_ids:
         m = db.query(Member).filter(Member.id == mid).first()
@@ -304,7 +310,7 @@ def send_to_members(data: SendRequest, db: Session = Depends(get_db)):
             results.append({"member_id": mid, "status": "skipped", "reason": "no phone"})
             continue
 
-        vars_ = _member_vars(m, db)
+        vars_ = _member_vars(m, db, cycle_id=active_cycle_id)
         vars_.update(data.extra or {})
         msg = _render(tmpl.message, vars_)
         status, response = _send_sms(m.phone, msg, cfg)
@@ -365,16 +371,28 @@ def broadcast_payment_reminder(week_id: int, db: Session = Depends(get_db)):
 
 @router.post("/broadcast/missed-payments")
 def broadcast_missed_payments(db: Session = Depends(get_db)):
-    """Send missed payment notice to all members with any unpaid weeks."""
+    """Send missed payment notice to all members with any unpaid weeks in the active cycle."""
     tmpl = db.query(NotificationTemplate).filter_by(key="missed_payment").first()
     cfg = db.query(NotificationSettings).first()
 
-    members = db.query(Member).filter(Member.status == "active").all()
+    active = db.query(Cycle).filter(Cycle.status == "active").first()
+    cycle_id = active.id if active else None
+
+    if cycle_id:
+        member_ids = [r[0] for r in db.query(MemberSpot.member_id).filter(
+            MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True
+        ).distinct().all()]
+        members = db.query(Member).filter(
+            Member.id.in_(member_ids), Member.status == "active"
+        ).all()
+    else:
+        members = db.query(Member).filter(Member.status == "active").all()
+
     results = []
     for m in members:
         if not m.phone:
             continue
-        vars_ = _member_vars(m, db)
+        vars_ = _member_vars(m, db, cycle_id=cycle_id)
         if vars_["unpaid_count"] == "0":
             continue
         msg = _render(tmpl.message, vars_)

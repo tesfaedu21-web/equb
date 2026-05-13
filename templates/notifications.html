@@ -304,21 +304,26 @@ function notifications() {
 
     async load() {
       try {
-        const [s, t, l, cycles, m] = await Promise.all([
+        const [s, t, l, cycles] = await Promise.all([
           this.api('GET', '/api/notifications/settings'),
           this.api('GET', '/api/notifications/templates'),
           this.api('GET', '/api/notifications/logs'),
           this.api('GET', '/api/draws/cycles'),
-          this.api('GET', '/api/members?status=active'),
         ]);
         this.cfg = { ...s, api_key_input: '' };
         this.templates = t;
         this.logs = l;
-        this.allMembers = m;
 
         const active = cycles.find(c => c.status === 'active') || cycles[0];
         if (active) {
-          this.weeks = await this.api('GET', `/api/draws/cycles/${active.id}/weeks`);
+          const [weeks, m] = await Promise.all([
+            this.api('GET', `/api/draws/cycles/${active.id}/weeks`),
+            this.api('GET', `/api/members?status=active&cycle_id=${active.id}`),
+          ]);
+          this.weeks = weeks;
+          this.allMembers = m;
+        } else {
+          this.allMembers = await this.api('GET', '/api/members?status=active').catch(() => []);
         }
       } catch(e) { this.showToast(e.message, 'error'); }
     },
