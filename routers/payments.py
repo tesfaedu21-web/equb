@@ -406,7 +406,8 @@ def cycle_payment_summary(cycle_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/daily-collection")
-def daily_collection(date: Optional[str] = None, db: Session = Depends(get_db)):
+def daily_collection(date: Optional[str] = None, cycle_id: Optional[int] = None,
+                     db: Session = Depends(get_db)):
     """Return all PaymentBatches recorded on a given date, grouped by payment method."""
     from datetime import date as _date
     if date:
@@ -422,13 +423,23 @@ def daily_collection(date: Optional[str] = None, db: Session = Depends(get_db)):
                .order_by(PaymentBatch.payment_method, PaymentBatch.id)
                .all())
 
+    # Filter to only batches that contain payments for the given cycle
+    if cycle_id:
+        batches = [
+            b for b in batches
+            if any(p.week and p.week.cycle_id == cycle_id for p in b.payments)
+        ]
+
     groups = {"cash": [], "bank_transfer": [], "cheque": []}
     totals = {"cash": 0.0, "bank_transfer": 0.0, "cheque": 0.0}
 
     for b in batches:
         method = b.payment_method if b.payment_method in groups else "cash"
-        # get spot numbers for this member
-        spot_numbers = [sa.spot.number for sa in b.member.spot_assignments if sa.is_active] if b.member else []
+        spot_numbers = (
+            [sa.spot.number for sa in b.member.spot_assignments
+             if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)]
+            if b.member else []
+        )
         week_numbers = sorted([p.week.week_number for p in b.payments if p.week])
         entry = {
             "batch_id": b.id,
@@ -445,17 +456,18 @@ def daily_collection(date: Optional[str] = None, db: Session = Depends(get_db)):
         totals[method] += float(b.total_amount)
 
     grand_total = sum(totals.values())
-    # Primary week = the week whose draw_date is on or most recently before the report date
-    primary_week = (db.query(Week)
-                    .filter(func.date(Week.draw_date) <= target)
-                    .order_by(Week.draw_date.desc())
-                    .first())
+    total_batches = sum(len(g) for g in groups.values())
+    # Primary week = most recent week whose draw_date ≤ report date, scoped to cycle
+    wq = db.query(Week).filter(func.date(Week.draw_date) <= target)
+    if cycle_id:
+        wq = wq.filter(Week.cycle_id == cycle_id)
+    primary_week = wq.order_by(Week.draw_date.desc()).first()
     return {
         "date": target.isoformat(),
         "groups": groups,
         "totals": totals,
         "grand_total": grand_total,
-        "total_batches": len(batches),
+        "total_batches": total_batches,
         "week_number": primary_week.week_number if primary_week else None,
     }
 

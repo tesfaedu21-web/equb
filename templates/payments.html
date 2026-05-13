@@ -1129,7 +1129,8 @@ function payments() {
       this.loadingDaily = true;
       this.dailyData = null;
       try {
-        this.dailyData = await this.api('GET', `/api/payments/daily-collection?date=${this.dailyDate}`);
+        const cycleQ = this.selectedCycle ? `&cycle_id=${this.selectedCycle}` : '';
+        this.dailyData = await this.api('GET', `/api/payments/daily-collection?date=${this.dailyDate}${cycleQ}`);
       } catch(e) { this.showToast(e.message, 'error'); }
       this.loadingDaily = false;
     },
