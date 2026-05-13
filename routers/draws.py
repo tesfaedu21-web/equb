@@ -443,7 +443,7 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Week not found")
-    if w.status != "pending":
+    if w.status not in ("pending", "drawn"):
         raise HTTPException(status_code=400, detail="Week already processed")
     if w.cycle.draw_phase != "active" and data.transaction_type != "assoc_spot_sale":
         raise HTTPException(status_code=400, detail="Draws have not been started yet by admin")

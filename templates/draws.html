@@ -133,7 +133,7 @@
                   </td>
                   <td class="px-5 py-3.5 font-semibold text-equb-green" x-text="fmt(w.net_pot)"></td>
                   <td class="px-5 py-3.5">
-                    <span :class="`badge badge-${w.status}`" x-text="w.status"></span>
+                    <span :class="`badge badge-${w.status}`" x-text="w.status.charAt(0).toUpperCase() + w.status.slice(1)"></span>
                   </td>
                   <td class="px-5 py-3.5 text-gray-600 text-sm amharic">
                     <template x-if="w.status === 'drawn' && w.winner_spot">
@@ -162,7 +162,15 @@
                     <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'collection'">
                       <span class="text-xs text-amber-500 font-medium">Collection</span>
                     </template>
-                    <template x-if="w.status !== 'pending'">
+                    <template x-if="w.status === 'drawn'">
+                      <div class="flex items-center justify-end gap-2">
+                        <button @click="openSale(w)"
+                                class="text-xs btn-secondary py-1 px-3">Sell Pot</button>
+                        <button @click="openDisbursement(w)"
+                                class="text-xs text-indigo-500 hover:text-indigo-700 font-medium px-2 py-1 rounded-lg hover:bg-gray-100">Disburse</button>
+                      </div>
+                    </template>
+                    <template x-if="w.status !== 'pending' && w.status !== 'drawn'">
                       <button @click="openDisbursement(w)"
                               :class="disbursedWeeks.has(w.id) ? 'text-green-600 hover:text-green-700' : 'text-indigo-500 hover:text-indigo-700'"
                               class="text-xs font-medium px-2 py-1 rounded-lg hover:bg-gray-100"
@@ -471,7 +479,9 @@
       </h2>
       <p class="text-sm text-gray-500 mt-1" x-text="activeWeek?.is_group_week
         ? 'Group week. The pot is sold to any active member at face value.'
-        : 'Winner is selling their pot to another active member for a % fee.'"></p>
+        : activeWeek?.status === 'drawn'
+          ? 'Draw winner is selling their pot to another active member.'
+          : 'Winner is selling their pot to another active member for a % fee.'"></p>
     </div>
     <form @submit.prevent="recordSale()" class="p-6 space-y-4">
 
@@ -675,11 +685,11 @@
               <template x-for="a in voucherInfo.assignments" :key="a.member">
                 <div class="space-y-0.5 pl-2">
                   <div class="flex justify-between text-amber-700">
-                    <span class="amharic" x-text="'− Service fee (' + a.member + ')'"></span>
+                    <span class="amharic">− Service fee (አገልግሎት)</span>
                     <span x-text="'−' + fmt(a.service_fee)"></span>
                   </div>
                   <div class="flex justify-between text-amber-700">
-                    <span class="amharic" x-text="'− Voucher (' + a.member + ')'"></span>
+                    <span class="amharic">− Voucher (ቦኖ)</span>
                     <span x-text="'−' + fmt(a.voucher)"></span>
                   </div>
                 </div>
@@ -963,7 +973,10 @@ function draws() {
 
     async openSale(w) {
       this.activeWeek = w;
-      this.saleForm = { original_winner_id: null, seller_id: null, buyer_id: null, percentage: null, notes: '' };
+      // For a 'drawn' week, pre-fill the drawn winner as original_winner and seller
+      const winnerId = (w.winner_spot && w.winner_spot.members && w.winner_spot.members.length > 0)
+        ? w.winner_spot.members[0].id : null;
+      this.saleForm = { original_winner_id: winnerId, seller_id: winnerId, buyer_id: null, percentage: null, notes: '' };
       this.buyerPaymentCheck = null;
       this.activeMembers = await this.api('GET', '/api/draws/active-members').catch(() => []);
       this.showSaleModal = true;
