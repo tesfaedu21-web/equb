@@ -646,7 +646,20 @@ def active_spots(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
 
 @router.get("/active-members")
 def active_members_for_sale(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    members = db.query(Member).filter(Member.status == "active").order_by(Member.name).all()
+    if not cycle_id:
+        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle_id = active.id if active else None
+
+    if cycle_id:
+        member_ids = [r[0] for r in db.query(MemberSpot.member_id).filter(
+            MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True
+        ).distinct().all()]
+        members = db.query(Member).filter(
+            Member.id.in_(member_ids), Member.status == "active"
+        ).order_by(Member.name).all()
+    else:
+        members = db.query(Member).filter(Member.status == "active").order_by(Member.name).all()
+
     def _member_dict(m):
         sas = [sa for sa in m.spot_assignments
                if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)]

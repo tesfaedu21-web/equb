@@ -937,9 +937,7 @@ function draws() {
           this.selectedCycle = active.id;
           await this.loadCycleAndWeeks();
         }
-        // Load all members for guarantor selects
-        const members = await this.api('GET', '/api/members').catch(() => []);
-        this.allMembers = members.filter ? members.filter(m => m.status !== 'left') : [];
+        // allMembers loaded in loadCycleAndWeeks() so it refreshes per cycle
       } catch(e) { this.showToast(e.message, 'error'); }
     },
 
@@ -948,9 +946,12 @@ function draws() {
       try {
         this.activeCycle = this.cycles.find(c => c.id === parseInt(this.selectedCycle)) || null;
         this.weeks = await this.api('GET', `/api/draws/cycles/${this.selectedCycle}/weeks`);
-        // Track which weeks already have disbursements recorded
-        const disbs = await this.api('GET', '/api/disbursements').catch(() => []);
+        // Track which weeks already have disbursements recorded — scoped to this cycle
+        const disbs = await this.api('GET', `/api/disbursements?cycle_id=${this.selectedCycle}`).catch(() => []);
         this.disbursedWeeks = new Set(disbs.map(d => d.week_id));
+        // Load members for this cycle (guarantor dropdowns + active members)
+        const members = await this.api('GET', `/api/members?cycle_id=${this.selectedCycle}`).catch(() => []);
+        this.allMembers = members.filter ? members.filter(m => m.status !== 'left') : [];
       } catch(e) { this.showToast(e.message, 'error'); }
     },
 
@@ -1127,7 +1128,8 @@ function draws() {
 
     async loadDisbursements() {
       try {
-        this.disbursements = await this.api('GET', '/api/disbursements');
+        const cycleParam = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
+        this.disbursements = await this.api('GET', `/api/disbursements${cycleParam}`);
       } catch(e) { this.showToast(e.message, 'error'); }
     },
 
