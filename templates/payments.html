@@ -852,11 +852,14 @@ function payments() {
     },
     get filteredMembers() {
       if (!this.memberSearch) return this.allMembers;
-      const q = this.memberSearch.toLowerCase().trim();
+      const q = this.memberSearch.trim();
+      const isNumber = /^\d+$/.test(q);
       return this.allMembers.filter(m => {
-        const byName = m.name.toLowerCase().includes(q);
-        const bySpot = m.spot_numbers && m.spot_numbers.some(sn => String(sn).includes(q));
-        return byName || bySpot;
+        if (isNumber) {
+          // Exact spot number match only
+          return m.spot_numbers && m.spot_numbers.some(sn => String(sn) === q);
+        }
+        return m.name.toLowerCase().includes(q.toLowerCase());
       });
     },
     get filteredDebtors() {
