@@ -183,7 +183,12 @@ def member_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
 def available_spots(db: Session = Depends(get_db)):
     # Scope availability to the active cycle's memberships
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
-    spots = db.query(Spot).filter(Spot.status == "active").order_by(Spot.number).all()
+    gs = db.query(Settings).first()
+    cfg = cycle_cfg(cycle, gs)
+    n_total = (cfg.total_member_spots or 0) + (cfg.total_assoc_spots or 0) if cycle else 99999
+    spots = (db.query(Spot)
+             .filter(Spot.status == "active", Spot.number <= n_total)
+             .order_by(Spot.number).all())
     result = []
     for s in spots:
         # Only consider assignments belonging to the active cycle (or legacy NULL)
@@ -415,6 +420,9 @@ async def import_members(file: UploadFile = File(...), db: Session = Depends(get
 
     # Get active cycle for spot assignments
     active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    if active_cycle and active_cycle.draw_phase == "active":
+        raise HTTPException(status_code=400,
+            detail="Draws have already started — importing members mid-cycle is not allowed.")
     active_cycle_id = active_cycle.id if active_cycle else None
     gs  = db.query(Settings).first()
     cfg = cycle_cfg(active_cycle, gs)
@@ -570,6 +578,9 @@ def delete_member_permanent(member_id: int, request: Request, db: Session = Depe
 @router.post("")
 def create_member(data: MemberCreate, db: Session = Depends(get_db)):
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    if cycle and cycle.draw_phase == "active":
+        raise HTTPException(status_code=400,
+            detail="Draws have already started — new members cannot be added mid-cycle.")
     gs    = db.query(Settings).first()
     cfg   = cycle_cfg(cycle, gs)
     try:
@@ -647,6 +658,9 @@ def add_spot(member_id: int, data: SpotAdd, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Spot not found")
 
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    if cycle and cycle.draw_phase == "active":
+        raise HTTPException(status_code=400,
+            detail="Draws have already started — spot assignments cannot be changed mid-cycle.")
     gs    = db.query(Settings).first()
     cfg   = cycle_cfg(cycle, gs)
     contribution = (

@@ -17,10 +17,18 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
         cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     settings = gs  # kept for the association_fund_detail check below
 
-    # Spot counts (global — spot status reflects active cycle state)
-    total_spots = db.query(Spot).count()
-    received_spots = db.query(Spot).filter(Spot.status == "received").count()
-    active_spots = db.query(Spot).filter(Spot.status == "active").count()
+    # Spot counts — scoped to the active cycle's configured range so stale rows
+    # from a previous cycle with different spot counts don't inflate the total.
+    if cycle:
+        _cfg_spots = cycle_cfg(cycle, gs)
+        _n_total   = (_cfg_spots.total_member_spots or 0) + (_cfg_spots.total_assoc_spots or 0)
+        total_spots    = _n_total
+        received_spots = db.query(Spot).filter(Spot.status == "received", Spot.number <= _n_total).count()
+        active_spots   = db.query(Spot).filter(Spot.status == "active",   Spot.number <= _n_total).count()
+    else:
+        total_spots    = db.query(Spot).count()
+        received_spots = db.query(Spot).filter(Spot.status == "received").count()
+        active_spots   = db.query(Spot).filter(Spot.status == "active").count()
 
     # ── Cycle-scoped member counts ───────────────────────────────────────────
     if cycle:
@@ -186,6 +194,7 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
             "id": cycle.id,
             "name": cycle.name,
             "start_date": cycle.start_date.isoformat(),
+            "draw_phase": cycle.draw_phase,
         } if cycle else None,
         "current_week": current_week_stats,
         "debtors_count": debtors_count,

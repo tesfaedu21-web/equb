@@ -154,13 +154,19 @@ class CycleCreate(BaseModel):
     notes: Optional[str] = None
     # Optional: spot counts for this cycle (overrides settings defaults)
     total_member_spots: Optional[int] = None
-    total_assoc_spots: Optional[int] = None
+    # Association spots are decided when draws start, not at cycle creation
+    total_assoc_spots: Optional[int] = None   # kept for API compat; ignored at creation
     # Optional: override global settings for this new cycle
     full_spot_amount: Optional[float] = None
     half_spot_amount: Optional[float] = None
     association_deduction: Optional[float] = None
     full_spot_voucher: Optional[float] = None
     half_spot_voucher: Optional[float] = None
+
+
+class StartDrawsData(BaseModel):
+    at_week_number: int
+    total_assoc_spots: int = 0
 
 
 class DrawResult(BaseModel):
@@ -278,13 +284,13 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
         {"status": "active"}, synchronize_session=False
     )
 
-    # Use caller-supplied spot counts, or fall back to global settings
+    # Association spots are decided when draws start (members must be fully registered first).
+    # Only member spots are created at cycle creation; assoc spots added via start-draws.
     n_member = data.total_member_spots if data.total_member_spots else gs.total_member_spots
-    n_assoc  = data.total_assoc_spots  if data.total_assoc_spots  is not None else gs.total_assoc_spots
-    total_spots = n_member + n_assoc
+    n_assoc  = 0   # always 0 at cycle creation
 
-    # Sync Spot table to match the new cycle's spot counts
-    _sync_spots(db, n_member, n_assoc)
+    # Sync Spot table to member spots only
+    _sync_spots(db, n_member, 0)
 
     # Create cycle with its own financial settings snapshot
     cycle = Cycle(
@@ -295,17 +301,17 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
         full_spot_voucher=full_voucher,
         half_spot_voucher=half_voucher,
         total_member_spots=n_member,
-        total_assoc_spots=n_assoc,
+        total_assoc_spots=0,
         group_week_interval=interval,
     )
     db.add(cycle)
     db.flush()
 
-    # Gross pot = member spots only.
+    # Create weeks for member spots only — assoc spot weeks appended when draws start
     gross = n_member * full_spot_amount
     assoc = n_member * assoc_ded
     net   = gross - assoc
-    for i in range(1, total_spots + 1):
+    for i in range(1, n_member + 1):
         draw_date = start + timedelta(weeks=i - 1)
         # Snap to Sunday
         days_to_sunday = (6 - draw_date.weekday()) % 7
@@ -332,22 +338,75 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
 
 
 @router.post("/cycles/{cycle_id}/start-draws")
-def start_draws(cycle_id: int, at_week_number: int, request: Request, db: Session = Depends(get_db)):
+def start_draws(cycle_id: int, data: StartDrawsData, request: Request, db: Session = Depends(get_db)):
     if getattr(request.state, "user_role", None) != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    """Admin manually triggers the start of draws from a specific week number."""
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
     if cycle.draw_phase == "active":
         raise HTTPException(status_code=400, detail="Draws already started")
+
+    n_member = cycle.total_member_spots or 0
+    n_assoc  = data.total_assoc_spots
+
+    # Add association spots to the Spot table and append their weeks
+    if n_assoc > 0:
+        _sync_spots(db, n_member, n_assoc)
+        cycle.total_assoc_spots = n_assoc
+
+        # Recalculate pot using actual member assignments (members are now fully registered)
+        gross, assoc_amt, net = _calculate_pot(db, cycle_id=cycle.id)
+
+        # Find last existing week to continue the date sequence
+        last_week = (db.query(Week)
+                     .filter(Week.cycle_id == cycle.id)
+                     .order_by(Week.week_number.desc())
+                     .first())
+        last_num  = last_week.week_number if last_week else n_member
+        last_date = last_week.draw_date   if last_week else cycle.start_date
+
+        for i in range(1, n_assoc + 1):
+            draw_date = last_date + timedelta(weeks=i)
+            # Snap to Sunday
+            days_to_sunday = (6 - draw_date.weekday()) % 7
+            if days_to_sunday:
+                draw_date = draw_date + timedelta(days=days_to_sunday)
+            db.add(Week(
+                cycle_id=cycle.id,
+                week_number=last_num + i,
+                draw_date=draw_date,
+                is_group_week=False,   # assoc spot weeks are always sale events, never group weeks
+                gross_pot=gross, association_amount=assoc_amt, net_pot=net,
+            ))
+
+        # Also recalculate all pending member weeks now that final membership is known
+        pending_weeks = db.query(Week).filter(
+            Week.cycle_id == cycle.id, Week.status == "pending",
+            Week.week_number <= n_member
+        ).all()
+        for w in pending_weeks:
+            w.gross_pot = gross
+            w.association_amount = assoc_amt
+            w.net_pot = net
+
     cycle.draw_phase = "active"
-    cycle.draw_start_week = at_week_number
+    cycle.draw_start_week = data.at_week_number
     cycle.draw_started_at = datetime.utcnow()
     db.commit()
-    return {"ok": True, "draw_start_week": at_week_number,
-            "pending_draws": at_week_number,
-            "message": f"Draws started from week {at_week_number}. {at_week_number} batch draws are now available."}
+
+    total_weeks = db.query(Week).filter(Week.cycle_id == cycle.id).count()
+    return {
+        "ok": True,
+        "draw_start_week": data.at_week_number,
+        "total_assoc_spots": n_assoc,
+        "total_weeks": total_weeks,
+        "message": (
+            f"Draws started from week {data.at_week_number}. "
+            + (f"{n_assoc} association spot week(s) added (weeks {n_member+1}–{n_member+n_assoc}). " if n_assoc else "")
+            + f"{data.at_week_number} batch draws are now available."
+        ),
+    }
 
 
 @router.post("/cycles/{cycle_id}/recalculate-pot")

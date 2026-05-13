@@ -392,15 +392,12 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 
-<!-- Server-side context -->
+<!-- Server-side context (JSON island — avoids VS Code JS false-positive linting errors) -->
+<script type="application/json" id="equb-ctx">
+{"userName":{{ user_name | tojson }},"userRole":{{ user_role | tojson }},"groupName":{{ group_name | tojson }},"groupTagline":{{ group_tagline | tojson }},"logoUrl":{{ (logo_url or '') | tojson }}}
+</script>
 <script>
-  window._equbCtx = {
-    userName:    {{ user_name | tojson }},
-    userRole:    {{ user_role | tojson }},
-    groupName:   {{ group_name | tojson }},
-    groupTagline:{{ group_tagline | tojson }},
-    logoUrl:     {{ (logo_url or '') | tojson }},
-  };
+  window._equbCtx = JSON.parse(document.getElementById('equb-ctx').textContent);
 </script>
 
 <body x-data="app()" x-init="initApp()">
