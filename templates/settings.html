@@ -20,7 +20,7 @@
       </svg>
       Branding
     </h2>
-    <div class="grid grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Group / Association Name</label>
         <input x-model="form.group_name" type="text" class="name-field" placeholder="እቁብ"/>
@@ -92,11 +92,11 @@
       </div>
     </div>
 
-    <div class="flex items-center justify-between gap-3 flex-wrap">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-xs text-amber-700 flex-1">
         <strong>After saving:</strong> click "Apply to Active Cycle" to update existing member payment amounts in the current cycle.
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-col sm:flex-row gap-2">
         <button @click="saveSettings()" :disabled="saving" class="btn-primary">
           <span x-text="saving ? 'Saving…' : 'Save Configuration'"></span>
         </button>
@@ -163,16 +163,16 @@
     <!-- Change own password -->
     <div class="border-t pt-4">
       <h3 class="text-sm font-semibold text-gray-700 mb-3">Change My Password</h3>
-      <div class="grid grid-cols-3 gap-3 items-end">
-        <div>
+      <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
+        <div class="flex-1">
           <label class="block text-xs text-gray-500 mb-1">Current Password</label>
           <input x-model="pwd.current" type="password"/>
         </div>
-        <div>
+        <div class="flex-1">
           <label class="block text-xs text-gray-500 mb-1">New Password</label>
           <input x-model="pwd.new" type="password"/>
         </div>
-        <button @click="changePassword()" class="btn-secondary">Update Password</button>
+        <button @click="changePassword()" class="btn-secondary sm:flex-shrink-0">Update Password</button>
       </div>
     </div>
   </div>

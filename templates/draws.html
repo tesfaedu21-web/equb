@@ -105,37 +105,38 @@
 
       <div class="card p-0 overflow-hidden">
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <div class="overflow-x-auto">
+          <table class="w-full text-sm min-w-[600px]">
             <thead class="bg-gray-50 border-b">
               <tr>
-                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide w-16">Week</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Date</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Type</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Net Pot</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Winner / Buyer</th>
-                <th class="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Action</th>
+                <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide w-14">Wk</th>
+                <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Date</th>
+                <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden sm:table-cell">Type</th>
+                <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Net Pot</th>
+                <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+                <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">Winner / Buyer</th>
+                <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Action</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-50">
               <template x-for="w in filteredWeeks" :key="w.id">
                 <tr class="hover:bg-gray-50/70 transition-colors"
                     :class="w.is_group_week ? 'bg-amber-50/40' : ''">
-                  <td class="px-5 py-3.5">
-                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold"
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-bold"
                           :class="w.is_group_week ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'"
                           x-text="w.week_number"></span>
                   </td>
-                  <td class="px-5 py-3.5 text-gray-600" x-text="fmtDate(w.draw_date)"></td>
-                  <td class="px-5 py-3.5">
-                    <span x-show="w.is_group_week" class="badge badge-group">Group Week</span>
+                  <td class="px-4 py-3 text-gray-600 whitespace-nowrap" x-text="fmtDate(w.draw_date)"></td>
+                  <td class="px-4 py-3 hidden sm:table-cell">
+                    <span x-show="w.is_group_week" class="badge badge-group">Group</span>
                     <span x-show="!w.is_group_week" class="badge bg-gray-100 text-gray-600">Regular</span>
                   </td>
-                  <td class="px-5 py-3.5 font-semibold text-equb-green" x-text="fmt(w.net_pot)"></td>
-                  <td class="px-5 py-3.5">
+                  <td class="px-4 py-3 font-semibold text-equb-green whitespace-nowrap" x-text="fmt(w.net_pot)"></td>
+                  <td class="px-4 py-3">
                     <span :class="`badge badge-${w.status}`" x-text="w.status.charAt(0).toUpperCase() + w.status.slice(1)"></span>
                   </td>
-                  <td class="px-5 py-3.5 text-gray-600 text-sm amharic">
+                  <td class="px-4 py-3 text-gray-600 text-sm amharic hidden md:table-cell max-w-[180px] truncate">
                     <template x-if="w.status === 'drawn' && w.winner_spot">
                       <span x-text="w.winner_spot.members.map(m=>m.name).join(' & ')"></span>
                     </template>
@@ -148,7 +149,7 @@
                     </template>
                     <span x-show="w.status === 'pending'" class="text-gray-300">—</span>
                   </td>
-                  <td class="px-5 py-3.5 text-right">
+                  <td class="px-4 py-3 text-right whitespace-nowrap">
                     <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'active'">
                       <div class="flex items-center justify-end gap-2">
                         <button x-show="!w.is_group_week"
@@ -186,6 +187,7 @@
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>
@@ -197,7 +199,7 @@
   <div x-show="activeTab === 'disbursements'" x-cloak>
 
     <!-- Summary cards -->
-    <div class="grid grid-cols-4 gap-3" x-show="disbursements.length > 0">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3" x-show="disbursements.length > 0">
       <div class="card py-4 text-center">
         <div class="text-2xl font-bold text-gray-900" x-text="disbursements.length"></div>
         <div class="text-xs text-gray-400 mt-1">Total Disbursements</div>
@@ -767,6 +769,38 @@
   </div>
 </div><!-- end disbursement modal -->
 
+<!-- Delete Cycle Confirmation Modal -->
+<div x-show="showDeleteConfirm" x-cloak class="modal-backdrop" @click.self="showDeleteConfirm = false">
+  <div class="modal-box max-w-md">
+    <div class="p-6">
+      <div class="flex items-start gap-4 mb-4">
+        <div class="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center flex-shrink-0">
+          <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </div>
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Delete Cycle</h2>
+          <p class="text-sm text-gray-500 mt-1">
+            This permanently deletes all weeks, payments, draws, and disbursements for
+            <strong x-text="deleteCycleTarget?.name" class="text-gray-800"></strong>.
+            This cannot be undone.
+          </p>
+        </div>
+      </div>
+      <div class="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700 mb-5">
+        All associated data will be permanently lost.
+      </div>
+      <div class="flex gap-3">
+        <button @click="showDeleteConfirm = false" class="btn-secondary flex-1">Cancel</button>
+        <button @click="confirmDeleteCycle()" :disabled="saving"
+                class="btn-danger flex-1"
+                x-text="saving ? 'Deleting…' : 'Delete Permanently'"></button>
+      </div>
+    </div>
+  </div>
+</div><!-- end delete confirm modal -->
 
 </div><!-- end x-data scope -->
 {% endblock %}
@@ -800,6 +834,8 @@ function draws() {
     showStartDrawsModal: false,
     showBatchModal: false,
     showDisbursementModal: false,
+    showDeleteConfirm: false,
+    deleteCycleTarget: null,
     activeWeek: null,
     saving: false,
     startDrawsWeek: null,
@@ -1102,13 +1138,22 @@ function draws() {
       } catch(e) { this.showToast(e.message, 'error'); }
     },
 
-    async deleteCycle() {
+    deleteCycle() {
       const cyc = this.cycles.find(c => c.id === parseInt(this.selectedCycle));
       if (!cyc) return;
-      if (!confirm(`⚠️ DELETE cycle "${cyc.name}"?\n\nThis permanently deletes all weeks, payments, draws, and disbursements for this cycle. This cannot be undone.`)) return;
+      this.deleteCycleTarget = cyc;
+      this.showDeleteConfirm = true;
+    },
+
+    async confirmDeleteCycle() {
+      const cyc = this.deleteCycleTarget;
+      if (!cyc) return;
+      this.saving = true;
       try {
-        await this.api('DELETE', `/api/draws/cycles/${this.selectedCycle}`);
+        await this.api('DELETE', `/api/draws/cycles/${cyc.id}`);
         this.showToast(`Cycle "${cyc.name}" deleted`);
+        this.showDeleteConfirm = false;
+        this.deleteCycleTarget = null;
         this.selectedCycle = '';
         this.activeCycle = null;
         this.weeks = [];
@@ -1119,6 +1164,7 @@ function draws() {
           await this.loadCycleAndWeeks();
         }
       } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
     },
 
     async recordSale() {

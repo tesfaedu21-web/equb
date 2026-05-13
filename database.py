@@ -382,6 +382,11 @@ DEFAULT_TEMPLATES = [
         "title": "Pot Sale",
         "message": "Dear {member_name}, your pot for Week {week_number} was sold. You receive a fee of {seller_fee} ETB. The buyer gets {buyer_receives} ETB.",
     },
+    {
+        "key": "disbursement_ready",
+        "title": "Cheque Ready",
+        "message": "Dear {member_name}, your Equb pot cheque for Week {week_number} (Cheque #{cheque_number}) is ready for collection. Please visit the office to sign and collect.",
+    },
 ]
 
 

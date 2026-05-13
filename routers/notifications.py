@@ -140,6 +140,101 @@ def send_payment_confirmed(payment, db: Session) -> str:
         return "skipped"  # never break the payment flow
 
 
+# ── Auto-send on missed payment ──────────────────────────────────────────────
+
+def send_missed_payment(payment, db: Session) -> str:
+    """Send SMS when a payment is auto-marked as missed. Never raises."""
+    try:
+        m = payment.member
+        w = payment.week
+        if not m or not m.phone or not w:
+            return "skipped"
+        cfg = db.query(NotificationSettings).first()
+        if not cfg:
+            return "skipped"
+        tmpl = db.query(NotificationTemplate).filter_by(key="missed_payment").first()
+        if not tmpl or not tmpl.is_active:
+            return "skipped"
+        vars_ = {
+            "member_name": m.name,
+            "week_number": str(w.week_number),
+            "amount": str(int(payment.amount)),
+            "draw_date": w.draw_date.strftime("%d %b %Y"),
+            "unpaid_count": "1",
+        }
+        msg = _render(tmpl.message, vars_)
+        status, response = _send_sms(m.phone, msg, cfg)
+        db.add(NotificationLog(
+            member_id=m.id, phone=m.phone,
+            template_key="missed_payment", message=msg,
+            status=status, provider_response=response,
+        ))
+        return status
+    except Exception:
+        return "skipped"
+
+
+# ── Auto-send on draw winner assigned ────────────────────────────────────────
+
+def send_draw_winner(week, member, db: Session) -> str:
+    """Send SMS to draw winner. Never raises."""
+    try:
+        if not member or not member.phone:
+            return "skipped"
+        cfg = db.query(NotificationSettings).first()
+        if not cfg:
+            return "skipped"
+        tmpl = db.query(NotificationTemplate).filter_by(key="draw_winner").first()
+        if not tmpl or not tmpl.is_active:
+            return "skipped"
+        vars_ = {
+            "member_name": member.name,
+            "week_number": str(week.week_number),
+            "draw_date": week.draw_date.strftime("%d %b %Y"),
+            "net_pot": str(int(week.net_pot or 0)),
+        }
+        msg = _render(tmpl.message, vars_)
+        status, response = _send_sms(member.phone, msg, cfg)
+        db.add(NotificationLog(
+            member_id=member.id, phone=member.phone,
+            template_key="draw_winner", message=msg,
+            status=status, provider_response=response,
+        ))
+        return status
+    except Exception:
+        return "skipped"
+
+
+# ── Auto-send on disbursement created ────────────────────────────────────────
+
+def send_disbursement_ready(week, member, cheque_number: str, db: Session) -> str:
+    """Send SMS when cheque/disbursement is recorded. Never raises."""
+    try:
+        if not member or not member.phone:
+            return "skipped"
+        cfg = db.query(NotificationSettings).first()
+        if not cfg:
+            return "skipped"
+        tmpl = db.query(NotificationTemplate).filter_by(key="disbursement_ready").first()
+        if not tmpl or not tmpl.is_active:
+            return "skipped"
+        vars_ = {
+            "member_name": member.name,
+            "week_number": str(week.week_number),
+            "cheque_number": cheque_number or "—",
+        }
+        msg = _render(tmpl.message, vars_)
+        status, response = _send_sms(member.phone, msg, cfg)
+        db.add(NotificationLog(
+            member_id=member.id, phone=member.phone,
+            template_key="disbursement_ready", message=msg,
+            status=status, provider_response=response,
+        ))
+        return status
+    except Exception:
+        return "skipped"
+
+
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("/settings")

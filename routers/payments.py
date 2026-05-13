@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
 from datetime import datetime
 from collections import defaultdict
@@ -24,11 +24,17 @@ class PaymentUpdate(BaseModel):
 class BatchPaymentRecord(BaseModel):
     """Record one physical payment covering multiple past weeks."""
     member_id: int
-    week_ids: List[int]                     # which weeks are being paid now
-    payment_date: Optional[str] = None      # defaults to today
-    payment_method: str = "cash"            # cash | bank_transfer | cheque
-    reference: Optional[str] = None        # slip / cheque number
+    week_ids: List[int]
+    payment_date: Optional[str] = None
+    payment_method: str = "cash"
+    reference: Optional[str] = None
     notes: Optional[str] = None
+
+    @model_validator(mode="after")
+    def week_ids_not_empty(self):
+        if not self.week_ids:
+            raise ValueError("week_ids must not be empty")
+        return self
 
 
 class BulkPayment(BaseModel):

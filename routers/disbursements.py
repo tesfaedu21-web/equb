@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 from database import get_db, PotDisbursement, Week, Member, Settings, Spot
@@ -10,16 +10,23 @@ router = APIRouter()
 
 class DisbursementCreate(BaseModel):
     week_id: int
-    gross_amount: float
-    service_fee: float = 0
-    voucher_deduction: float = 0
+    gross_amount: float = Field(..., gt=0)
+    service_fee: float = Field(0, ge=0)
+    voucher_deduction: float = Field(0, ge=0)
     cheque_number: str
-    cheque_date: str                    # ISO date string
+    cheque_date: str
     guarantor_1_id: int
     guarantor_2_id: int
     guarantor_3_id: int
     status: str = "issued"
     notes: Optional[str] = None
+
+    @field_validator("cheque_number")
+    @classmethod
+    def cheque_number_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Cheque number is required")
+        return v.strip()
 
 
 class DisbursementUpdate(BaseModel):
@@ -211,6 +218,15 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
     db.add(d)
     db.commit()
     db.refresh(d)
+    # Notify winner(s) that their cheque is ready
+    try:
+        from routers.notifications import send_disbursement_ready
+        winner_sas = w.winner_spot.spot_assignments if w.winner_spot else []
+        for sa in winner_sas:
+            if sa.is_active and sa.cycle_id == w.cycle_id:
+                send_disbursement_ready(w, sa.member, data.cheque_number, db)
+    except Exception:
+        pass
     return _to_dict(d)
 
 

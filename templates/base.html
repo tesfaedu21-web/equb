@@ -292,14 +292,29 @@
       .grid-cols-3 { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
       /* 4-col → 2-col on phone */
       .lg\:grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+      /* disbursement 4-col summary */
+      .grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       /* 2-col with lg override → stay 2-col */
       .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-      /* table font size on mobile */
-      table { font-size: 0.8rem !important; }
-      th, td { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+      /* table font size & overflow on mobile */
+      table { font-size: 0.78rem !important; }
+      th, td { padding-left: 0.5rem !important; padding-right: 0.5rem !important; padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+      /* wrap long Amharic names */
+      td.amharic, .amharic { word-break: break-word; }
       /* modal full-width on mobile */
-      .modal-box { border-radius: 20px; margin: 0.5rem; width: calc(100% - 1rem); }
+      .modal-box { border-radius: 20px; margin: 0.5rem; width: calc(100% - 1rem); max-height: 92vh; overflow-y: auto; }
       .card { padding: 1rem; border-radius: 16px; }
+      /* fluid selects & inputs */
+      select, input[type="text"], input[type="number"], input[type="date"], input[type="tel"] { width: 100% !important; min-width: 0 !important; }
+      /* minimum touch target size */
+      button, .btn-primary, .btn-secondary, a.nav-link { min-height: 40px; }
+      /* header text scale */
+      h1.text-2xl { font-size: 1.25rem !important; }
+      h2.text-2xl { font-size: 1.125rem !important; }
+      /* sidebar narrower on very small phones */
+      .sidebar { max-width: 82vw; }
+      /* flex wrap fix for header rows */
+      .flex-wrap { flex-wrap: wrap !important; }
     }
 
     /* ── Print ───────────────────────────────────────────────────────────── */
@@ -337,6 +352,17 @@
      x-transition:leave-start="opacity-100"
      x-transition:leave-end="opacity-0"
      x-text="toast.msg">
+</div>
+
+<!-- Session timeout warning -->
+<div x-show="sessionWarning" x-cloak
+     class="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-white rounded-2xl shadow-xl px-5 py-3 flex items-center gap-3 text-sm font-semibold">
+  <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+  </svg>
+  <span>Session expires soon — </span>
+  <a href="/login" class="underline font-bold">Re-login</a>
+  <button @click="sessionWarning = false" class="ml-1 text-white/70 hover:text-white">✕</button>
 </div>
 
 <div class="flex h-screen overflow-hidden">
@@ -553,6 +579,7 @@ function app() {
   const ctx = window._equbCtx || {};
   return {
     toast: {show:false, msg:'', type:'success'},
+    sessionWarning: false,
     sidebarOpen: false,
     useEthCal: localStorage.getItem('useEthCal') !== 'false',
     userName:    ctx.userName    || 'User',
@@ -563,7 +590,11 @@ function app() {
 
     get isAdmin() { return this.userRole === 'admin'; },
 
-    initApp() {},
+    initApp() {
+      // Warn at 50 min, expire at 60 min (server session = 3600s)
+      setTimeout(() => { this.sessionWarning = true; }, 50 * 60 * 1000);
+      setTimeout(() => { window.location.href = '/login'; }, 60 * 60 * 1000);
+    },
 
     showToast(msg, type='success') {
       this.toast = {show:true, msg, type};

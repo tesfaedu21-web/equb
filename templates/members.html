@@ -188,23 +188,23 @@
   <!-- Members Table -->
   <div x-show="viewMode==='table'" x-cloak class="card p-0 overflow-hidden">
     <div class="overflow-x-auto">
-      <table class="w-full text-sm">
+      <table class="w-full text-sm min-w-[540px]">
         <thead class="bg-gray-50 border-b">
           <tr>
-            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Name</th>
-            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Phone</th>
-            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Spots</th>
-            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Weekly</th>
-            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Partners</th>
-            <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
-            <th class="px-5 py-3"></th>
+            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Name</th>
+            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden sm:table-cell">Phone</th>
+            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Spots</th>
+            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden sm:table-cell">Weekly</th>
+            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">Partners</th>
+            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+            <th class="px-4 py-3"></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
           <template x-for="m in pagedMembers" :key="m.id">
             <tr class="hover:bg-gray-50/70 transition-colors">
-              <td class="px-5 py-3.5 font-medium text-gray-900 amharic" x-text="m.name"></td>
-              <td class="px-5 py-3.5">
+              <td class="px-4 py-3 font-medium text-gray-900 amharic break-words max-w-[140px]" x-text="m.name"></td>
+              <td class="px-4 py-3 hidden sm:table-cell">
                 <template x-if="m.phone">
                   <a :href="`tel:${m.phone}`"
                      class="flex items-center gap-1 text-blue-600 hover:underline text-sm font-medium">
@@ -217,20 +217,20 @@
                 </template>
                 <span x-show="!m.phone" class="text-gray-300 text-sm">—</span>
               </td>
-              <td class="px-5 py-3.5">
+              <td class="px-4 py-3">
                 <div class="flex flex-wrap gap-1">
                   <template x-for="sn in m.spot_numbers" :key="sn">
-                    <span class="inline-flex items-center justify-center w-8 h-8 bg-equb-pale text-equb-green rounded-lg text-xs font-bold" x-text="sn"></span>
+                    <span class="inline-flex items-center justify-center w-7 h-7 bg-equb-pale text-equb-green rounded-lg text-xs font-bold" x-text="sn"></span>
                   </template>
                   <span x-show="m.spot_numbers.length === 0" class="text-gray-300 text-xs">—</span>
                 </div>
               </td>
-              <td class="px-5 py-3.5 font-semibold text-equb-green" x-text="fmt(m.total_weekly_contribution)"></td>
-              <td class="px-5 py-3.5 text-gray-500 text-xs amharic" x-text="m.partners.join(', ') || '—'"></td>
-              <td class="px-5 py-3.5">
+              <td class="px-4 py-3 font-semibold text-equb-green whitespace-nowrap hidden sm:table-cell" x-text="fmt(m.total_weekly_contribution)"></td>
+              <td class="px-4 py-3 text-gray-500 text-xs amharic hidden md:table-cell break-words max-w-[160px]" x-text="m.partners.join(', ') || '—'"></td>
+              <td class="px-4 py-3">
                 <span :class="`badge badge-${m.status}`" x-text="m.status"></span>
               </td>
-              <td class="px-5 py-3.5">
+              <td class="px-4 py-3">
                 <div class="flex items-center gap-1.5">
                   <button @click="printStatement(m)"
                           class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Payment Statement">

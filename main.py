@@ -104,6 +104,10 @@ async def auto_close_past_weeks():
 
         if newly_late or newly_missed:
             db.commit()
+            # Send SMS to newly missed members
+            from routers.notifications import send_missed_payment
+            for p in newly_missed:
+                send_missed_payment(p, db)
             print(f"[scheduler] {len(newly_late)} → late, {len(newly_missed)} → missed")
     except Exception as e:
         print(f"[scheduler] Error: {e}")
@@ -293,9 +297,11 @@ async def settings_page(request: Request):
     return templates.TemplateResponse(request, "settings.html", _ctx(request))
 
 
-# ── ONE-TIME SETUP — REMOVE AFTER FIRST USE ───────────────────────────────────
+# ── ONE-TIME SETUP (disabled once admin exists) ────────────────────────────────
 @app.get("/setup-admin-equb2024", response_class=HTMLResponse)
 async def setup_admin(token: str = ""):
+    if os.environ.get("SETUP_DISABLED", "").lower() in ("1", "true", "yes"):
+        return HTMLResponse("<h2>Setup endpoint is disabled</h2>", status_code=403)
     if token != "equb-init-7x9k":
         return HTMLResponse("<h2>Invalid token</h2>", status_code=403)
     db: Session = next(get_db())
@@ -305,13 +311,18 @@ async def setup_admin(token: str = ""):
             return HTMLResponse("<h2>Admin already exists. Login at /login</h2>")
         u = User(
             username="admin",
-            full_name="Admin",
+            full_name="Administrator",
             role="admin",
             is_active=True,
             password_hash=_pwd.hash("Equb@2024!"),
         )
         db.add(u)
         db.commit()
-        return HTMLResponse("<h2>Admin created! Username: admin / Password: Equb@2024! — Go to /login and change it immediately.</h2>")
+        return HTMLResponse(
+            "<h2>Admin created!</h2>"
+            "<p>Username: <strong>admin</strong> / Password: <strong>Equb@2024!</strong></p>"
+            "<p><a href='/login'>Go to login</a> and change your password immediately.</p>"
+            "<p><strong>Set SETUP_DISABLED=true in your environment to disable this endpoint.</strong></p>"
+        )
     finally:
         db.close()

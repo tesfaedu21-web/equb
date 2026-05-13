@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from database import get_db, Settings
 
@@ -8,16 +8,23 @@ router = APIRouter()
 
 
 class SettingsUpdate(BaseModel):
-    full_spot_amount: Optional[float] = None
-    half_spot_amount: Optional[float] = None
-    association_deduction: Optional[float] = None
-    group_week_interval: Optional[int] = None
-    full_spot_voucher: Optional[float] = None
-    half_spot_voucher: Optional[float] = None
+    full_spot_amount: Optional[float] = Field(None, gt=0)
+    half_spot_amount: Optional[float] = Field(None, gt=0)
+    association_deduction: Optional[float] = Field(None, ge=0)
+    group_week_interval: Optional[int] = Field(None, ge=2)
+    full_spot_voucher: Optional[float] = Field(None, ge=0)
+    half_spot_voucher: Optional[float] = Field(None, ge=0)
     include_worker_slot: Optional[bool] = None
     group_name: Optional[str] = None
     group_tagline: Optional[str] = None
     logo_url: Optional[str] = None
+
+    @model_validator(mode="after")
+    def half_less_than_full(self):
+        if self.full_spot_amount and self.half_spot_amount:
+            if self.half_spot_amount >= self.full_spot_amount:
+                raise ValueError("half_spot_amount must be less than full_spot_amount")
+        return self
 
 
 @router.get("")

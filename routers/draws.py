@@ -459,11 +459,20 @@ def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = 
     w.winner_spot_id = data.winner_spot_id
     w.status = "drawn"
     spot.status = "received"
+    winners = []
     for sa in spot.spot_assignments:
         if sa.is_active and sa.cycle_id == w.cycle_id:
             sa.member.status = "received"
+            winners.append(sa.member)
 
     db.commit()
+    # Notify winners via SMS
+    try:
+        from routers.notifications import send_draw_winner
+        for member in winners:
+            send_draw_winner(w, member, db)
+    except Exception:
+        pass
     return week_to_dict(w)
 
 
