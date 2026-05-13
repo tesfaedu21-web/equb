@@ -515,20 +515,15 @@
         </select>
         <!-- Buyer payment check -->
         <template x-if="buyerPaymentCheck">
-          <div :class="buyerPaymentCheck.fully_paid
+          <div :class="buyerPaymentCheck.eligible
                 ? 'bg-green-50 border-green-200 text-green-700'
                 : 'bg-red-50 border-red-200 text-red-700'"
                class="border rounded-xl p-2.5 mt-2 text-xs">
-            <template x-if="buyerPaymentCheck.fully_paid">
+            <template x-if="buyerPaymentCheck.eligible">
               <span>✓ Fully paid — eligible to buy this pot.</span>
             </template>
-            <template x-if="!buyerPaymentCheck.fully_paid">
-              <span>
-                ✗ <strong x-text="buyerPaymentCheck.name" class="amharic"></strong>
-                has <span x-text="buyerPaymentCheck.unpaid_count"></span> unpaid week(s)
-                (weeks <span x-text="buyerPaymentCheck.unpaid_weeks?.join(', ')"></span>) —
-                <span x-text="fmt(buyerPaymentCheck.unpaid_amount)"></span> outstanding.
-              </span>
+            <template x-if="!buyerPaymentCheck.eligible">
+              <span>✗ <span x-text="buyerPaymentCheck.ineligible_reason"></span></span>
             </template>
           </div>
         </template>
@@ -592,7 +587,9 @@
 
       <div class="flex gap-3 pt-2">
         <button type="button" @click="showSaleModal = false" class="btn-secondary flex-1">Cancel</button>
-        <button type="submit" :disabled="saving" class="btn-primary flex-1"
+        <button type="submit"
+                :disabled="saving || (buyerPaymentCheck && !buyerPaymentCheck.eligible)"
+                class="btn-primary flex-1"
                 x-text="saving ? 'Saving…' : 'Confirm Sale'"></button>
       </div>
     </form>
@@ -1126,6 +1123,7 @@ function draws() {
 
     async recordSale() {
       if (!this.saleForm.buyer_id) return;
+      if (this.buyerPaymentCheck && !this.buyerPaymentCheck.eligible) return;
       this.saving = true;
       try {
         const payload = {
