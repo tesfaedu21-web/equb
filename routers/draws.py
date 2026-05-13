@@ -596,20 +596,16 @@ def active_spots(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
 @router.get("/active-members")
 def active_members_for_sale(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     members = db.query(Member).filter(Member.status == "active").order_by(Member.name).all()
-    return [
-        {
+    def _member_dict(m):
+        sas = [sa for sa in m.spot_assignments
+               if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)]
+        return {
             "id": m.id, "name": m.name,
-            "spot_numbers": [
-                sa.spot.number for sa in m.spot_assignments
-                if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)
-            ],
-            "spot_count": sum(
-                1 for sa in m.spot_assignments
-                if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)
-            ),
+            "spot_numbers": [sa.spot.number for sa in sas],
+            "share": sas[0].share if sas else "full",
+            "spot_count": len(sas),
         }
-        for m in members
-    ]
+    return [_member_dict(m) for m in members]
 
 
 @router.post("/cycles/{cycle_id}/reactivate")

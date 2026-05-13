@@ -1023,7 +1023,7 @@ function payments() {
         const res = await this.api('GET', `/api/payments/member/${this.batch.member_id}/outstanding`);
         this.outstanding = res.outstanding;
         if (!this.batch._fromRow) this.batch.week_ids = [];
-      } catch(e) { this.showToast(e.message, 'error'); }
+      } catch(e) { this.outstanding = []; this.showToast(e.message, 'error'); }
       finally { this.loadingOutstanding = false; }
     },
 

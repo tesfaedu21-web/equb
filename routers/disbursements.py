@@ -40,7 +40,8 @@ def _to_dict(d: PotDisbursement) -> dict:
         "winner_spot_number": d.winner_spot.number if d.winner_spot else None,
         "winner_members": [
             {"id": sa.member.id, "name": sa.member.name}
-            for sa in d.winner_spot.spot_assignments if sa.is_active
+            for sa in d.winner_spot.spot_assignments
+            if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
         ] if d.winner_spot else [],
         "gross_amount": d.gross_amount,
         "service_fee": getattr(d, "service_fee", 0) or 0,
@@ -89,17 +90,12 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
     settings = db.query(Settings).first()
     # Total weeks in this cycle (including worker week if present)
     total_weeks = db.query(Week).filter(Week.cycle_id == w.cycle_id).count()
-    # Member spots for association deduction reference
-    member_spot_count = db.query(Spot).filter(
-        Spot.spot_type == "member", Spot.status != "active"
-    ).count() + db.query(Spot).filter(
-        Spot.spot_type == "member", Spot.status == "active"
-    ).count()  # total member spots regardless of received status
 
     full_voucher_total = getattr(settings, "full_spot_voucher", 80) * total_weeks
     half_voucher_total = getattr(settings, "half_spot_voucher", 40) * total_weeks
 
-    assignments = [sa for sa in w.winner_spot.spot_assignments if sa.is_active]
+    assignments = [sa for sa in w.winner_spot.spot_assignments
+                   if sa.is_active and sa.cycle_id == w.cycle_id]
 
     # Service fee = one week's contribution amount per share type
     total_service_fee = sum(
@@ -177,7 +173,8 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
 
     # Identify winner members (to block them from being their own guarantor)
     winner_member_ids = {
-        sa.member_id for sa in w.winner_spot.spot_assignments if sa.is_active
+        sa.member_id for sa in w.winner_spot.spot_assignments
+        if sa.is_active and sa.cycle_id == w.cycle_id
     } if w.winner_spot else set()
 
     for gid in guarantor_ids:

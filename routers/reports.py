@@ -95,7 +95,8 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
         if last_draw_obj:
             winner = None
             if last_draw_obj.winner_spot:
-                winner = ", ".join(sa.member.name for sa in last_draw_obj.winner_spot.spot_assignments if sa.is_active)
+                winner = ", ".join(sa.member.name for sa in last_draw_obj.winner_spot.spot_assignments
+                                   if sa.is_active and sa.cycle_id == last_draw_obj.cycle_id)
             # check for sale transaction
             tx = last_draw_obj.transactions[0] if last_draw_obj.transactions else None
             last_draw = {
@@ -237,7 +238,8 @@ def ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     rows = []
     for d in disbs:
         winner_names = ", ".join(
-            sa.member.name for sa in d.winner_spot.spot_assignments if sa.is_active
+            sa.member.name for sa in d.winner_spot.spot_assignments
+            if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
         ) if d.winner_spot else "—"
         rows.append({
             "week_number": d.week.week_number if d.week else None,
@@ -421,7 +423,8 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
     rows = []
     for d in disbs:
         winner = ", ".join(
-            sa.member.name for sa in d.winner_spot.spot_assignments if sa.is_active
+            sa.member.name for sa in d.winner_spot.spot_assignments
+            if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
         ) if d.winner_spot else "—"
         rows.append({
             "id":                d.id,
@@ -499,7 +502,8 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
              .order_by(PotDisbursement.cheque_date).all())
     for d in disbs:
         winner = ", ".join(
-            sa.member.name for sa in d.winner_spot.spot_assignments if sa.is_active
+            sa.member.name for sa in d.winner_spot.spot_assignments
+            if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
         ) if d.winner_spot else "—"
         wk = week_map.get(d.week_id)
         entries.append({

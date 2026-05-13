@@ -833,7 +833,7 @@ function draws() {
     get saleShareType() {
       if (this.activeWeek?.is_group_week) {
         const buyer = this.activeMembers?.find(m => m.id === this.saleForm.buyer_id);
-        return buyer?.spots?.[0]?.share || 'full';
+        return buyer?.share || 'full';
       }
       return this.activeWeek?.winner_spot?.members?.[0]?.share || 'full';
     },
