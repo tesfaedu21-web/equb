@@ -76,7 +76,8 @@ def week_to_dict(w: Week, settings: Optional[Settings] = None) -> dict:
             {"id": sa.member.id, "name": sa.member.name, "share": sa.share}
             for sa in w.winner_spot.spot_assignments if sa.is_active
         ]
-        winner_spot = {"id": w.winner_spot.id, "number": w.winner_spot.number, "members": members}
+        winner_spot = {"id": w.winner_spot.id, "number": w.winner_spot.number,
+                       "spot_type": w.winner_spot.spot_type, "members": members}
     transaction = None
     if tx:
         transaction = {

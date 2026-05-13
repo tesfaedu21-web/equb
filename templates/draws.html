@@ -165,8 +165,10 @@
                     <template x-if="w.status === 'drawn'">
                       <div class="flex items-center justify-end gap-2">
                         <button @click="openSale(w)"
-                                class="text-xs btn-secondary py-1 px-3">Sell Pot</button>
-                        <button @click="openDisbursement(w)"
+                                class="text-xs btn-secondary py-1 px-3"
+                                x-text="w.winner_spot?.spot_type === 'association' ? 'Record Sale' : 'Sell Pot'"></button>
+                        <button x-show="w.winner_spot?.spot_type !== 'association'"
+                                @click="openDisbursement(w)"
                                 class="text-xs text-indigo-500 hover:text-indigo-700 font-medium px-2 py-1 rounded-lg hover:bg-gray-100">Disburse</button>
                       </div>
                     </template>
@@ -474,14 +476,17 @@
   <div class="modal-box">
     <div class="p-6 border-b">
       <h2 class="text-lg font-bold text-gray-900">
-        <span x-text="activeWeek?.is_group_week ? 'Group Week Sale' : 'Sell Pot'"></span>
+        <span x-text="activeWeek?.winner_spot?.spot_type === 'association' ? 'Association Spot Sale'
+                    : activeWeek?.is_group_week ? 'Group Week Sale' : 'Sell Pot'"></span>
         — Week <span x-text="activeWeek?.week_number"></span>
       </h2>
-      <p class="text-sm text-gray-500 mt-1" x-text="activeWeek?.is_group_week
-        ? 'Group week. The pot is sold to any active member at face value.'
-        : activeWeek?.status === 'drawn'
-          ? 'Draw winner is selling their pot to another active member.'
-          : 'Winner is selling their pot to another active member for a % fee.'"></p>
+      <p class="text-sm text-gray-500 mt-1" x-text="activeWeek?.winner_spot?.spot_type === 'association'
+        ? 'Association spot winner — pot must be sold to a member. Sale % goes to association fund.'
+        : activeWeek?.is_group_week
+          ? 'Group week. The pot is sold to any active member at face value.'
+          : activeWeek?.status === 'drawn'
+            ? 'Draw winner is selling their pot to another active member.'
+            : 'Winner is selling their pot to another active member for a % fee.'"></p>
     </div>
     <form @submit.prevent="recordSale()" class="p-6 space-y-4">
 
@@ -973,10 +978,19 @@ function draws() {
 
     async openSale(w) {
       this.activeWeek = w;
-      // For a 'drawn' week, pre-fill the drawn winner as original_winner and seller
-      const winnerId = (w.winner_spot && w.winner_spot.members && w.winner_spot.members.length > 0)
+      const isAssocSpot = w.winner_spot?.spot_type === 'association';
+      const isGroupWeek = w.is_group_week;
+      // Association spot winner: no member owner — sale goes directly to association fund
+      const winnerId = (!isAssocSpot && w.winner_spot?.members?.length > 0)
         ? w.winner_spot.members[0].id : null;
-      this.saleForm = { original_winner_id: winnerId, seller_id: winnerId, buyer_id: null, percentage: null, notes: '' };
+      const txType = isAssocSpot ? 'assoc_spot_sale'
+                   : isGroupWeek ? 'group_week_sale'
+                   : 'member_sale';
+      this.saleForm = {
+        original_winner_id: winnerId, seller_id: winnerId,
+        buyer_id: null, percentage: null, notes: '',
+        transaction_type: txType,
+      };
       this.buyerPaymentCheck = null;
       this.activeMembers = await this.api('GET', '/api/draws/active-members').catch(() => []);
       this.showSaleModal = true;
@@ -1115,7 +1129,7 @@ function draws() {
       this.saving = true;
       try {
         const payload = {
-          transaction_type: this.activeWeek.is_group_week ? 'group_week_sale' : 'member_sale',
+          transaction_type: this.saleForm.transaction_type || (this.activeWeek.is_group_week ? 'group_week_sale' : 'member_sale'),
           buyer_id: this.saleForm.buyer_id,
           original_winner_id: this.saleForm.original_winner_id || null,
           seller_id: this.saleForm.seller_id || null,
