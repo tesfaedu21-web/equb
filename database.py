@@ -464,7 +464,7 @@ def _migrate(engine):
                 conn.execute(text(sql))
                 conn.commit()
             except Exception:
-                pass  # column already exists
+                conn.rollback()  # PostgreSQL aborts the transaction on error; rollback before next statement
 
 
 def _backfill_cycle_settings(db):
