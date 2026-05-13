@@ -12,11 +12,15 @@ router = APIRouter()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _check_fully_paid(member: Member, up_to_week_number: int, db: Session) -> dict:
-    unpaid = (db.query(Payment).join(Week)
-              .filter(Payment.member_id == member.id,
-                      Payment.status.in_(["pending", "late", "missed"]),
-                      Week.week_number <= up_to_week_number).all())
+def _check_fully_paid(member: Member, up_to_week_number: int, db: Session,
+                       cycle_id: Optional[int] = None) -> dict:
+    q = (db.query(Payment).join(Week)
+         .filter(Payment.member_id == member.id,
+                 Payment.status.in_(["pending", "late", "missed"]),
+                 Week.week_number <= up_to_week_number))
+    if cycle_id:
+        q = q.filter(Week.cycle_id == cycle_id)
+    unpaid = q.all()
     return {
         "fully_paid": len(unpaid) == 0,
         "unpaid_count": len(unpaid),
@@ -74,7 +78,8 @@ def week_to_dict(w: Week, settings: Optional[Settings] = None) -> dict:
     if w.winner_spot:
         members = [
             {"id": sa.member.id, "name": sa.member.name, "share": sa.share}
-            for sa in w.winner_spot.spot_assignments if sa.is_active
+            for sa in w.winner_spot.spot_assignments
+            if sa.is_active and sa.cycle_id == w.cycle_id
         ]
         winner_spot = {"id": w.winner_spot.id, "number": w.winner_spot.number,
                        "spot_type": w.winner_spot.spot_type, "members": members}
@@ -359,9 +364,9 @@ def check_winner_payment(week_id: int, spot_id: int, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Spot not found")
     results, all_paid = [], True
     for sa in spot.spot_assignments:
-        if not sa.is_active:
+        if not sa.is_active or sa.cycle_id != w.cycle_id:
             continue
-        s = _check_fully_paid(sa.member, w.week_number, db)
+        s = _check_fully_paid(sa.member, w.week_number, db, cycle_id=w.cycle_id)
         if not s["fully_paid"]:
             all_paid = False
         results.append({"member_id": sa.member.id, "name": sa.member.name, **s})
@@ -387,7 +392,7 @@ def check_buyer_payment(week_id: int, member_id: int, db: Session = Depends(get_
     elif m.status != "active":
         ineligible_reason = f"{m.name} is not an active member"
 
-    s = _check_fully_paid(m, w.week_number, db)
+    s = _check_fully_paid(m, w.week_number, db, cycle_id=w.cycle_id)
     if not s["fully_paid"] and not ineligible_reason:
         ineligible_reason = f"Has {s['unpaid_count']} unpaid week(s)"
 
@@ -436,14 +441,14 @@ def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = 
             detail="Association spot must be sold, not drawn directly. Use the sell endpoint."
         )
 
-    # All members of winning spot must be active (not left) and fully paid
-    for sa in [sa for sa in spot.spot_assignments if sa.is_active]:
+    # All members of winning spot (in this cycle) must be active and fully paid
+    for sa in [sa for sa in spot.spot_assignments if sa.is_active and sa.cycle_id == w.cycle_id]:
         if sa.member.status == "left":
             raise HTTPException(
                 status_code=400,
                 detail=f"{sa.member.name} has left the group and cannot receive a pot draw."
             )
-        s = _check_fully_paid(sa.member, w.week_number, db)
+        s = _check_fully_paid(sa.member, w.week_number, db, cycle_id=w.cycle_id)
         if not s["fully_paid"]:
             raise HTTPException(
                 status_code=400,
@@ -455,7 +460,7 @@ def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = 
     w.status = "drawn"
     spot.status = "received"
     for sa in spot.spot_assignments:
-        if sa.is_active:
+        if sa.is_active and sa.cycle_id == w.cycle_id:
             sa.member.status = "received"
 
     db.commit()
@@ -487,7 +492,7 @@ def record_batch_draw(data: BatchDrawResult, request: Request, db: Session = Dep
         w.status = "drawn"
         spot.status = "received"
         for sa in spot.spot_assignments:
-            if sa.is_active:
+            if sa.is_active and sa.cycle_id == w.cycle_id:
                 sa.member.status = "received"
         results.append({"week_id": week_id, "week_number": w.week_number,
                         "winner_spot": spot.number, "status": "drawn"})
@@ -518,7 +523,7 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
     if buyer.status != "active":
         raise HTTPException(status_code=400, detail="Buyer must be an active member (not already received)")
 
-    pay_status = _check_fully_paid(buyer, w.week_number, db)
+    pay_status = _check_fully_paid(buyer, w.week_number, db, cycle_id=w.cycle_id)
     if not pay_status["fully_paid"]:
         raise HTTPException(
             status_code=400,
@@ -552,12 +557,11 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
     )
     db.add(tx)
 
-    # Mark buyer's spot as received
+    # Mark buyer's spot as received (current cycle only)
     buyer.status = "received"
-    if buyer.spot_assignments:
-        for sa in buyer.spot_assignments:
-            if sa.is_active:
-                sa.spot.status = "received"
+    for sa in buyer.spot_assignments:
+        if sa.is_active and sa.cycle_id == w.cycle_id:
+            sa.spot.status = "received"
 
     w.status = "sold"
     db.commit()
@@ -590,13 +594,19 @@ def active_spots(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
 
 
 @router.get("/active-members")
-def active_members_for_sale(db: Session = Depends(get_db)):
+def active_members_for_sale(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     members = db.query(Member).filter(Member.status == "active").order_by(Member.name).all()
     return [
         {
             "id": m.id, "name": m.name,
-            "spot_numbers": [sa.spot.number for sa in m.spot_assignments if sa.is_active],
-            "spot_count": sum(1 for sa in m.spot_assignments if sa.is_active),
+            "spot_numbers": [
+                sa.spot.number for sa in m.spot_assignments
+                if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)
+            ],
+            "spot_count": sum(
+                1 for sa in m.spot_assignments
+                if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)
+            ),
         }
         for m in members
     ]

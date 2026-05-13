@@ -989,7 +989,7 @@ function draws() {
         transaction_type: txType,
       };
       this.buyerPaymentCheck = null;
-      this.activeMembers = await this.api('GET', '/api/draws/active-members').catch(() => []);
+      this.activeMembers = await this.api('GET', `/api/draws/active-members?cycle_id=${this.selectedCycle}`).catch(() => []);
       this.showSaleModal = true;
     },
 
