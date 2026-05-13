@@ -251,9 +251,9 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
     db.add(cycle)
     db.flush()
 
-    # Calculate pot using the cycle's own spot counts (not the Spot table size)
-    # Theoretical: all spots pay full rate; adjusted per-member once assignments exist
-    gross = (n_member + n_assoc) * settings.full_spot_amount
+    # Gross pot = member spots only. Association spots are covered by the association
+    # fund separately and do NOT contribute to the gross pot.
+    gross = n_member * settings.full_spot_amount
     assoc = n_member * settings.association_deduction
     net   = gross - assoc
 
