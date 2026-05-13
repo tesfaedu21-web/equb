@@ -4,7 +4,7 @@ from sqlalchemy import func as sqla_func
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
-from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot
+from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot, Cycle
 
 router = APIRouter()
 
@@ -67,8 +67,14 @@ def _to_dict(d: PotDisbursement) -> dict:
 
 
 @router.get("")
-def list_disbursements(db: Session = Depends(get_db)):
-    rows = db.query(PotDisbursement).order_by(PotDisbursement.id.desc()).all()
+def list_disbursements(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    if not cycle_id:
+        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle_id = active.id if active else None
+    q = db.query(PotDisbursement).join(Week)
+    if cycle_id:
+        q = q.filter(Week.cycle_id == cycle_id)
+    rows = q.order_by(PotDisbursement.id.desc()).all()
     return [_to_dict(d) for d in rows]
 
 

@@ -141,10 +141,16 @@ def payments_for_week(week_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/member/{member_id}")
-def payments_for_member(member_id: int, db: Session = Depends(get_db)):
-    payments = (db.query(Payment).filter(Payment.member_id == member_id)
-                .join(Week).order_by(Week.week_number).all())
-    return [payment_to_dict(p) for p in payments]
+def payments_for_member(member_id: int, cycle_id: Optional[int] = None,
+                        db: Session = Depends(get_db)):
+    if not cycle_id:
+        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle_id = active.id if active else None
+    q = db.query(Payment).filter(Payment.member_id == member_id).join(Week)
+    if cycle_id:
+        q = q.filter(Week.cycle_id == cycle_id)
+    payments = q.order_by(Week.week_number).all()
+    return [payment_to_dict(p, cycle_id) for p in payments]
 
 
 @router.get("/member/{member_id}/outstanding")
@@ -194,6 +200,9 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
          .filter(Payment.member_id == member_id,
                  Payment.status.in_(["pending", "late", "missed"]))
          .join(Week))
+    # Always scope to the active cycle so old-cycle debt never bleeds in
+    if cycle_id:
+        q = q.filter(Week.cycle_id == cycle_id)
     if include_week_id:
         # Always include the explicitly requested week (e.g. current collection week)
         # even if its draw_date is in the future
@@ -489,14 +498,19 @@ def daily_collection(date: Optional[str] = None, cycle_id: Optional[int] = None,
 
 @router.get("/member/{member_id}/balance")
 def member_payment_balance(member_id: int, up_to_week_number: int = 9999,
-                           db: Session = Depends(get_db)):
-    """Check if a member is fully paid up to a given week number."""
-    unpaid = (db.query(Payment)
-              .join(Week)
-              .filter(Payment.member_id == member_id,
-                      Payment.status.in_(["pending", "late", "missed"]),
-                      Week.week_number <= up_to_week_number)
-              .all())
+                           cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Check if a member is fully paid up to a given week number within the active cycle."""
+    if not cycle_id:
+        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle_id = active.id if active else None
+    q = (db.query(Payment)
+         .join(Week)
+         .filter(Payment.member_id == member_id,
+                 Payment.status.in_(["pending", "late", "missed"]),
+                 Week.week_number <= up_to_week_number))
+    if cycle_id:
+        q = q.filter(Week.cycle_id == cycle_id)
+    unpaid = q.all()
     return {
         "member_id": member_id,
         "fully_paid": len(unpaid) == 0,

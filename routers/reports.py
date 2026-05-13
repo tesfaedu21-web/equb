@@ -202,6 +202,9 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
 
 @router.get("/transactions")
 def recent_transactions(limit: int = 20, cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    if not cycle_id:
+        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle_id = active.id if active else None
     q = db.query(PotTransaction)
     if cycle_id:
         q = q.join(Week).filter(Week.cycle_id == cycle_id)
