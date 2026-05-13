@@ -35,6 +35,14 @@
             d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
         </svg>
       </button>
+      <!-- New Cycle (admin only) -->
+      <button x-show="isAdmin" @click="openNewCycle()"
+              class="btn-primary flex items-center gap-2 text-sm py-2 px-3" title="Create new cycle">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        New Cycle
+      </button>
     </div>
   </div>
 
@@ -57,8 +65,15 @@
 
   <!-- No cycle -->
   <div x-show="!selectedCycle" class="card text-center py-12 text-gray-400">
-    Select a cycle above to view draws
-    <div class="mt-3"><a href="/" class="text-equb-green hover:underline text-sm">Go to Dashboard to create a cycle →</a></div>
+    <div>Select a cycle above to view draws</div>
+    <template x-if="isAdmin">
+      <div class="mt-4">
+        <button @click="openNewCycle()" class="btn-primary">+ Create New Cycle</button>
+      </div>
+    </template>
+    <template x-if="!isAdmin">
+      <div class="mt-2 text-sm">Contact an administrator to create a cycle</div>
+    </template>
   </div>
 
   <template x-if="selectedCycle">
@@ -817,6 +832,135 @@
   </div>
 </div>
 
+<!-- New Cycle Modal -->
+<div x-show="showNewCycle" x-cloak class="modal-backdrop" @click.self="showNewCycle = false; cycleError = ''">
+  <div class="modal-box max-w-lg flex flex-col" style="max-height:90vh; overflow:hidden;">
+
+    <!-- Header -->
+    <div class="p-5 border-b flex-shrink-0">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Create New Cycle</h2>
+          <p class="text-sm text-gray-500 mt-0.5">Fill in the required fields below.</p>
+        </div>
+        <button type="button" @click="showNewCycle = false; cycleError = ''"
+                class="text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded-lg hover:bg-gray-100 ml-3 flex-shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Cycle Name <span class="text-red-500">*</span></label>
+          <input x-model="newCycle.name" type="text" placeholder="e.g. Equb 2026 Round 1"
+                 class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Start Date <span class="text-red-500">*</span></label>
+          <input x-model="newCycle.start_date" type="date"
+                 class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"/>
+        </div>
+      </div>
+
+      <div x-show="cycleError" x-cloak
+           class="mt-3 flex items-center gap-2 bg-red-50 border border-red-300 rounded-lg px-3 py-2 text-sm text-red-700">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span x-text="cycleError"></span>
+      </div>
+    </div>
+
+    <!-- Scrollable optional settings -->
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <div class="p-5 space-y-4">
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+          <textarea x-model="newCycle.notes" rows="2" placeholder="Any notes about this cycle..."></textarea>
+        </div>
+
+        <!-- Spot Count -->
+        <div class="border-t pt-4">
+          <div class="text-sm font-semibold text-gray-700 mb-3">🔢 Number of Spots</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Member Spots</label>
+              <input x-model.number="newCycle.total_member_spots" type="number" min="1" :placeholder="'e.g. ' + (appSettings?.total_member_spots || 113)"/>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Association Spots</label>
+              <input x-model.number="newCycle.total_assoc_spots" type="number" min="0" :placeholder="'e.g. ' + (appSettings?.total_assoc_spots ?? 5)"/>
+            </div>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">Leave blank to use current settings defaults.</p>
+        </div>
+
+        <!-- Amounts -->
+        <div class="border-t pt-4">
+          <div class="text-sm font-semibold text-gray-700 mb-1">💰 Weekly Contribution Amounts</div>
+          <p class="text-xs text-gray-400 mb-3">
+            Leave blank to keep current values
+            (<span x-text="fmt(appSettings?.full_spot_amount||21000)"></span> full /
+             <span x-text="fmt(appSettings?.half_spot_amount||10500)"></span> half).
+            Type a new amount only if you want to change it.
+          </p>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Full Spot (ETB)</label>
+              <input x-model.number="newCycle.full_spot_amount" type="number" min="1"
+                     :placeholder="appSettings?.full_spot_amount || 21000"/>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Half Spot (ETB)</label>
+              <input x-model.number="newCycle.half_spot_amount" type="number" min="1"
+                     :placeholder="appSettings?.half_spot_amount || 10500"/>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Association Deduction (ETB)</label>
+              <input x-model.number="newCycle.association_deduction" type="number" min="0"
+                     :placeholder="appSettings?.association_deduction ?? 1000"/>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vouchers -->
+        <div class="border-t pt-4">
+          <div class="text-sm font-semibold text-gray-700 mb-1">🎟 Voucher Deductions</div>
+          <p class="text-xs text-gray-400 mb-3">Deducted from winner's pot at disbursement.</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Full Spot Voucher (ETB/week)</label>
+              <input x-model.number="newCycle.full_spot_voucher" type="number" min="0" :placeholder="'e.g. ' + (appSettings?.full_spot_voucher ?? 80)"/>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Half Spot Voucher (ETB/week)</label>
+              <input x-model.number="newCycle.half_spot_voucher" type="number" min="0" :placeholder="'e.g. ' + (appSettings?.half_spot_voucher ?? 40)"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+          <strong>Note:</strong> Any existing active cycle will be closed. Member statuses reset. Leave amount fields blank to keep current settings.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="flex gap-3 p-4 border-t flex-shrink-0">
+      <button type="button" @click="showNewCycle = false; cycleError = ''"
+              class="btn-secondary flex-1">Cancel</button>
+      <button type="button" @click="createCycle()" :disabled="saving"
+              class="btn-primary flex-1"
+              x-text="saving ? 'Creating...' : 'Create Cycle'"></button>
+    </div>
+
+  </div>
+</div><!-- end new cycle modal -->
+
 <!-- Delete Cycle Confirmation Modal -->
 <div x-show="showDeleteConfirm" x-cloak class="modal-backdrop" @click.self="showDeleteConfirm = false">
   <div class="modal-box max-w-md">
@@ -900,6 +1044,14 @@ function draws() {
     buyerPaymentCheck: null,
     batchRows: [],
     appSettings: {},
+    showNewCycle: false,
+    cycleError: '',
+    newCycle: {
+      name: '', start_date: '', notes: '',
+      total_member_spots: null, total_assoc_spots: null,
+      full_spot_amount: null, half_spot_amount: null,
+      association_deduction: null, full_spot_voucher: null, half_spot_voucher: null,
+    },
 
     get filteredWeeks() {
       return this.weeks.filter(w => {
@@ -1228,6 +1380,52 @@ function draws() {
         }
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.saving = false; }
+    },
+
+    openNewCycle() {
+      const s = this.appSettings || {};
+      this.cycleError = '';
+      this.newCycle = {
+        name: '', start_date: '', notes: '',
+        total_member_spots: s.total_member_spots || null,
+        total_assoc_spots: s.total_assoc_spots !== undefined ? s.total_assoc_spots : null,
+        full_spot_amount: null, half_spot_amount: null,
+        association_deduction: null, full_spot_voucher: null, half_spot_voucher: null,
+      };
+      this.showNewCycle = true;
+    },
+
+    async createCycle() {
+      this.cycleError = '';
+      if (!this.newCycle.name.trim()) { this.cycleError = 'Cycle name is required.'; return; }
+      if (!this.newCycle.start_date)  { this.cycleError = 'Start date is required.'; return; }
+      this.saving = true;
+      try {
+        const payload = {
+          name: this.newCycle.name.trim(),
+          start_date: this.newCycle.start_date,
+          notes: this.newCycle.notes || null,
+        };
+        if (this.newCycle.total_member_spots) payload.total_member_spots = this.newCycle.total_member_spots;
+        if (this.newCycle.total_assoc_spots != null && this.newCycle.total_assoc_spots !== '') payload.total_assoc_spots = this.newCycle.total_assoc_spots;
+        if (this.newCycle.full_spot_amount)   payload.full_spot_amount   = this.newCycle.full_spot_amount;
+        if (this.newCycle.half_spot_amount)   payload.half_spot_amount   = this.newCycle.half_spot_amount;
+        if (this.newCycle.association_deduction != null && this.newCycle.association_deduction !== '') payload.association_deduction = this.newCycle.association_deduction;
+        if (this.newCycle.full_spot_voucher  != null && this.newCycle.full_spot_voucher !== '')  payload.full_spot_voucher  = this.newCycle.full_spot_voucher;
+        if (this.newCycle.half_spot_voucher  != null && this.newCycle.half_spot_voucher !== '')  payload.half_spot_voucher  = this.newCycle.half_spot_voucher;
+
+        const res = await this.api('POST', '/api/draws/cycles', payload);
+        this.showNewCycle = false;
+        this.cycleError = '';
+        this.showToast(`✓ Cycle "${res.name}" created — ${res.total_weeks} weeks generated`);
+        this.cycles = await this.api('GET', '/api/draws/cycles').catch(() => this.cycles);
+        this.selectedCycle = res.id;
+        await this.loadCycleAndWeeks();
+      } catch(e) {
+        this.cycleError = e.message || 'Failed to create cycle. Please try again.';
+      } finally {
+        this.saving = false;
+      }
     },
 
     async recordSale() {

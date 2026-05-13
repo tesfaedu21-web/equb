@@ -9,7 +9,7 @@
   <!-- Header -->
   <div>
     <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
-    <p class="text-sm text-gray-500 mt-0.5">Manage website, Equb configuration, and user accounts</p>
+    <p class="text-sm text-gray-500 mt-0.5">Manage website branding and user accounts</p>
   </div>
 
   <!-- Branding -->
@@ -49,61 +49,6 @@
       <div>
         <div class="text-white font-bold amharic" x-text="form.group_name || 'እቁብ'"></div>
         <div class="text-green-400 text-xs" x-text="form.group_tagline || 'Equb Manager'"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Equb configuration -->
-  <div class="card space-y-4">
-    <h2 class="text-base font-semibold text-gray-800 flex items-center gap-2">
-      <svg class="w-4 h-4 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
-      </svg>
-      Equb Configuration
-      <span class="text-xs text-gray-400 font-normal ml-1">(takes effect on next cycle)</span>
-    </h2>
-    <div class="grid grid-cols-3 gap-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Full Spot Amount (ETB)</label>
-        <input x-model.number="form.full_spot_amount" type="number" step="500"/>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Half Spot Amount (ETB)</label>
-        <input x-model.number="form.half_spot_amount" type="number" step="500"/>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Association Deduction (ETB/spot)</label>
-        <input x-model.number="form.association_deduction" type="number" step="100"/>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Group Week Interval</label>
-        <input x-model.number="form.group_week_interval" type="number" min="2" max="12"/>
-        <p class="text-xs text-gray-400 mt-1">Every Nth week = group/buyer week</p>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Full Spot Voucher (ETB/week)</label>
-        <input x-model.number="form.full_spot_voucher" type="number" step="10"/>
-        <p class="text-xs text-gray-400 mt-1">Deducted from full-spot winner's pot</p>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Half Spot Voucher (ETB/week)</label>
-        <input x-model.number="form.half_spot_voucher" type="number" step="10"/>
-        <p class="text-xs text-gray-400 mt-1">Deducted from half-spot winner's pot</p>
-      </div>
-    </div>
-
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-xs text-amber-700 flex-1">
-        <strong>After saving:</strong> click "Apply to Active Cycle" to update existing member payment amounts in the current cycle.
-      </div>
-      <div class="flex flex-col sm:flex-row gap-2">
-        <button @click="saveSettings()" :disabled="saving" class="btn-primary">
-          <span x-text="saving ? 'Saving…' : 'Save Configuration'"></span>
-        </button>
-        <button @click="applyToActiveCycle()" :disabled="applying"
-                class="btn-secondary text-amber-700 border-amber-300 hover:bg-amber-50">
-          <span x-text="applying ? 'Applying…' : 'Apply to Active Cycle'"></span>
-        </button>
       </div>
     </div>
   </div>
@@ -224,7 +169,7 @@ function settings() {
   return {
     form: {},
     users: [],
-    saving: false, applying: false,
+    saving: false,
     showUserModal: false,
     editUserId: null,
     userForm: { full_name:'', username:'', password:'', role:'cashier' },
@@ -246,16 +191,6 @@ function settings() {
         this.showToast('Settings saved — reload to see branding changes');
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.saving = false; }
-    },
-
-    async applyToActiveCycle() {
-      if (!confirm('This will update all member spot contributions and pending payment amounts in the active cycle to match the current settings. Continue?')) return;
-      this.applying = true;
-      try {
-        const r = await this.api('POST', '/api/members/apply-settings-to-cycle');
-        this.showToast(`Done — ${r.spots_updated} spots and ${r.payments_updated} pending payments updated to ${r.full_spot_amount.toLocaleString()} / ${r.half_spot_amount.toLocaleString()} ETB`);
-      } catch(e) { this.showToast(e.message, 'error'); }
-      finally { this.applying = false; }
     },
 
     openAddUser() {
