@@ -63,7 +63,7 @@
           </select>
           <select x-model="selectedWeek" @change="loadPayments()" class="flex-1">
             <option value="">— Select Week —</option>
-            <template x-for="w in weeks" :key="w.id">
+            <template x-for="w in arrivedWeeks" :key="w.id">
               <option :value="w.id"
                 x-text="weekLabel(w)">
               </option>
@@ -949,13 +949,17 @@ function payments() {
       } catch(e) { this.showToast(e.message, 'error'); }
     },
 
-    // Return the week that matches today's date: the latest week whose draw_date ≤ today.
-    // Falls back to the first week if the cycle hasn't started yet.
-    _currentWeek() {
+    // Only weeks whose draw_date has arrived (≤ today) — future weeks are not shown.
+    get arrivedWeeks() {
       const today = new Date();
       today.setHours(23, 59, 59, 0);
-      const match = [...this.weeks].reverse().find(w => new Date(w.draw_date) <= today);
-      return match || this.weeks[0] || null;
+      return this.weeks.filter(w => new Date(w.draw_date) <= today);
+    },
+
+    // Return the week that matches today: the latest arrived week.
+    _currentWeek() {
+      const arrived = this.arrivedWeeks;
+      return arrived[arrived.length - 1] || null;
     },
 
     async loadWeeks() {
