@@ -4,7 +4,7 @@ from sqlalchemy import func as sqla_func
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
-from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot, Cycle
+from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot, Cycle, cycle_cfg
 
 router = APIRouter()
 
@@ -101,19 +101,21 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
     if not w or not w.winner_spot_id:
         raise HTTPException(status_code=404, detail="Week not found or no winner")
 
-    settings = db.query(Settings).first()
+    cycle = db.query(Cycle).filter(Cycle.id == w.cycle_id).first()
+    gs    = db.query(Settings).first()
+    cfg   = cycle_cfg(cycle, gs)
+
     # Total weeks in this cycle (including worker week if present)
     total_weeks = db.query(Week).filter(Week.cycle_id == w.cycle_id).count()
 
-    full_voucher_total = getattr(settings, "full_spot_voucher", 80) * total_weeks
-    half_voucher_total = getattr(settings, "half_spot_voucher", 40) * total_weeks
+    full_voucher_total = cfg.full_spot_voucher * total_weeks
+    half_voucher_total = cfg.half_spot_voucher * total_weeks
 
     assignments = [sa for sa in w.winner_spot.spot_assignments
                    if sa.is_active and sa.cycle_id == w.cycle_id]
 
-    # Service fee = one week's contribution amount per share type
     total_service_fee = sum(
-        settings.full_spot_amount if sa.share == "full" else settings.half_spot_amount
+        cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount
         for sa in assignments
     )
     total_voucher = sum(
@@ -123,13 +125,11 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
 
     net_after_all = (w.net_pot or 0) - total_service_fee - total_voucher
 
-    # Association contribution per member per week
-    assoc_deduction = getattr(settings, "association_deduction", 1000)
-    # Total association contributed by this spot over the whole cycle
-    assoc_per_week_full = assoc_deduction            # 1000
-    assoc_per_week_half = assoc_deduction / 2        # 500
-    assoc_total_full = assoc_per_week_full * total_weeks
-    assoc_total_half = assoc_per_week_half * total_weeks
+    assoc_deduction     = cfg.association_deduction
+    assoc_per_week_full = assoc_deduction
+    assoc_per_week_half = assoc_deduction / 2
+    assoc_total_full    = assoc_per_week_full * total_weeks
+    assoc_total_half    = assoc_per_week_half * total_weeks
 
     return {
         "week_id": week_id,
@@ -138,8 +138,8 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
         "association_amount": w.association_amount,
         "net_pot": w.net_pot,
         "association_deduction_per_spot": assoc_deduction,
-        "full_spot_voucher_rate": getattr(settings, "full_spot_voucher", 80),
-        "half_spot_voucher_rate": getattr(settings, "half_spot_voucher", 40),
+        "full_spot_voucher_rate": cfg.full_spot_voucher,
+        "half_spot_voucher_rate": cfg.half_spot_voucher,
         "full_voucher_total": full_voucher_total,
         "half_voucher_total": half_voucher_total,
         "service_fee": total_service_fee,
@@ -149,9 +149,8 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
             {
                 "member": sa.member.name,
                 "share": sa.share,
-                "service_fee": settings.full_spot_amount if sa.share == "full" else settings.half_spot_amount,
+                "service_fee": cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount,
                 "voucher": full_voucher_total if sa.share == "full" else half_voucher_total,
-                # Association contribution breakdown per member
                 "association_per_week": assoc_per_week_full if sa.share == "full" else assoc_per_week_half,
                 "association_total_cycle": assoc_total_full if sa.share == "full" else assoc_total_half,
             }
@@ -207,13 +206,13 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
             )
 
     # ── Service fee: always auto-calculated from winner's share type ─────────
-    settings = db.query(Settings).first()
-    if not settings:
-        raise HTTPException(status_code=500, detail="Settings not configured")
+    cycle = db.query(Cycle).filter(Cycle.id == w.cycle_id).first()
+    gs    = db.query(Settings).first()
+    cfg   = cycle_cfg(cycle, gs)
     assignments = [sa for sa in w.winner_spot.spot_assignments
                    if sa.is_active and sa.cycle_id == w.cycle_id] if w.winner_spot else []
     service_fee = sum(
-        settings.full_spot_amount if sa.share == "full" else settings.half_spot_amount
+        cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount
         for sa in assignments
     )
 

@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import Optional, List
 from database import (get_db, Member, MemberSpot, Spot, Settings, Payment, Cycle,
-                      NotificationLog, PotTransaction, PotDisbursement)
+                      NotificationLog, PotTransaction, PotDisbursement, cycle_cfg)
 import csv, io, openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -186,8 +186,8 @@ def available_spots(db: Session = Depends(get_db)):
 
 @router.post("/apply-settings-to-cycle")
 def apply_settings_to_cycle(request: Request, db: Session = Depends(get_db)):
-    """Reapply full_spot_amount / half_spot_amount from Settings to all active
-    MemberSpot records in the active cycle. Use after changing spot amounts."""
+    """Push global Settings amounts into the active cycle's own settings and all active
+    MemberSpot records. Use after changing global spot amounts for the current cycle."""
     if getattr(request.state, "user_role", None) != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     settings = db.query(Settings).first()
@@ -196,6 +196,13 @@ def apply_settings_to_cycle(request: Request, db: Session = Depends(get_db)):
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     if not cycle:
         raise HTTPException(status_code=404, detail="No active cycle")
+
+    # Update the cycle's own settings snapshot from global settings
+    cycle.full_spot_amount    = settings.full_spot_amount
+    cycle.half_spot_amount    = settings.half_spot_amount
+    cycle.association_deduction = settings.association_deduction
+    cycle.full_spot_voucher   = getattr(settings, 'full_spot_voucher', 80)
+    cycle.half_spot_voucher   = getattr(settings, 'half_spot_voucher', 40)
 
     spots = db.query(MemberSpot).filter(
         MemberSpot.cycle_id == cycle.id,
@@ -338,7 +345,6 @@ def import_template(db: Session = Depends(get_db)):
 @router.post("/import")
 async def import_members(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Import members from CSV or Excel. Returns per-row results."""
-    settings = db.query(Settings).first()
     filename = (file.filename or "").lower()
     content = await file.read()
 
@@ -378,6 +384,8 @@ async def import_members(file: UploadFile = File(...), db: Session = Depends(get
     # Get active cycle for spot assignments
     active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     active_cycle_id = active_cycle.id if active_cycle else None
+    gs  = db.query(Settings).first()
+    cfg = cycle_cfg(active_cycle, gs)
 
     results = []
     created = 0
@@ -424,9 +432,7 @@ async def import_members(file: UploadFile = File(...), db: Session = Depends(get
                         else:
                             spot_msg = f"Spot #{spot_num} ({share})"
                         contribution = (
-                            (settings.full_spot_amount if settings else 21000)
-                            if share == "full"
-                            else (settings.half_spot_amount if settings else 10500)
+                            cfg.full_spot_amount if share == "full" else cfg.half_spot_amount
                         )
                         db.add(MemberSpot(member_id=m.id, spot_id=spot.id,
                                           share=share, weekly_contribution=contribution,
@@ -531,8 +537,9 @@ def delete_member_permanent(member_id: int, request: Request, db: Session = Depe
 
 @router.post("")
 def create_member(data: MemberCreate, db: Session = Depends(get_db)):
-    settings = db.query(Settings).first()
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    gs    = db.query(Settings).first()
+    cfg   = cycle_cfg(cycle, gs)
     try:
         m = Member(name=data.name, phone=data.phone, notes=data.notes)
         db.add(m)
@@ -557,11 +564,9 @@ def create_member(data: MemberCreate, db: Session = Depends(get_db)):
             if assignment.share == "half" and half_count >= 2:
                 raise HTTPException(status_code=400,
                     detail=f"Spot #{spot.number} is full (2 half-spot members already).")
-            # Enforce contribution amount from settings (not client-sent value)
+            # Enforce contribution amount from this cycle's settings
             contribution = (
-                (settings.full_spot_amount if settings else 21000)
-                if assignment.share == "full"
-                else (settings.half_spot_amount if settings else 10500)
+                cfg.full_spot_amount if assignment.share == "full" else cfg.half_spot_amount
             )
             db.add(MemberSpot(
                 member_id=m.id, spot_id=assignment.spot_id,
@@ -609,13 +614,11 @@ def add_spot(member_id: int, data: SpotAdd, db: Session = Depends(get_db)):
     if not spot:
         raise HTTPException(status_code=404, detail="Spot not found")
 
-    settings = db.query(Settings).first()
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
-    # Enforce contribution amount from settings
+    gs    = db.query(Settings).first()
+    cfg   = cycle_cfg(cycle, gs)
     contribution = (
-        (settings.full_spot_amount if settings else 21000)
-        if data.share == "full"
-        else (settings.half_spot_amount if settings else 10500)
+        cfg.full_spot_amount if data.share == "full" else cfg.half_spot_amount
     )
 
     existing = db.query(MemberSpot).filter_by(member_id=member_id, spot_id=data.spot_id,

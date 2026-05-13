@@ -5,7 +5,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from database import (get_db, Week, Cycle, Spot, Member, MemberSpot,
                       PotTransaction, Settings, Payment, PaymentBatch,
-                      PotDisbursement, AssociationExpense)
+                      PotDisbursement, AssociationExpense, cycle_cfg)
 
 router = APIRouter()
 
@@ -21,8 +21,10 @@ def _actual_assoc_collected(db: Session, completed_week_ids: list, cycle_id: int
     """
     if not completed_week_ids:
         return 0.0
-    settings = db.query(Settings).first()
-    assoc_ded = (settings.association_deduction or 1000) if settings else 1000
+    cycle   = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    gs      = db.query(Settings).first()
+    cfg     = cycle_cfg(cycle, gs)
+    assoc_ded = cfg.association_deduction
 
     paid_payments = db.query(Payment).filter(
         Payment.week_id.in_(completed_week_ids),
@@ -72,9 +74,11 @@ def _calculate_pot(db: Session, cycle_id: Optional[int] = None):
     When cycle_id is None (cycle not yet created), falls back to the theoretical
     all-spots × full_spot_amount calculation.
     """
-    settings = db.query(Settings).first()
+    gs = db.query(Settings).first()
 
     if cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+        cfg   = cycle_cfg(cycle, gs)
         assignments = db.query(MemberSpot).filter(
             MemberSpot.cycle_id == cycle_id,
             MemberSpot.is_active == True,
@@ -83,27 +87,26 @@ def _calculate_pot(db: Session, cycle_id: Optional[int] = None):
         half_count = sum(1 for a in assignments if a.share == "half")
         assoc_spot_count = db.query(Spot).filter(Spot.spot_type == "association").count()
 
-        gross = (full_count * settings.full_spot_amount
-                 + half_count * settings.half_spot_amount
-                 + assoc_spot_count * settings.full_spot_amount)
-        # Full assignment: 1000/week; half assignment: 500/week (deduction per spot always 1000)
-        assoc = (full_count * settings.association_deduction
-                 + half_count * (settings.association_deduction / 2))
+        gross = (full_count * cfg.full_spot_amount
+                 + half_count * cfg.half_spot_amount
+                 + assoc_spot_count * cfg.full_spot_amount)
+        assoc = (full_count * cfg.association_deduction
+                 + half_count * (cfg.association_deduction / 2))
         net = gross - assoc
     else:
-        # Theoretical: all spots × full rate (used at cycle-creation time before members join)
-        total_spots = db.query(Spot).filter(Spot.status == "active").count()
+        cfg = cycle_cfg(None, gs)
+        total_spots  = db.query(Spot).filter(Spot.status == "active").count()
         member_spots = db.query(Spot).filter(
             Spot.status == "active", Spot.spot_type == "member"
         ).count()
-        gross = total_spots * settings.full_spot_amount
-        assoc = member_spots * settings.association_deduction
-        net = gross - assoc
+        gross = total_spots * cfg.full_spot_amount
+        assoc = member_spots * cfg.association_deduction
+        net   = gross - assoc
 
     return gross, assoc, net
 
 
-def week_to_dict(w: Week, settings: Optional[Settings] = None) -> dict:
+def week_to_dict(w: Week, cfg=None) -> dict:
     tx = w.transactions[0] if w.transactions else None
     winner_spot = None
     if w.winner_spot:
@@ -126,6 +129,9 @@ def week_to_dict(w: Week, settings: Optional[Settings] = None) -> dict:
             "seller_fee": tx.seller_fee,
             "buyer_receives": tx.buyer_receives,
         }
+    assoc_contribution = (
+        (cfg.total_assoc_spots or 0) * (cfg.full_spot_amount or 0) if cfg else 0
+    )
     return {
         "id": w.id,
         "cycle_id": w.cycle_id,
@@ -136,10 +142,7 @@ def week_to_dict(w: Week, settings: Optional[Settings] = None) -> dict:
         "gross_pot": w.gross_pot,
         "association_amount": w.association_amount,
         "net_pot": w.net_pot,
-        "assoc_contribution": (
-            (settings.total_assoc_spots or 0) * (settings.full_spot_amount or 0)
-            if settings else 0
-        ),
+        "assoc_contribution": assoc_contribution,
         "status": w.status,
         "winner_spot": winner_spot,
         "transaction": transaction,
@@ -195,8 +198,10 @@ class ExpenseCreate(BaseModel):
 @router.get("/cycles")
 def list_cycles(db: Session = Depends(get_db)):
     cycles = db.query(Cycle).order_by(Cycle.id.desc()).all()
-    return [
-        {
+    gs = db.query(Settings).first()
+    def _cycle_dict(c):
+        cfg = cycle_cfg(c, gs)
+        return {
             "id": c.id, "name": c.name,
             "start_date": c.start_date.isoformat(),
             "end_date": c.end_date.isoformat() if c.end_date else None,
@@ -206,9 +211,17 @@ def list_cycles(db: Session = Depends(get_db)):
             "total_weeks": len(c.weeks),
             "drawn_weeks": sum(1 for w in c.weeks if w.status in ("drawn", "sold")),
             "notes": c.notes,
+            "settings": {
+                "full_spot_amount": cfg.full_spot_amount,
+                "half_spot_amount": cfg.half_spot_amount,
+                "association_deduction": cfg.association_deduction,
+                "full_spot_voucher": cfg.full_spot_voucher,
+                "half_spot_voucher": cfg.half_spot_voucher,
+                "total_member_spots": cfg.total_member_spots,
+                "total_assoc_spots": cfg.total_assoc_spots,
+            },
         }
-        for c in cycles
-    ]
+    return [_cycle_dict(c) for c in cycles]
 
 
 def _sync_spots(db: Session, n_member: int, n_assoc: int):
@@ -245,21 +258,19 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=403, detail="Admin access required")
 
     start = datetime.fromisoformat(data.start_date)
-    settings = db.query(Settings).first()
-    if not settings:
+    gs = db.query(Settings).first()
+    if not gs:
         raise HTTPException(status_code=500, detail="Settings not configured")
 
-    # Apply any setting overrides supplied by the caller
-    if data.full_spot_amount is not None:
-        settings.full_spot_amount = data.full_spot_amount
-    if data.half_spot_amount is not None:
-        settings.half_spot_amount = data.half_spot_amount
-    if data.association_deduction is not None:
-        settings.association_deduction = data.association_deduction
-    if data.full_spot_voucher is not None:
-        settings.full_spot_voucher = data.full_spot_voucher
-    if data.half_spot_voucher is not None:
-        settings.half_spot_voucher = data.half_spot_voucher
+    # Resolve this cycle's financial settings — use caller-supplied values, else current global defaults.
+    # We do NOT mutate global Settings; each cycle stores its own snapshot.
+    full_spot_amount     = data.full_spot_amount     if data.full_spot_amount     is not None else gs.full_spot_amount
+    half_spot_amount     = data.half_spot_amount     if data.half_spot_amount     is not None else gs.half_spot_amount
+    assoc_ded            = data.association_deduction if data.association_deduction is not None else gs.association_deduction
+    full_voucher         = data.full_spot_voucher    if data.full_spot_voucher    is not None else getattr(gs, 'full_spot_voucher', 80)
+    half_voucher         = data.half_spot_voucher    if data.half_spot_voucher    is not None else getattr(gs, 'half_spot_voucher', 40)
+    interval             = getattr(gs, "group_week_interval", 4)
+    incl_worker          = getattr(gs, "include_worker_slot", True)
 
     existing = db.query(Cycle).filter(Cycle.status == "active").first()
     if existing:
@@ -267,38 +278,39 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
         existing.end_date = datetime.utcnow()
 
     # ── Fresh start: reset spot statuses for the new cycle ───────────────────
-    # Spots are global slots; their "received" status is reset per cycle
     db.query(Spot).update({"status": "active"}, synchronize_session=False)
-    # Members that received their pot go back to active for the new cycle
     db.query(Member).filter(Member.status == "received").update(
         {"status": "active"}, synchronize_session=False
     )
-    # NOTE: MemberSpot records are now per-cycle (cycle_id set at assignment time).
-    # We do NOT reset or carry over old memberships — each cycle builds its own from scratch.
 
-    # Use caller-supplied spot counts, or fall back to settings
-    n_member = data.total_member_spots if data.total_member_spots else settings.total_member_spots
-    n_assoc  = data.total_assoc_spots  if data.total_assoc_spots  is not None else settings.total_assoc_spots
+    # Use caller-supplied spot counts, or fall back to global settings
+    n_member = data.total_member_spots if data.total_member_spots else gs.total_member_spots
+    n_assoc  = data.total_assoc_spots  if data.total_assoc_spots  is not None else gs.total_assoc_spots
     total_spots = n_member + n_assoc
-
-    # Persist the chosen spot counts back to settings for future reference
-    settings.total_member_spots = n_member
-    settings.total_assoc_spots  = n_assoc
 
     # Sync Spot table to match the new cycle's spot counts
     _sync_spots(db, n_member, n_assoc)
 
-    cycle = Cycle(name=data.name, start_date=start, notes=data.notes, draw_phase="collection")
+    # Create cycle with its own financial settings snapshot
+    cycle = Cycle(
+        name=data.name, start_date=start, notes=data.notes, draw_phase="collection",
+        full_spot_amount=full_spot_amount,
+        half_spot_amount=half_spot_amount,
+        association_deduction=assoc_ded,
+        full_spot_voucher=full_voucher,
+        half_spot_voucher=half_voucher,
+        total_member_spots=n_member,
+        total_assoc_spots=n_assoc,
+        group_week_interval=interval,
+        include_worker_slot=incl_worker,
+    )
     db.add(cycle)
     db.flush()
 
-    # Gross pot = member spots only. Association spots are covered by the association
-    # fund separately and do NOT contribute to the gross pot.
-    gross = n_member * settings.full_spot_amount
-    assoc = n_member * settings.association_deduction
+    # Gross pot = member spots only.
+    gross = n_member * full_spot_amount
+    assoc = n_member * assoc_ded
     net   = gross - assoc
-
-    interval = getattr(settings, "group_week_interval", 4)
     for i in range(1, total_spots + 1):
         draw_date = start + timedelta(weeks=i - 1)
         # Snap to Sunday
@@ -379,8 +391,10 @@ def recalculate_pot(cycle_id: int, request: Request, db: Session = Depends(get_d
 @router.get("/cycles/{cycle_id}/weeks")
 def list_weeks(cycle_id: int, db: Session = Depends(get_db)):
     weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
-    s = db.query(Settings).first()
-    return [week_to_dict(w, s) for w in weeks]
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    gs    = db.query(Settings).first()
+    cfg   = cycle_cfg(cycle, gs)
+    return [week_to_dict(w, cfg) for w in weeks]
 
 
 # ── Payment checks ────────────────────────────────────────────────────────────

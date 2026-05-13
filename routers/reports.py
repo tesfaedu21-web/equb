@@ -2,18 +2,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
-from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense
+from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, cycle_cfg
 
 router = APIRouter()
 
 
 @router.get("/dashboard")
 def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    settings = db.query(Settings).first()
+    gs = db.query(Settings).first()
     if cycle_id:
         cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     else:
         cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    settings = gs  # kept for the association_fund_detail check below
 
     # Spot counts (global — spot status reflects active cycle state)
     total_spots = db.query(Spot).count()
@@ -188,15 +189,15 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
         } if cycle else None,
         "current_week": current_week_stats,
         "debtors_count": debtors_count,
-        "settings": {
-            "full_spot_amount": settings.full_spot_amount,
-            "half_spot_amount": settings.half_spot_amount,
-            "association_deduction": settings.association_deduction,
-            "full_spot_voucher": settings.full_spot_voucher,
-            "half_spot_voucher": settings.half_spot_voucher,
-            "total_member_spots": settings.total_member_spots,
-            "total_assoc_spots": settings.total_assoc_spots,
-        } if settings else None,
+        "settings": (lambda cfg: {
+            "full_spot_amount": cfg.full_spot_amount,
+            "half_spot_amount": cfg.half_spot_amount,
+            "association_deduction": cfg.association_deduction,
+            "full_spot_voucher": cfg.full_spot_voucher,
+            "half_spot_voucher": cfg.half_spot_voucher,
+            "total_member_spots": cfg.total_member_spots,
+            "total_assoc_spots": cfg.total_assoc_spots,
+        })(cycle_cfg(cycle, gs)) if gs else None,
     }
 
 
@@ -306,12 +307,11 @@ def weekly_payment_summary(week_id: int, db: Session = Depends(get_db)):
 
 @router.get("/association-fund")
 def association_fund_detail(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    settings = db.query(Settings).first()
     if cycle_id:
         cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     else:
         cycle = db.query(Cycle).filter(Cycle.status == "active").first()
-    if not cycle or not settings:
+    if not cycle:
         return {"total": 0, "weeks": []}
 
     weeks = db.query(Week).filter(

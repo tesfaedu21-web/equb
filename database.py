@@ -108,6 +108,17 @@ class Cycle(Base):
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Per-cycle financial settings — set at creation, independent of global Settings
+    full_spot_amount     = Column(Float,   nullable=True)
+    half_spot_amount     = Column(Float,   nullable=True)
+    association_deduction = Column(Float,  nullable=True)
+    full_spot_voucher    = Column(Float,   nullable=True)
+    half_spot_voucher    = Column(Float,   nullable=True)
+    total_member_spots   = Column(Integer, nullable=True)
+    total_assoc_spots    = Column(Integer, nullable=True)
+    group_week_interval  = Column(Integer, nullable=True)
+    include_worker_slot  = Column(Boolean, nullable=True)
+
     weeks = relationship("Week", back_populates="cycle", order_by="Week.week_number")
     memberships = relationship("MemberSpot", back_populates="cycle")
 
@@ -397,6 +408,27 @@ def _seed_templates(db) -> None:
     db.commit()
 
 
+def cycle_cfg(cycle, global_s):
+    """Return effective financial settings for a cycle.
+    Cycle's own values take precedence; falls back to global settings for legacy cycles."""
+    def _pick(cycle_val, global_val, fallback):
+        v = cycle_val if cycle_val is not None else global_val
+        return v if v is not None else fallback
+    cv = cycle  # may be None (pre-cycle context)
+    gs = global_s
+    class Cfg:
+        full_spot_amount     = _pick(getattr(cv, 'full_spot_amount', None),     getattr(gs, 'full_spot_amount', None),     21000)
+        half_spot_amount     = _pick(getattr(cv, 'half_spot_amount', None),     getattr(gs, 'half_spot_amount', None),     10500)
+        association_deduction= _pick(getattr(cv, 'association_deduction', None),getattr(gs, 'association_deduction', None),1000)
+        full_spot_voucher    = _pick(getattr(cv, 'full_spot_voucher', None),    getattr(gs, 'full_spot_voucher', None),    80)
+        half_spot_voucher    = _pick(getattr(cv, 'half_spot_voucher', None),    getattr(gs, 'half_spot_voucher', None),    40)
+        total_member_spots   = _pick(getattr(cv, 'total_member_spots', None),   getattr(gs, 'total_member_spots', None),   113)
+        total_assoc_spots    = _pick(getattr(cv, 'total_assoc_spots', None),    getattr(gs, 'total_assoc_spots', None),    5)
+        group_week_interval  = _pick(getattr(cv, 'group_week_interval', None),  getattr(gs, 'group_week_interval', None),  4)
+        include_worker_slot  = _pick(getattr(cv, 'include_worker_slot', None),  getattr(gs, 'include_worker_slot', None),  True)
+    return Cfg()
+
+
 def _migrate(engine):
     """Add new columns to existing SQLite DB without dropping data."""
     from sqlalchemy import text
@@ -415,6 +447,16 @@ def _migrate(engine):
         "ALTER TABLE pot_disbursements ADD COLUMN voucher_paid_date TIMESTAMP",
         "ALTER TABLE payments ADD COLUMN collected_by_id INTEGER REFERENCES users(id)",
         "ALTER TABLE payment_batches ADD COLUMN collected_by_id INTEGER REFERENCES users(id)",
+        # Per-cycle financial settings (null = fall back to global Settings)
+        "ALTER TABLE cycles ADD COLUMN full_spot_amount REAL",
+        "ALTER TABLE cycles ADD COLUMN half_spot_amount REAL",
+        "ALTER TABLE cycles ADD COLUMN association_deduction REAL",
+        "ALTER TABLE cycles ADD COLUMN full_spot_voucher REAL",
+        "ALTER TABLE cycles ADD COLUMN half_spot_voucher REAL",
+        "ALTER TABLE cycles ADD COLUMN total_member_spots INTEGER",
+        "ALTER TABLE cycles ADD COLUMN total_assoc_spots INTEGER",
+        "ALTER TABLE cycles ADD COLUMN group_week_interval INTEGER",
+        "ALTER TABLE cycles ADD COLUMN include_worker_slot INTEGER",
     ]
     with engine.connect() as conn:
         for sql in migrations:
