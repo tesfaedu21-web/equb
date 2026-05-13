@@ -98,6 +98,17 @@
           <span class="font-semibold text-gray-700"
             x-text="fmt(payments.reduce((s,p)=>s+p.amount,0))"></span>
         </div>
+        <!-- Association fund auto-coverage -->
+        <div x-show="assocFundContribution > 0"
+             class="mt-2 flex items-center justify-between bg-blue-50 rounded-lg px-3 py-1.5 text-xs">
+          <span class="text-blue-600 font-medium">የማህበር ቁጠባ (Assoc. Fund)</span>
+          <span class="text-blue-700 font-semibold" x-text="fmt(assocFundContribution) + ' ✓'"></span>
+        </div>
+        <div x-show="assocFundContribution > 0"
+             class="text-center text-xs text-gray-400 mt-1">
+          Gross Pot:
+          <span class="font-semibold text-gray-700" x-text="fmt(currentWeek?.gross_pot || 0)"></span>
+        </div>
       </div>
     </div>
 
@@ -843,6 +854,17 @@ function payments() {
       { value: 'cheque',        label: 'Cheque',       icon: '📋' },
     ],
 
+    get currentWeek() {
+      return this.weeks.find(w => w.id === parseInt(this.selectedWeek)) || null;
+    },
+    // Association spots have no individual members — their contribution is auto-covered
+    // by the association fund. Computed as: gross_pot − sum of all member payment amounts.
+    get assocFundContribution() {
+      if (!this.currentWeek) return 0;
+      const memberTotal = this.payments.reduce((s, p) => s + p.amount, 0);
+      const contrib = (this.currentWeek.gross_pot || 0) - memberTotal;
+      return contrib > 0 ? contrib : 0;
+    },
     get filteredPayments() {
       return this.payments.filter(p => {
         const s = !this.search || p.member_name.toLowerCase().includes(this.search.toLowerCase());
