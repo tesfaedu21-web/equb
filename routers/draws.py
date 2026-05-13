@@ -170,6 +170,34 @@ def list_cycles(db: Session = Depends(get_db)):
     ]
 
 
+def _sync_spots(db: Session, n_member: int, n_assoc: int):
+    """Ensure the Spot table has exactly n_member + n_assoc spots with correct types."""
+    existing = {s.number: s for s in db.query(Spot).all()}
+    total = n_member + n_assoc
+    for i in range(1, total + 1):
+        spot_type = "member" if i <= n_member else "association"
+        if i in existing:
+            existing[i].spot_type = spot_type  # fix type if needed
+        else:
+            db.add(Spot(number=i, spot_type=spot_type, status="active"))
+    db.flush()
+
+
+@router.post("/sync-spots")
+def sync_spots(request: Request, db: Session = Depends(get_db)):
+    """Sync Spot table to match current settings (total_member_spots + total_assoc_spots). Admin only."""
+    if getattr(request.state, "user_role", None) != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    s = db.query(Settings).first()
+    if not s:
+        raise HTTPException(status_code=500, detail="Settings not configured")
+    n_member = s.total_member_spots or 113
+    n_assoc  = s.total_assoc_spots  or 5
+    _sync_spots(db, n_member, n_assoc)
+    db.commit()
+    return {"ok": True, "member_spots": n_member, "assoc_spots": n_assoc, "total": n_member + n_assoc}
+
+
 @router.post("/cycles")
 def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_db)):
     if getattr(request.state, "user_role", None) != "admin":
@@ -215,6 +243,9 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
     # Persist the chosen spot counts back to settings for future reference
     settings.total_member_spots = n_member
     settings.total_assoc_spots  = n_assoc
+
+    # Sync Spot table to match the new cycle's spot counts
+    _sync_spots(db, n_member, n_assoc)
 
     cycle = Cycle(name=data.name, start_date=start, notes=data.notes, draw_phase="collection")
     db.add(cycle)
