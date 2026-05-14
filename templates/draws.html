@@ -969,11 +969,19 @@
                 <span x-text="fmt(voucherInfo.net_pot)"></span>
               </div>
 
-              <!-- SOLD WEEK: seller fee with % + buyer receives -->
+              <!-- SOLD WEEK: service fee + voucher + percentage fee + buyer receives -->
               <template x-if="activeWeek?.transaction">
                 <div class="space-y-1">
                   <div class="flex justify-between text-amber-700">
-                    <span x-text="'− Seller Fee (' + (activeWeek.transaction.percentage||0) + '%) (−)'"></span>
+                    <span x-text="'− Service Fee (' + fmt(voucherInfo.service_fee||0) + ' ETB) (−)'"></span>
+                    <span x-text="'−' + fmt(voucherInfo.service_fee||0)"></span>
+                  </div>
+                  <div class="flex justify-between text-amber-700">
+                    <span x-text="'− Voucher (' + (voucherInfo.full_spot_voucher_rate||0) + '×' + (voucherInfo.total_spots||0) + ') (−)'"></span>
+                    <span x-text="'−' + fmt(voucherInfo.voucher_deduction||0)"></span>
+                  </div>
+                  <div class="flex justify-between text-purple-700">
+                    <span x-text="'− ' + (activeWeek.is_group_week ? 'Association Fee' : 'Seller Fee') + ' (' + (activeWeek.transaction.percentage||0) + '%) (−)'"></span>
                     <span x-text="'−' + fmt(activeWeek.transaction.seller_fee||0)"></span>
                   </div>
                   <div class="flex justify-between font-bold text-green-700 border-t border-amber-200 pt-1 mt-1">
@@ -1649,9 +1657,11 @@ function draws() {
             // Override disbForm with precise voucherInfo values when not yet disbursed
             if (this.existingDisbursements.length === 0) {
               this.disbForm.gross_amount = this.voucherInfo.net_pot || this.disbForm.gross_amount;
-              // For sold weeks, keep seller_fee from transaction — don't overwrite with voucherInfo
-              if (!w.transaction) {
-                this.disbForm.service_fee       = this.voucherInfo.service_fee || 0;
+              this.disbForm.service_fee  = this.voucherInfo.service_fee || 0;
+              if (w.transaction) {
+                // Sold week: lump voucher + seller fee into voucher_deduction so net_amount = buyer_receives
+                this.disbForm.voucher_deduction = (this.voucherInfo.voucher_deduction || 0) + (w.transaction.seller_fee || 0);
+              } else {
                 this.disbForm.voucher_deduction = this.voucherInfo.voucher_deduction || 0;
               }
             }
