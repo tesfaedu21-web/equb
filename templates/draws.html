@@ -975,10 +975,10 @@
                     <span x-text="voucherInfo ? ('− Service Fee (' + fmt(voucherInfo.service_fee||0) + ' ETB) (−)') : '− Service Fee (−)'"></span>
                     <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.service_fee||0) : (disbForm.service_fee||0))"></span>
                   </div>
-                  <!-- Voucher: from voucherInfo if available, else from form input (live) -->
+                  <!-- Voucher: from voucherInfo if available, else disbForm minus seller_fee (pure voucher) -->
                   <div class="flex justify-between text-amber-700">
                     <span x-text="voucherInfo ? ('− Voucher (' + (voucherInfo.full_spot_voucher_rate||0) + '×' + (voucherInfo.total_spots||0) + ') (−)') : '− Voucher (−)'"></span>
-                    <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.voucher_deduction||0) : (disbForm.voucher_deduction||0))"></span>
+                    <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.voucher_deduction||0) : ((disbForm.voucher_deduction||0) - (activeWeek.transaction?.seller_fee||0)))"></span>
                   </div>
                   <!-- Percentage fee always from transaction -->
                   <div class="flex justify-between text-purple-700">
@@ -1022,8 +1022,13 @@
           <!-- Amounts -->
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="block text-xs text-gray-500 mb-1">Gross Amount (ETB)</label>
-              <input x-model.number="disbForm.gross_amount" type="number" step="100"/>
+              <label class="block text-xs text-gray-500 mb-1">
+                Gross Amount (ETB)
+                <span x-show="!!activeWeek?.transaction" class="ml-1 text-xs text-equb-green font-semibold">Auto</span>
+              </label>
+              <input x-model.number="disbForm.gross_amount" type="number" step="100"
+                     :readonly="!!activeWeek?.transaction"
+                     :class="activeWeek?.transaction ? 'bg-gray-50 cursor-not-allowed text-gray-400' : ''" />
             </div>
             <div>
               <label class="block text-xs text-gray-500 mb-1">
@@ -1626,13 +1631,15 @@ function draws() {
         const cycle = this.cycles?.find(c => c.id === (w.cycle_id || this.selectedCycle));
         const cs = cycle?.settings || {};
         const totalSpots = (cs.total_member_spots || 0) + (cs.total_assoc_spots || 0);
-        const svcFee   = w.transaction ? (cs.full_spot_amount  || this.appSettings?.full_spot_amount  || 0) : 0;
+        const svcFee     = w.transaction ? (cs.full_spot_amount  || this.appSettings?.full_spot_amount  || 0) : 0;
         const voucherFee = w.transaction ? ((cs.full_spot_voucher || this.appSettings?.full_spot_voucher || 0) * totalSpots) : 0;
-        const grossFallback = w.transaction ? (w.transaction.buyer_receives || 0) : (w.net_pot || 0);
+        const sellerFee  = w.transaction?.seller_fee || 0;
+        // For sold weeks: gross = net_pot (same as drawn week); voucher_deduction = voucher + seller_fee
+        // so backend net_amount = net_pot − service_fee − voucher − seller_fee = actual cheque
         this.disbForm = {
-          gross_amount: grossFallback,
+          gross_amount: w.net_pot || 0,
           service_fee: svcFee,
-          voucher_deduction: voucherFee,
+          voucher_deduction: w.transaction ? (voucherFee + sellerFee) : 0,
           cheque_number: '',
           cheque_date: new Date().toISOString().slice(0, 10),
           guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null,
