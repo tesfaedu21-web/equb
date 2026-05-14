@@ -948,38 +948,40 @@
       <template x-if="!existingDisbursement && !isHalfSpot">
         <div class="space-y-4">
 
-          <!-- Deduction breakdown -->
-          <template x-if="voucherInfo">
+          <!-- Deduction breakdown — shown for drawn weeks (voucherInfo) OR sold weeks (transaction) -->
+          <template x-if="voucherInfo || activeWeek?.transaction">
             <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-1">
               <div class="font-semibold text-amber-800 mb-1"
                    x-text="activeWeek?.transaction ? 'Deduction Breakdown — Sold Week' : 'Deduction Breakdown'"></div>
-              <!-- Gross Pot -->
+              <!-- Gross Pot — prefer voucherInfo values, fall back to week data -->
               <div class="flex justify-between text-gray-600 font-medium">
                 <span>Gross Pot (total collected)</span>
-                <span x-text="fmt((voucherInfo.net_pot||0) + (voucherInfo.association_amount||0))"></span>
+                <span x-text="fmt(voucherInfo ? (voucherInfo.net_pot||0)+(voucherInfo.association_amount||0) : (activeWeek?.gross_pot||0))"></span>
               </div>
-              <!-- Association fund -->
               <div class="flex justify-between text-red-600 pl-2">
                 <span>− Association Fund (የማህበር ቁጠባ)</span>
-                <span x-text="'−' + fmt(voucherInfo.association_amount)"></span>
+                <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.association_amount||0) : (activeWeek?.association_amount||0))"></span>
               </div>
-              <!-- Net pot after association -->
               <div class="flex justify-between text-gray-600 border-t border-amber-100 pt-1">
                 <span>Net Pot (after assoc.)</span>
-                <span x-text="fmt(voucherInfo.net_pot)"></span>
+                <span x-text="fmt(voucherInfo ? (voucherInfo.net_pot||0) : (activeWeek?.net_pot||0))"></span>
               </div>
 
-              <!-- SOLD WEEK: service fee + voucher + percentage fee + buyer receives -->
+              <!-- SOLD WEEK: optionally service fee+voucher (needs voucherInfo), always % fee + buyer receives -->
               <template x-if="activeWeek?.transaction">
                 <div class="space-y-1">
-                  <div class="flex justify-between text-amber-700">
-                    <span x-text="'− Service Fee (' + fmt(voucherInfo.service_fee||0) + ' ETB) (−)'"></span>
-                    <span x-text="'−' + fmt(voucherInfo.service_fee||0)"></span>
-                  </div>
-                  <div class="flex justify-between text-amber-700">
-                    <span x-text="'− Voucher (' + (voucherInfo.full_spot_voucher_rate||0) + '×' + (voucherInfo.total_spots||0) + ') (−)'"></span>
-                    <span x-text="'−' + fmt(voucherInfo.voucher_deduction||0)"></span>
-                  </div>
+                  <template x-if="voucherInfo">
+                    <div class="space-y-1">
+                      <div class="flex justify-between text-amber-700">
+                        <span x-text="'− Service Fee (' + fmt(voucherInfo.service_fee||0) + ' ETB) (−)'"></span>
+                        <span x-text="'−' + fmt(voucherInfo.service_fee||0)"></span>
+                      </div>
+                      <div class="flex justify-between text-amber-700">
+                        <span x-text="'− Voucher (' + (voucherInfo.full_spot_voucher_rate||0) + '×' + (voucherInfo.total_spots||0) + ') (−)'"></span>
+                        <span x-text="'−' + fmt(voucherInfo.voucher_deduction||0)"></span>
+                      </div>
+                    </div>
+                  </template>
                   <div class="flex justify-between text-purple-700">
                     <span x-text="'− ' + (activeWeek.is_group_week ? 'Association Fee' : 'Seller Fee') + ' (' + (activeWeek.transaction.percentage||0) + '%) (−)'"></span>
                     <span x-text="'−' + fmt(activeWeek.transaction.seller_fee||0)"></span>
@@ -1613,11 +1615,11 @@ function draws() {
 
       // Always reset disbForm with week-level values as a safe fallback
       if (this.existingDisbursements.length === 0) {
-        // For sold weeks, pre-fill service fee from the recorded sale transaction
-        const soldServiceFee = w.transaction?.seller_fee || 0;
+        // For sold weeks: gross = buyer_receives (seller_fee already deducted), fees = 0
+        const grossFallback = w.transaction ? (w.transaction.buyer_receives || 0) : (w.net_pot || 0);
         this.disbForm = {
-          gross_amount: w.net_pot || 0,
-          service_fee: soldServiceFee,
+          gross_amount: grossFallback,
+          service_fee: 0,
           voucher_deduction: 0,
           cheque_number: '',
           cheque_date: new Date().toISOString().slice(0, 10),
