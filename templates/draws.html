@@ -975,10 +975,10 @@
                     <span x-text="voucherInfo ? ('− Service Fee (' + fmt(voucherInfo.service_fee||0) + ' ETB) (−)') : '− Service Fee (−)'"></span>
                     <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.service_fee||0) : (disbForm.service_fee||0))"></span>
                   </div>
-                  <!-- Voucher: from voucherInfo if available, else disbForm minus seller_fee (pure voucher) -->
+                  <!-- Voucher: from voucherInfo if available, else from disbForm (pure voucher only) -->
                   <div class="flex justify-between text-amber-700">
                     <span x-text="voucherInfo ? ('− Voucher (' + (voucherInfo.full_spot_voucher_rate||0) + '×' + (voucherInfo.total_spots||0) + ') (−)') : '− Voucher (−)'"></span>
-                    <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.voucher_deduction||0) : ((disbForm.voucher_deduction||0) - (activeWeek.transaction?.seller_fee||0)))"></span>
+                    <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.voucher_deduction||0) : (disbForm.voucher_deduction||0))"></span>
                   </div>
                   <!-- Percentage fee always from transaction -->
                   <div class="flex justify-between text-purple-700">
@@ -988,9 +988,11 @@
                   <!-- Final cheque: net_pot − service_fee − voucher − seller_fee -->
                   <div class="flex justify-between font-bold text-green-700 border-t border-amber-200 pt-1 mt-1">
                     <span>Buyer Receives</span>
-                    <span x-text="fmt(voucherInfo
-                      ? (voucherInfo.net_pot||0) - (voucherInfo.service_fee||0) - (voucherInfo.voucher_deduction||0) - (activeWeek.transaction.seller_fee||0)
-                      : (disbForm.gross_amount||0) - (disbForm.service_fee||0) - (disbForm.voucher_deduction||0))"></span>
+                    <span x-text="fmt(
+                      (voucherInfo ? (voucherInfo.net_pot||0) : (disbForm.gross_amount||0))
+                      - (voucherInfo ? (voucherInfo.service_fee||0) : (disbForm.service_fee||0))
+                      - (voucherInfo ? (voucherInfo.voucher_deduction||0) : (disbForm.voucher_deduction||0))
+                      - (activeWeek.transaction.seller_fee||0))"></span>
                   </div>
                 </div>
               </template>
@@ -1051,7 +1053,8 @@
           </div>
           <div class="bg-gray-50 rounded-xl p-3 flex justify-between text-sm font-semibold">
             <span class="text-gray-600">Net Cheque Amount</span>
-            <span class="text-equb-green" x-text="fmt((disbForm.gross_amount||0) - (disbForm.service_fee||0) - (disbForm.voucher_deduction||0))"></span>
+            <span class="text-equb-green"
+                  x-text="fmt((disbForm.gross_amount||0) - (disbForm.service_fee||0) - (disbForm.voucher_deduction||0) - (activeWeek?.transaction?.seller_fee||0))"></span>
           </div>
 
           <!-- Cheque details -->
@@ -1634,12 +1637,11 @@ function draws() {
         const svcFee     = w.transaction ? (cs.full_spot_amount  || this.appSettings?.full_spot_amount  || 0) : 0;
         const voucherFee = w.transaction ? ((cs.full_spot_voucher || this.appSettings?.full_spot_voucher || 0) * totalSpots) : 0;
         const sellerFee  = w.transaction?.seller_fee || 0;
-        // For sold weeks: gross = net_pot (same as drawn week); voucher_deduction = voucher + seller_fee
-        // so backend net_amount = net_pot − service_fee − voucher − seller_fee = actual cheque
+        // For sold weeks: gross = net_pot, voucher = pure voucher only (seller_fee subtracted by backend)
         this.disbForm = {
           gross_amount: w.net_pot || 0,
           service_fee: svcFee,
-          voucher_deduction: w.transaction ? (voucherFee + sellerFee) : 0,
+          voucher_deduction: voucherFee,
           cheque_number: '',
           cheque_date: new Date().toISOString().slice(0, 10),
           guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null,

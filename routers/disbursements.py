@@ -274,7 +274,11 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
                    f"Ensure more members have paid before disbursing."
         )
 
-    net_amount = data.gross_amount - service_fee - (data.voucher_deduction or 0)
+    # For sold weeks: also deduct the seller/association fee from net_amount
+    seller_fee_deduction = 0.0
+    if w.status == "sold" and w.transactions:
+        seller_fee_deduction = w.transactions[0].seller_fee or 0.0
+    net_amount = data.gross_amount - service_fee - (data.voucher_deduction or 0) - seller_fee_deduction
     d = PotDisbursement(
         week_id=data.week_id,
         member_id=data.member_id,
