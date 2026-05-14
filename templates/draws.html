@@ -274,8 +274,10 @@
                   <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold bg-gray-100 text-gray-600"
                         x-text="d.week_number || '—'"></span>
                 </td>
-                <td class="px-5 py-3.5 font-medium text-gray-900 amharic"
-                    x-text="d.winner_members?.map(m=>m.name).join(' & ') || '—'"></td>
+                <td class="px-5 py-3.5 font-medium text-gray-900 amharic">
+                  <span x-text="d.member_id ? d.member_name : (d.winner_members?.map(m=>m.name).join(' & ') || '—')"></span>
+                  <span x-show="d.member_id" class="ml-1 text-xs text-gray-400 font-normal">½</span>
+                </td>
                 <td class="px-5 py-3.5 text-gray-600" x-text="fmt(d.gross_amount)"></td>
                 <td class="px-5 py-3.5 text-red-500" x-text="d.service_fee ? '−' + fmt(d.service_fee) : '—'"></td>
                 <td class="px-5 py-3.5 text-red-500" x-text="d.voucher_deduction ? '−' + fmt(d.voucher_deduction) : '—'"></td>
@@ -675,14 +677,14 @@
 
 <!-- Disbursement Modal -->
 <div x-show="showDisbursementModal" x-cloak class="modal-backdrop" @click.self="showDisbursementModal = false">
-  <div class="modal-box max-w-lg">
+  <div :class="isHalfSpot ? 'modal-box max-w-2xl' : 'modal-box max-w-lg'">
     <div class="p-6 border-b flex items-center justify-between">
       <div>
         <h2 class="text-lg font-bold text-gray-900">
-          <span x-text="existingDisbursement ? 'Disbursement Record' : 'Record Disbursement'"></span>
+          <span x-text="isHalfSpot ? (halfExisting.every(e=>e) ? 'Disbursement Records' : 'Record Disbursements') : (existingDisbursement ? 'Disbursement Record' : 'Record Disbursement')"></span>
           — Week <span x-text="activeWeek?.week_number"></span>
         </h2>
-        <p class="text-sm text-gray-500 mt-0.5">Payment by cheque only. Member brings 3 guarantors.</p>
+        <p class="text-sm text-gray-500 mt-0.5" x-text="isHalfSpot ? 'Half spot — each member gets a separate cheque with their own 3 guarantors.' : 'Payment by cheque only. Member brings 3 guarantors.'"></p>
       </div>
       <button @click="showDisbursementModal = false" class="text-gray-400 hover:text-gray-600">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -690,8 +692,8 @@
     </div>
     <div class="p-6 space-y-4">
 
-      <!-- Existing record view -->
-      <template x-if="existingDisbursement">
+      <!-- Existing record view — full spot only -->
+      <template x-if="existingDisbursement && !isHalfSpot">
         <div class="bg-green-50 border border-green-200 rounded-xl p-4 space-y-2 text-sm">
           <div class="flex justify-between">
             <span class="text-gray-500">Winner</span>
@@ -738,8 +740,206 @@
         </div>
       </template>
 
-      <!-- New disbursement form -->
-      <template x-if="!existingDisbursement">
+      <!-- Half-spot: two separate cheques, one per member -->
+      <template x-if="isHalfSpot">
+        <div class="space-y-4">
+
+          <!-- Common deduction breakdown -->
+          <template x-if="voucherInfo">
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-1">
+              <div class="font-semibold text-amber-800 mb-1">Deduction Breakdown — Half Spot</div>
+              <div class="flex justify-between text-gray-600 font-medium">
+                <span>Gross Pot (total collected)</span>
+                <span x-text="fmt((voucherInfo.net_pot||0) + (voucherInfo.association_amount||0))"></span>
+              </div>
+              <div class="flex justify-between text-red-600 pl-2">
+                <span>− Association Fund (የማህበር ቁጠባ)</span>
+                <span x-text="'−' + fmt(voucherInfo.association_amount)"></span>
+              </div>
+              <div class="flex justify-between text-gray-600 border-t border-amber-100 pt-1">
+                <span>Net Pot (shared equally)</span>
+                <span x-text="fmt(voucherInfo.net_pot) + ' ÷ 2'"></span>
+              </div>
+              <template x-for="a in voucherInfo.assignments" :key="a.member_id">
+                <div class="space-y-0.5 pl-2 border-l-2 border-amber-200 ml-1 mt-1">
+                  <div class="font-semibold text-amber-900 amharic" x-text="a.member"></div>
+                  <div class="flex justify-between text-amber-700">
+                    <span>Each gross</span><span x-text="fmt((voucherInfo.net_pot||0)/2)"></span>
+                  </div>
+                  <div class="flex justify-between text-amber-700">
+                    <span>− Service fee</span><span x-text="'−' + fmt(a.service_fee)"></span>
+                  </div>
+                  <div class="flex justify-between text-amber-700">
+                    <span>− Voucher</span><span x-text="'−' + fmt(a.voucher)"></span>
+                  </div>
+                  <div class="flex justify-between text-green-700 font-bold">
+                    <span>Net cheque</span>
+                    <span x-text="fmt((voucherInfo.net_pot||0)/2 - a.service_fee - a.voucher)"></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- Per-member sub-form/view -->
+          <template x-for="(hf, hfi) in halfForms" :key="hfi">
+            <div :class="halfExisting[hfi] ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'"
+                 class="border rounded-xl p-4 space-y-3">
+
+              <!-- Member header -->
+              <div class="flex items-center gap-2 pb-1 border-b border-gray-100">
+                <span class="text-xs font-bold bg-equb-green/10 text-equb-green rounded px-2 py-0.5">½ Spot</span>
+                <span class="amharic font-semibold text-gray-800" x-text="hf.member_name"></span>
+                <span x-show="halfExisting[hfi]"
+                      :class="halfExisting[hfi]?.status === 'collected' ? 'badge badge-active ml-auto' : 'badge badge-pending ml-auto'"
+                      x-text="halfExisting[hfi]?.status === 'collected' ? '✓ Collected' : 'Issued'"></span>
+              </div>
+
+              <!-- Existing record for this half-member -->
+              <template x-if="halfExisting[hfi]">
+                <div class="space-y-1.5 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Gross</span>
+                    <span class="font-medium" x-text="fmt(halfExisting[hfi].gross_amount)"></span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Service Fee (−)</span>
+                    <span class="text-red-500" x-text="'−' + fmt(halfExisting[hfi].service_fee)"></span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Voucher (−)</span>
+                    <span class="text-red-500" x-text="'−' + fmt(halfExisting[hfi].voucher_deduction)"></span>
+                  </div>
+                  <div class="flex justify-between font-bold border-t pt-1">
+                    <span>Net Cheque</span>
+                    <span class="text-equb-green" x-text="fmt(halfExisting[hfi].net_amount)"></span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Cheque #</span>
+                    <span class="font-mono" x-text="halfExisting[hfi].cheque_number"></span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Date</span>
+                    <span x-text="fmtDate(halfExisting[hfi].cheque_date)"></span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Guarantors</span>
+                    <span class="amharic text-right text-xs"
+                          x-text="[halfExisting[hfi].guarantor_1?.name, halfExisting[hfi].guarantor_2?.name, halfExisting[hfi].guarantor_3?.name].filter(Boolean).join(', ')"></span>
+                  </div>
+                  <button x-show="halfExisting[hfi].status === 'issued'"
+                          @click="markHalfCollected(hfi)"
+                          class="text-xs btn-primary py-1 px-3 mt-1">Mark Collected</button>
+                </div>
+              </template>
+
+              <!-- New form for this half-member -->
+              <template x-if="!halfExisting[hfi]">
+                <div class="space-y-3">
+                  <!-- Amounts -->
+                  <div class="grid grid-cols-3 gap-2">
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1">Gross (ETB)</label>
+                      <input :x-model.number="'halfForms['+hfi+'].gross_amount'" :value="hf.gross_amount"
+                             @input="halfForms[hfi].gross_amount=+$event.target.value"
+                             type="number" step="100"/>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1">
+                        Service Fee (−) <span class="text-equb-green font-semibold">Auto</span>
+                      </label>
+                      <input :value="hf.service_fee" type="number" readonly
+                             class="bg-gray-50 cursor-not-allowed text-gray-400"/>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1">Voucher (−)</label>
+                      <input :value="hf.voucher_deduction"
+                             @input="halfForms[hfi].voucher_deduction=+$event.target.value"
+                             type="number" step="100"/>
+                    </div>
+                  </div>
+                  <div class="bg-white rounded-xl px-3 py-2 flex justify-between text-sm font-semibold border">
+                    <span class="text-gray-600">Net Cheque</span>
+                    <span class="text-equb-green"
+                          x-text="fmt((hf.gross_amount||0) - (hf.service_fee||0) - (hf.voucher_deduction||0))"></span>
+                  </div>
+                  <!-- Cheque details -->
+                  <div class="grid grid-cols-2 gap-2">
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1">Cheque # <span class="text-red-400">*</span></label>
+                      <input :value="hf.cheque_number" @input="halfForms[hfi].cheque_number=$event.target.value"
+                             type="text" placeholder="e.g. CHQ-001234"/>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1">Cheque Date <span class="text-red-400">*</span></label>
+                      <input :value="hf.cheque_date" @input="halfForms[hfi].cheque_date=$event.target.value"
+                             type="date"/>
+                    </div>
+                  </div>
+                  <!-- 3 Guarantors -->
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">3 Guarantors <span class="text-red-400">*</span></label>
+                    <div class="space-y-2">
+                      <template x-for="gi in [0,1,2]" :key="gi">
+                        <div class="relative">
+                          <div x-show="halfForms[hfi]['guarantor_'+(gi+1)+'_id']"
+                               class="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-sm">
+                            <span class="amharic font-semibold text-green-800"
+                                  x-text="(() => { const m = allMembers.find(m=>m.id===halfForms[hfi]['guarantor_'+(gi+1)+'_id']); return m ? (m.spot_numbers?.length ? '#'+m.spot_numbers[0]+' — ' : '') + m.name : ''; })()"></span>
+                            <button type="button"
+                                    @click="halfForms[hfi]['guarantor_'+(gi+1)+'_id']=null; $data['hg'+hfi+gi+'S']=''; $data['hg'+hfi+gi+'O']=false"
+                                    class="text-gray-400 hover:text-red-500 ml-3 text-xl leading-none">&times;</button>
+                          </div>
+                          <input x-show="!halfForms[hfi]['guarantor_'+(gi+1)+'_id']"
+                                 type="text"
+                                 :value="$data['hg'+hfi+gi+'S']"
+                                 @input="$data['hg'+hfi+gi+'S']=$event.target.value; $data['hg'+hfi+gi+'O']=true"
+                                 @focus="$data['hg'+hfi+gi+'O']=true"
+                                 @keydown.escape="$data['hg'+hfi+gi+'O']=false"
+                                 placeholder="Guarantor — name or spot #"
+                                 autocomplete="off" class="w-full amharic"/>
+                          <div x-show="$data['hg'+hfi+gi+'O'] && $data['hg'+hfi+gi+'S'] && !halfForms[hfi]['guarantor_'+(gi+1)+'_id']"
+                               @click.outside="$data['hg'+hfi+gi+'O']=false"
+                               class="absolute z-50 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-44 overflow-y-auto">
+                            <template x-for="m in allMembers.filter(m => _memberMatches(m, $data['hg'+hfi+gi+'S']))" :key="m.id">
+                              <div @click="halfForms[hfi]['guarantor_'+(gi+1)+'_id']=m.id; $data['hg'+hfi+gi+'S']=''; $data['hg'+hfi+gi+'O']=false"
+                                   class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
+                                <span class="font-bold text-equb-green w-10 flex-shrink-0"
+                                      x-text="m.spot_numbers?.length ? '#'+m.spot_numbers[0] : '—'"></span>
+                                <span class="amharic truncate" x-text="m.name"></span>
+                              </div>
+                            </template>
+                            <div x-show="allMembers.filter(m => _memberMatches(m, $data['hg'+hfi+gi+'S'])).length === 0"
+                                 class="px-4 py-3 text-sm text-gray-400 text-center">No matching members</div>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Notes</label>
+                    <textarea :value="hf.notes" @input="halfForms[hfi].notes=$event.target.value"
+                              rows="1" placeholder="Optional…"></textarea>
+                  </div>
+                </div>
+              </template>
+
+            </div>
+          </template>
+
+          <!-- Action buttons -->
+          <div class="flex gap-3 pt-2">
+            <button @click="showDisbursementModal = false" class="btn-secondary flex-1">Cancel</button>
+            <button x-show="halfExisting.some(e => !e)"
+                    @click="saveHalfDisbursements()" :disabled="saving" class="btn-primary flex-1"
+                    x-text="saving ? 'Saving…' : (halfExisting.filter(e=>!e).length===2 ? 'Record Both Cheques' : 'Record Cheque')"></button>
+          </div>
+
+        </div>
+      </template>
+
+      <!-- New disbursement form — full spot only -->
+      <template x-if="!existingDisbursement && !isHalfSpot">
         <div class="space-y-4">
 
           <!-- Deduction breakdown -->
@@ -1104,6 +1304,15 @@ function draws() {
     saleForm: { original_winner_id: null, seller_id: null, buyer_id: null, percentage: null, notes: '' },
     disbForm: { gross_amount: 0, service_fee: 0, voucher_deduction: 0, cheque_number: '', cheque_date: '', guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null, notes: '' },
     existingDisbursement: null,
+    existingDisbursements: [],
+    isHalfSpot: false,
+    halfForms: [
+      { gross_amount: 0, service_fee: 0, voucher_deduction: 0, cheque_number: '', cheque_date: '', guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null, notes: '', member_id: null, member_name: '' },
+      { gross_amount: 0, service_fee: 0, voucher_deduction: 0, cheque_number: '', cheque_date: '', guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null, notes: '', member_id: null, member_name: '' },
+    ],
+    halfExisting: [null, null],
+    hg00S:'', hg00O:false, hg01S:'', hg01O:false, hg02S:'', hg02O:false,
+    hg10S:'', hg10O:false, hg11S:'', hg11O:false, hg12S:'', hg12O:false,
     voucherInfo: null,
     disbursedWeeks: new Set(),
     paymentCheck: null,
@@ -1340,34 +1549,64 @@ function draws() {
     async openDisbursement(w) {
       this.activeWeek = w;
       this.existingDisbursement = null;
+      this.existingDisbursements = [];
+      this.isHalfSpot = false;
+      this.halfExisting = [null, null];
       this.voucherInfo = null;
-      // Check for existing disbursement
-      const existing = await this.api('GET', `/api/disbursements/week/${w.id}`).catch(() => null);
-      if (existing) {
-        this.existingDisbursement = existing;
-      } else {
-        // Pre-fill amounts and fetch voucher info
-        this.disbForm = {
-          gross_amount: w.net_pot || 0,
-          voucher_deduction: 0,
-          cheque_number: '',
-          cheque_date: new Date().toISOString().slice(0, 10),
-          guarantor_1_id: null,
-          guarantor_2_id: null,
-          guarantor_3_id: null,
-          notes: '',
-        };
-        this.g1Search = ''; this.g1Open = false;
-        this.g2Search = ''; this.g2Open = false;
-        this.g3Search = ''; this.g3Open = false;
-        if (w.winner_spot) {
-          try {
-            this.voucherInfo = await this.api('GET', `/api/disbursements/voucher-info/${w.id}`);
-            this.disbForm.gross_amount = this.voucherInfo.net_pot || 0;
-            this.disbForm.service_fee = this.voucherInfo.service_fee || 0;
-            this.disbForm.voucher_deduction = this.voucherInfo.voucher_deduction || 0;
-          } catch(e) { /* no winner yet */ }
-        }
+      // Reset guarantor search state
+      ['hg00S','hg01S','hg02S','hg10S','hg11S','hg12S'].forEach(k => this[k] = '');
+      ['hg00O','hg01O','hg02O','hg10O','hg11O','hg12O'].forEach(k => this[k] = false);
+      // Reset half forms
+      this.halfForms = [
+        { gross_amount:0, service_fee:0, voucher_deduction:0, cheque_number:'', cheque_date:'', guarantor_1_id:null, guarantor_2_id:null, guarantor_3_id:null, notes:'', member_id:null, member_name:'' },
+        { gross_amount:0, service_fee:0, voucher_deduction:0, cheque_number:'', cheque_date:'', guarantor_1_id:null, guarantor_2_id:null, guarantor_3_id:null, notes:'', member_id:null, member_name:'' },
+      ];
+
+      // Load existing disbursements (returns list now)
+      const existingList = await this.api('GET', `/api/disbursements/week/${w.id}`).catch(() => []);
+      this.existingDisbursements = existingList || [];
+
+      // Always fetch voucher info when there is a winner (needed to detect half-spot)
+      if (w.winner_spot) {
+        try {
+          this.voucherInfo = await this.api('GET', `/api/disbursements/voucher-info/${w.id}`);
+          this.isHalfSpot = this.voucherInfo.assignments?.length === 2;
+
+          if (this.isHalfSpot) {
+            // Pre-fill each half-form with per-member values
+            const today = new Date().toISOString().slice(0, 10);
+            for (let i = 0; i < 2; i++) {
+              const a = this.voucherInfo.assignments[i];
+              this.halfForms[i].member_id   = a.member_id;
+              this.halfForms[i].member_name = a.member;
+              this.halfForms[i].service_fee = a.service_fee;
+              this.halfForms[i].voucher_deduction = a.voucher;
+              this.halfForms[i].gross_amount = Math.round((this.voucherInfo.net_pot || 0) / 2);
+              this.halfForms[i].cheque_date  = today;
+            }
+            // Map existing disbursements to their respective half-form index
+            this.halfExisting = this.halfForms.map(hf =>
+              hf.member_id ? (this.existingDisbursements.find(d => d.member_id === hf.member_id) || null) : null
+            );
+          } else {
+            // Full spot: single-form pre-fill (only when not yet disbursed)
+            if (this.existingDisbursements.length === 0) {
+              this.disbForm = {
+                gross_amount: this.voucherInfo.net_pot || 0,
+                service_fee: this.voucherInfo.service_fee || 0,
+                voucher_deduction: this.voucherInfo.voucher_deduction || 0,
+                cheque_number: '',
+                cheque_date: new Date().toISOString().slice(0, 10),
+                guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null,
+                notes: '',
+              };
+              this.g1Search = ''; this.g1Open = false;
+              this.g2Search = ''; this.g2Open = false;
+              this.g3Search = ''; this.g3Open = false;
+            }
+            this.existingDisbursement = this.existingDisbursements[0] || null;
+          }
+        } catch(e) { /* no winner yet */ }
       }
       this.showDisbursementModal = true;
     },
@@ -1409,6 +1648,60 @@ function draws() {
         await this.loadCycleAndWeeks();
         if (this.disbursements.length > 0) await this.loadDisbursements();
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async markHalfCollected(hfi) {
+      const existing = this.halfExisting[hfi];
+      if (!existing) return;
+      try {
+        const updated = await this.api('PUT', `/api/disbursements/${existing.id}`, { status: 'collected' });
+        const idx = this.existingDisbursements.findIndex(d => d.id === existing.id);
+        if (idx !== -1) this.existingDisbursements[idx] = updated;
+        this.existingDisbursements = [...this.existingDisbursements];
+        this.halfExisting = this.halfForms.map(hf =>
+          hf.member_id ? (this.existingDisbursements.find(d => d.member_id === hf.member_id) || null) : null
+        );
+        this.showToast('Marked as collected');
+        await this.loadCycleAndWeeks();
+        if (this.disbursements.length > 0) await this.loadDisbursements();
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async saveHalfDisbursements() {
+      const toSave = this.halfForms.filter((hf, i) => !this.halfExisting[i]);
+      for (const hf of toSave) {
+        if (!hf.cheque_number?.trim()) {
+          this.showToast('Cheque number required for ' + hf.member_name, 'error'); return;
+        }
+        if (!hf.cheque_date) {
+          this.showToast('Cheque date required for ' + hf.member_name, 'error'); return;
+        }
+        if (!hf.guarantor_1_id || !hf.guarantor_2_id || !hf.guarantor_3_id) {
+          this.showToast('3 guarantors required for ' + hf.member_name, 'error'); return;
+        }
+      }
+      this.saving = true;
+      try {
+        for (const hf of toSave) {
+          await this.api('POST', '/api/disbursements', {
+            week_id: this.activeWeek.id,
+            member_id: hf.member_id,
+            gross_amount: hf.gross_amount,
+            service_fee: hf.service_fee || 0,
+            voucher_deduction: hf.voucher_deduction || 0,
+            cheque_number: hf.cheque_number,
+            cheque_date: hf.cheque_date,
+            guarantor_1_id: hf.guarantor_1_id,
+            guarantor_2_id: hf.guarantor_2_id,
+            guarantor_3_id: hf.guarantor_3_id,
+            notes: hf.notes || null,
+          });
+        }
+        this.showToast('Disbursement(s) recorded');
+        this.showDisbursementModal = false;
+        await this.loadCycleAndWeeks();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
     },
 
     async loadDisbursements() {

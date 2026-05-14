@@ -11,6 +11,7 @@ router = APIRouter()
 
 class DisbursementCreate(BaseModel):
     week_id: int
+    member_id: Optional[int] = None          # set for half-spot split cheques
     gross_amount: float = Field(..., gt=0)
     service_fee: float = Field(0, ge=0)
     voucher_deduction: float = Field(0, ge=0)
@@ -51,6 +52,8 @@ def _to_dict(d: PotDisbursement) -> dict:
             for sa in d.winner_spot.spot_assignments
             if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
         ] if d.winner_spot else [],
+        "member_id": d.member_id,
+        "member_name": d.member.name if d.member else None,
         "gross_amount": d.gross_amount,
         "service_fee": d.service_fee or 0,
         "voucher_deduction": d.voucher_deduction,
@@ -80,10 +83,8 @@ def list_disbursements(cycle_id: Optional[int] = None, db: Session = Depends(get
 
 @router.get("/week/{week_id}")
 def get_disbursement_for_week(week_id: int, db: Session = Depends(get_db)):
-    d = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).first()
-    if not d:
-        return None
-    return _to_dict(d)
+    rows = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).all()
+    return [_to_dict(d) for d in rows]
 
 
 @router.get("/voucher-info/{week_id}")
@@ -160,6 +161,7 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
         "net_after_all": net_after_all,
         "assignments": [
             {
+                "member_id": sa.member_id,
                 "member": sa.member.name,
                 "share": sa.share,
                 "service_fee": cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount,
@@ -185,11 +187,21 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
     if not w.winner_spot_id:
         raise HTTPException(status_code=400, detail="No winner recorded for this week")
 
-    existing = db.query(PotDisbursement).filter(
-        PotDisbursement.week_id == data.week_id
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Disbursement already recorded for this week")
+    if data.member_id:
+        # Half-spot split: check if this specific member already has a cheque for this week
+        existing = db.query(PotDisbursement).filter(
+            PotDisbursement.week_id == data.week_id,
+            PotDisbursement.member_id == data.member_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Disbursement already recorded for this member")
+    else:
+        # Full spot: block if any disbursement exists for this week
+        existing = db.query(PotDisbursement).filter(
+            PotDisbursement.week_id == data.week_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Disbursement already recorded for this week")
 
     guarantor_ids = [data.guarantor_1_id, data.guarantor_2_id, data.guarantor_3_id]
 
@@ -218,16 +230,22 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
                 detail=f"{g.name} has left the group and cannot act as guarantor"
             )
 
-    # ── Service fee: always auto-calculated from winner's share type ─────────
+    # ── Service fee: auto-calculated per member for half-spot, total for full ──
     cycle = db.query(Cycle).filter(Cycle.id == w.cycle_id).first()
     gs    = db.query(Settings).first()
     cfg   = cycle_cfg(cycle, gs)
     assignments = [sa for sa in w.winner_spot.spot_assignments
                    if sa.is_active and sa.cycle_id == w.cycle_id] if w.winner_spot else []
-    service_fee = sum(
-        cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount
-        for sa in assignments
-    )
+    if data.member_id:
+        member_sa = next((sa for sa in assignments if sa.member_id == data.member_id), None)
+        if not member_sa:
+            raise HTTPException(status_code=400, detail="member_id is not an active winner for this week")
+        service_fee = cfg.half_spot_amount if member_sa.share == "half" else cfg.full_spot_amount
+    else:
+        service_fee = sum(
+            cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount
+            for sa in assignments
+        )
 
     # ── Cash sufficiency check ────────────────────────────────────────────────
     cycle_week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == w.cycle_id).all()]
@@ -249,6 +267,7 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
     net_amount = data.gross_amount - service_fee - (data.voucher_deduction or 0)
     d = PotDisbursement(
         week_id=data.week_id,
+        member_id=data.member_id,
         winner_spot_id=w.winner_spot_id,
         gross_amount=data.gross_amount,
         service_fee=service_fee,
@@ -265,13 +284,18 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
     db.add(d)
     db.commit()
     db.refresh(d)
-    # Notify winner(s) that their cheque is ready
+    # Notify the cheque recipient that their cheque is ready
     try:
         from routers.notifications import send_disbursement_ready
-        winner_sas = w.winner_spot.spot_assignments if w.winner_spot else []
-        for sa in winner_sas:
-            if sa.is_active and sa.cycle_id == w.cycle_id:
-                send_disbursement_ready(w, sa.member, data.cheque_number, db)
+        if data.member_id:
+            recipient = db.query(Member).filter(Member.id == data.member_id).first()
+            if recipient:
+                send_disbursement_ready(w, recipient, data.cheque_number, db)
+        else:
+            winner_sas = w.winner_spot.spot_assignments if w.winner_spot else []
+            for sa in winner_sas:
+                if sa.is_active and sa.cycle_id == w.cycle_id:
+                    send_disbursement_ready(w, sa.member, data.cheque_number, db)
     except Exception:
         pass
     return _to_dict(d)

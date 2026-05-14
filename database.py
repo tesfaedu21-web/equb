@@ -297,8 +297,9 @@ class PotDisbursement(Base):
     """
     __tablename__ = "pot_disbursements"
     id = Column(Integer, primary_key=True)
-    week_id = Column(Integer, ForeignKey("weeks.id"), nullable=False, unique=True)
+    week_id = Column(Integer, ForeignKey("weeks.id"), nullable=False)
     winner_spot_id = Column(Integer, ForeignKey("spots.id"), nullable=False)
+    member_id = Column(Integer, ForeignKey("members.id"), nullable=True)   # set for half-spot split cheques
     gross_amount = Column(Float, nullable=False)
     voucher_deduction = Column(Float, default=0)
     net_amount = Column(Float, nullable=False)
@@ -316,6 +317,7 @@ class PotDisbursement(Base):
 
     week = relationship("Week")
     winner_spot = relationship("Spot", foreign_keys=[winner_spot_id])
+    member = relationship("Member", foreign_keys=[member_id])
     guarantor_1 = relationship("Member", foreign_keys=[guarantor_1_id])
     guarantor_2 = relationship("Member", foreign_keys=[guarantor_2_id])
     guarantor_3 = relationship("Member", foreign_keys=[guarantor_3_id])
@@ -476,6 +478,9 @@ def _migrate(engine):
         "CREATE INDEX IF NOT EXISTS ix_member_spots_cycle_active ON member_spots(cycle_id, is_active)",
         # Prevent double-assignment of same member to same spot in same cycle
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_member_spot_cycle ON member_spots(member_id, spot_id, cycle_id)",
+        # Half-spot disbursement split: allow 2 rows per week (one per half-member)
+        "ALTER TABLE pot_disbursements DROP CONSTRAINT IF EXISTS pot_disbursements_week_id_key",
+        "ALTER TABLE pot_disbursements ADD COLUMN member_id INTEGER REFERENCES members(id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
