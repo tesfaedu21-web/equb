@@ -951,15 +951,16 @@
           <!-- Deduction breakdown -->
           <template x-if="voucherInfo">
             <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-1">
-              <div class="font-semibold text-amber-800 mb-1">Deduction Breakdown</div>
-              <!-- Real gross pot before any deduction -->
+              <div class="font-semibold text-amber-800 mb-1"
+                   x-text="activeWeek?.transaction ? 'Deduction Breakdown — Sold Week' : 'Deduction Breakdown'"></div>
+              <!-- Gross Pot -->
               <div class="flex justify-between text-gray-600 font-medium">
                 <span>Gross Pot (total collected)</span>
                 <span x-text="fmt((voucherInfo.net_pot||0) + (voucherInfo.association_amount||0))"></span>
               </div>
-              <!-- Association fund deduction -->
+              <!-- Association fund -->
               <div class="flex justify-between text-red-600 pl-2">
-                <span x-text="'− Association Fund (የማህበር ቁጠባ)'"></span>
+                <span>− Association Fund (የማህበር ቁጠባ)</span>
                 <span x-text="'−' + fmt(voucherInfo.association_amount)"></span>
               </div>
               <!-- Net pot after association -->
@@ -967,22 +968,42 @@
                 <span>Net Pot (after assoc.)</span>
                 <span x-text="fmt(voucherInfo.net_pot)"></span>
               </div>
-              <template x-for="a in voucherInfo.assignments" :key="a.member">
-                <div class="space-y-0.5 pl-2">
+
+              <!-- SOLD WEEK: seller fee with % + buyer receives -->
+              <template x-if="activeWeek?.transaction">
+                <div class="space-y-1">
                   <div class="flex justify-between text-amber-700">
-                    <span class="amharic">− Service fee (አገልግሎት)</span>
-                    <span x-text="'−' + fmt(a.service_fee)"></span>
+                    <span x-text="'− Seller Fee (' + (activeWeek.transaction.percentage||0) + '%) (−)'"></span>
+                    <span x-text="'−' + fmt(activeWeek.transaction.seller_fee||0)"></span>
                   </div>
-                  <div class="flex justify-between text-amber-700">
-                    <span class="amharic">− Voucher (ቦኖ)</span>
-                    <span x-text="'−' + fmt(a.voucher)"></span>
+                  <div class="flex justify-between font-bold text-green-700 border-t border-amber-200 pt-1 mt-1">
+                    <span>Buyer Receives</span>
+                    <span x-text="fmt(activeWeek.transaction.buyer_receives||0)"></span>
                   </div>
                 </div>
               </template>
-              <div class="flex justify-between font-bold text-green-700 border-t border-amber-200 pt-1 mt-1">
-                <span>Net to Winner</span>
-                <span x-text="fmt(voucherInfo.net_after_all)"></span>
-              </div>
+
+              <!-- DRAWN WEEK: service fee + voucher per assignment -->
+              <template x-if="!activeWeek?.transaction">
+                <div>
+                  <template x-for="a in voucherInfo.assignments" :key="a.member">
+                    <div class="space-y-0.5 pl-2">
+                      <div class="flex justify-between text-amber-700">
+                        <span class="amharic">− Service fee (አገልግሎት)</span>
+                        <span x-text="'−' + fmt(a.service_fee)"></span>
+                      </div>
+                      <div class="flex justify-between text-amber-700">
+                        <span class="amharic">− Voucher (ቦኖ)</span>
+                        <span x-text="'−' + fmt(a.voucher)"></span>
+                      </div>
+                    </div>
+                  </template>
+                  <div class="flex justify-between font-bold text-green-700 border-t border-amber-200 pt-1 mt-1">
+                    <span>Net to Winner</span>
+                    <span x-text="fmt(voucherInfo.net_after_all)"></span>
+                  </div>
+                </div>
+              </template>
             </div>
           </template>
 
@@ -1627,9 +1648,12 @@ function draws() {
           } else {
             // Override disbForm with precise voucherInfo values when not yet disbursed
             if (this.existingDisbursements.length === 0) {
-              this.disbForm.gross_amount     = this.voucherInfo.net_pot || this.disbForm.gross_amount;
-              this.disbForm.service_fee      = this.voucherInfo.service_fee || 0;
-              this.disbForm.voucher_deduction = this.voucherInfo.voucher_deduction || 0;
+              this.disbForm.gross_amount = this.voucherInfo.net_pot || this.disbForm.gross_amount;
+              // For sold weeks, keep seller_fee from transaction — don't overwrite with voucherInfo
+              if (!w.transaction) {
+                this.disbForm.service_fee       = this.voucherInfo.service_fee || 0;
+                this.disbForm.voucher_deduction = this.voucherInfo.voucher_deduction || 0;
+              }
             }
             this.existingDisbursement = this.existingDisbursements[0] || null;
           }
