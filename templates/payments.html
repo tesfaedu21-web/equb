@@ -852,7 +852,14 @@ function payments() {
     },
     get filteredPayments() {
       return this.payments.filter(p => {
-        const s = !this.search || p.member_name.toLowerCase().includes(this.search.toLowerCase());
+        const q = this.search.trim();
+        let s = !q;
+        if (!s) {
+          const isNum = /^\d+$/.test(q);
+          s = isNum
+            ? p.spot_numbers?.some(sn => String(sn).includes(q))
+            : p.member_name?.toLowerCase().includes(q.toLowerCase());
+        }
         const st = !this.filterStatus || p.status === this.filterStatus;
         return s && st;
       });

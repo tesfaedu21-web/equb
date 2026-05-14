@@ -553,25 +553,43 @@
       <template x-if="!activeWeek?.is_group_week">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Original Winner (Seller)</label>
-          <select x-model.number="saleForm.original_winner_id" @change="saleForm.seller_id = saleForm.original_winner_id" class="amharic">
-            <option :value="null">— Select original winner —</option>
-            <template x-for="m in activeMembers" :key="m.id">
-              <option :value="m.id" x-text="`${m.name}${m.spot_numbers?.length ? ' (Spot #'+m.spot_numbers[0]+')' : ''}`"></option>
-            </template>
-          </select>
+          <div class="relative">
+            <div x-show="saleForm.original_winner_id" class="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-sm">
+              <span class="amharic font-semibold text-green-800" x-text="(() => { const m = activeMembers.find(m=>m.id===saleForm.original_winner_id); return m ? m.name + (m.spot_numbers?.length ? ' (Spot #'+m.spot_numbers[0]+')' : '') : ''; })()"></span>
+              <button type="button" @click="saleForm.original_winner_id=null; saleForm.seller_id=null; sellerSearch=''; sellerOpen=false" class="text-gray-400 hover:text-red-500 ml-3 text-xl leading-none">&times;</button>
+            </div>
+            <input x-show="!saleForm.original_winner_id" type="text" x-model="sellerSearch" @focus="sellerOpen=true" @input="sellerOpen=true" @keydown.escape="sellerOpen=false" placeholder="Type name or spot number…" autocomplete="off" class="w-full amharic"/>
+            <div x-show="sellerOpen && sellerSearch && !saleForm.original_winner_id" @click.outside="sellerOpen=false" class="absolute z-50 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-52 overflow-y-auto">
+              <template x-for="m in activeMembers.filter(m => _memberMatches(m, sellerSearch))" :key="m.id">
+                <div @click="saleForm.original_winner_id=m.id; saleForm.seller_id=m.id; sellerSearch=''; sellerOpen=false" class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
+                  <span class="font-bold text-equb-green w-10 flex-shrink-0" x-text="m.spot_numbers?.length ? '#'+m.spot_numbers[0] : '—'"></span>
+                  <span class="amharic truncate" x-text="m.name"></span>
+                </div>
+              </template>
+              <div x-show="activeMembers.filter(m => _memberMatches(m, sellerSearch)).length === 0" class="px-4 py-3 text-sm text-gray-400 text-center">No matching members</div>
+            </div>
+          </div>
         </div>
       </template>
 
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Buyer <span class="text-red-400">*</span></label>
-        <select x-model.number="saleForm.buyer_id" @change="checkBuyerPayment()" required class="amharic">
-          <option :value="null">— Select buyer —</option>
-          <template x-for="m in activeMembers" :key="m.id">
-            <option :value="m.id"
-                    :disabled="!activeWeek?.is_group_week && m.id === saleForm.original_winner_id"
-                    x-text="`${m.name}${m.spot_numbers?.length ? ' (Spot #'+m.spot_numbers[0]+')' : ''}`"></option>
-          </template>
-        </select>
+        <div class="relative">
+          <div x-show="saleForm.buyer_id" class="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-sm">
+            <span class="amharic font-semibold text-green-800" x-text="(() => { const m = activeMembers.find(m=>m.id===saleForm.buyer_id); return m ? m.name + (m.spot_numbers?.length ? ' (Spot #'+m.spot_numbers[0]+')' : '') : ''; })()"></span>
+            <button type="button" @click="saleForm.buyer_id=null; buyerSearch=''; buyerOpen=false; checkBuyerPayment()" class="text-gray-400 hover:text-red-500 ml-3 text-xl leading-none">&times;</button>
+          </div>
+          <input x-show="!saleForm.buyer_id" type="text" x-model="buyerSearch" @focus="buyerOpen=true" @input="buyerOpen=true" @keydown.escape="buyerOpen=false" placeholder="Type name or spot number…" autocomplete="off" class="w-full amharic"/>
+          <div x-show="buyerOpen && buyerSearch && !saleForm.buyer_id" @click.outside="buyerOpen=false" class="absolute z-50 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-52 overflow-y-auto">
+            <template x-for="m in activeMembers.filter(m => _memberMatches(m, buyerSearch) && m.id !== saleForm.original_winner_id)" :key="m.id">
+              <div @click="saleForm.buyer_id=m.id; buyerSearch=''; buyerOpen=false; checkBuyerPayment()" class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
+                <span class="font-bold text-equb-green w-10 flex-shrink-0" x-text="m.spot_numbers?.length ? '#'+m.spot_numbers[0] : '—'"></span>
+                <span class="amharic truncate" x-text="m.name"></span>
+              </div>
+            </template>
+            <div x-show="activeMembers.filter(m => _memberMatches(m, buyerSearch) && m.id !== saleForm.original_winner_id).length === 0" class="px-4 py-3 text-sm text-gray-400 text-center">No matching members</div>
+          </div>
+        </div>
         <!-- Buyer payment check -->
         <template x-if="buyerPaymentCheck">
           <div :class="buyerPaymentCheck.eligible
@@ -803,13 +821,23 @@
           <div>
             <label class="block text-xs text-gray-500 mb-2">3 Guarantor Members <span class="text-red-400">*</span></label>
             <div class="space-y-2">
-              <template x-for="i in [1,2,3]" :key="i">
-                <select x-model.number="disbForm['guarantor_' + i + '_id']" class="amharic">
-                  <option :value="null" x-text="`— Guarantor ${i} —`"></option>
-                  <template x-for="m in allMembers" :key="m.id">
-                    <option :value="m.id" x-text="m.name"></option>
-                  </template>
-                </select>
+              <template x-for="[gKey, gSearch, gOpen] in [['guarantor_1_id','g1Search','g1Open'],['guarantor_2_id','g2Search','g2Open'],['guarantor_3_id','g3Search','g3Open']]" :key="gKey">
+                <div class="relative">
+                  <div x-show="disbForm[gKey]" class="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-sm">
+                    <span class="amharic font-semibold text-green-800" x-text="(() => { const m = allMembers.find(m=>m.id===disbForm[gKey]); return m ? (m.spot_numbers?.length ? '#'+m.spot_numbers[0]+' — ' : '') + m.name : ''; })()"></span>
+                    <button type="button" @click="disbForm[gKey]=null; $data[gSearch]=''; $data[gOpen]=false" class="text-gray-400 hover:text-red-500 ml-3 text-xl leading-none">&times;</button>
+                  </div>
+                  <input x-show="!disbForm[gKey]" type="text" :x-model="gSearch" :value="$data[gSearch]" @input="$data[gSearch]=$event.target.value; $data[gOpen]=true" @focus="$data[gOpen]=true" @keydown.escape="$data[gOpen]=false" :placeholder="`Guarantor — name or spot #`" autocomplete="off" class="w-full amharic"/>
+                  <div x-show="$data[gOpen] && $data[gSearch] && !disbForm[gKey]" @click.outside="$data[gOpen]=false" class="absolute z-50 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-44 overflow-y-auto">
+                    <template x-for="m in allMembers.filter(m => _memberMatches(m, $data[gSearch]))" :key="m.id">
+                      <div @click="disbForm[gKey]=m.id; $data[gSearch]=''; $data[gOpen]=false" class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
+                        <span class="font-bold text-equb-green w-10 flex-shrink-0" x-text="m.spot_numbers?.length ? '#'+m.spot_numbers[0] : '—'"></span>
+                        <span class="amharic truncate" x-text="m.name"></span>
+                      </div>
+                    </template>
+                    <div x-show="allMembers.filter(m => _memberMatches(m, $data[gSearch])).length === 0" class="px-4 py-3 text-sm text-gray-400 text-center">No matching members</div>
+                  </div>
+                </div>
               </template>
             </div>
           </div>
@@ -1068,6 +1096,11 @@ function draws() {
     startDrawsAssocSpots: 0,
     drawForm: { winner_spot_id: null },
     drawSpotSearch: '', drawSpotOpen: false,
+    buyerSearch: '', buyerOpen: false,
+    sellerSearch: '', sellerOpen: false,
+    g1Search: '', g1Open: false,
+    g2Search: '', g2Open: false,
+    g3Search: '', g3Open: false,
     saleForm: { original_winner_id: null, seller_id: null, buyer_id: null, percentage: null, notes: '' },
     disbForm: { gross_amount: 0, service_fee: 0, voucher_deduction: 0, cheque_number: '', cheque_date: '', guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null, notes: '' },
     existingDisbursement: null,
@@ -1133,6 +1166,16 @@ function draws() {
       amount -= this.saleVoucherDeduction;
       amount -= this.saleServiceFee;
       return amount;
+    },
+
+    // ── Member search helper: matches by name OR spot number ─────────────────
+    _memberMatches(m, q) {
+      if (!q) return true;
+      q = q.trim();
+      const isNum = /^\d+$/.test(q);
+      return isNum
+        ? m.spot_numbers?.some(sn => String(sn).includes(q))
+        : m.name?.toLowerCase().includes(q.toLowerCase());
     },
 
     // ── Draw modal deduction helpers ──────────────────────────────────────────
@@ -1268,6 +1311,8 @@ function draws() {
         transaction_type: txType,
       };
       this.buyerPaymentCheck = null;
+      this.buyerSearch = ''; this.buyerOpen = false;
+      this.sellerSearch = ''; this.sellerOpen = false;
       this.activeMembers = await this.api('GET', `/api/draws/active-members?cycle_id=${this.selectedCycle}`).catch(() => []);
       this.showSaleModal = true;
     },
@@ -1312,6 +1357,9 @@ function draws() {
           guarantor_3_id: null,
           notes: '',
         };
+        this.g1Search = ''; this.g1Open = false;
+        this.g2Search = ''; this.g2Open = false;
+        this.g3Search = ''; this.g3Open = false;
         if (w.winner_spot) {
           try {
             this.voucherInfo = await this.api('GET', `/api/disbursements/voucher-info/${w.id}`);
