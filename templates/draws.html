@@ -778,9 +778,15 @@
                   <div class="flex justify-between text-amber-700">
                     <span>− Voucher</span><span x-text="'−' + fmt(a.voucher)"></span>
                   </div>
+                  <template x-if="activeWeek?.transaction">
+                    <div class="flex justify-between text-purple-700">
+                      <span x-text="'− ' + (activeWeek.is_group_week ? 'Association Fee' : 'Seller Fee') + ' (' + (activeWeek.transaction.percentage||0) + '% ÷ 2) (−)'"></span>
+                      <span x-text="'−' + fmt((activeWeek.transaction.seller_fee||0) / 2)"></span>
+                    </div>
+                  </template>
                   <div class="flex justify-between text-green-700 font-bold">
                     <span>Net cheque</span>
-                    <span x-text="fmt((voucherInfo.net_pot||0)/2 - a.service_fee - a.voucher)"></span>
+                    <span x-text="fmt((voucherInfo.net_pot||0)/2 - a.service_fee - a.voucher - (activeWeek?.transaction?.seller_fee||0)/2)"></span>
                   </div>
                 </div>
               </template>
@@ -845,10 +851,15 @@
                   <!-- Amounts -->
                   <div class="grid grid-cols-3 gap-2">
                     <div>
-                      <label class="block text-xs text-gray-500 mb-1">Gross (ETB)</label>
+                      <label class="block text-xs text-gray-500 mb-1">
+                        Gross (ETB)
+                        <span x-show="!!activeWeek?.transaction" class="text-equb-green font-semibold">Auto</span>
+                      </label>
                       <input :x-model.number="'halfForms['+hfi+'].gross_amount'" :value="hf.gross_amount"
                              @input="halfForms[hfi].gross_amount=+$event.target.value"
-                             type="number" step="100"/>
+                             type="number" step="100"
+                             :readonly="!!activeWeek?.transaction"
+                             :class="activeWeek?.transaction ? 'bg-gray-50 cursor-not-allowed text-gray-400' : ''"/>
                     </div>
                     <div>
                       <label class="block text-xs text-gray-500 mb-1">
@@ -858,16 +869,21 @@
                              class="bg-gray-50 cursor-not-allowed text-gray-400"/>
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-500 mb-1">Voucher (−)</label>
+                      <label class="block text-xs text-gray-500 mb-1">
+                        Voucher (−)
+                        <span x-show="!!activeWeek?.transaction" class="text-equb-green font-semibold">Auto</span>
+                      </label>
                       <input :value="hf.voucher_deduction"
                              @input="halfForms[hfi].voucher_deduction=+$event.target.value"
-                             type="number" step="100"/>
+                             type="number" step="100"
+                             :readonly="!!activeWeek?.transaction"
+                             :class="activeWeek?.transaction ? 'bg-gray-50 cursor-not-allowed text-gray-400' : ''"/>
                     </div>
                   </div>
                   <div class="bg-white rounded-xl px-3 py-2 flex justify-between text-sm font-semibold border">
                     <span class="text-gray-600">Net Cheque</span>
                     <span class="text-equb-green"
-                          x-text="fmt((hf.gross_amount||0) - (hf.service_fee||0) - (hf.voucher_deduction||0))"></span>
+                          x-text="fmt((hf.gross_amount||0) - (hf.service_fee||0) - (hf.voucher_deduction||0) - (activeWeek?.transaction?.seller_fee||0)/2)"></span>
                   </div>
                   <!-- Cheque details -->
                   <div class="grid grid-cols-2 gap-2">

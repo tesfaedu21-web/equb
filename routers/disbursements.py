@@ -274,10 +274,16 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
                    f"Ensure more members have paid before disbursing."
         )
 
-    # For sold weeks: also deduct the seller/association fee from net_amount
+    # For sold weeks: deduct seller/association fee split equally per recipient
     seller_fee_deduction = 0.0
     if w.status == "sold" and w.transactions:
-        seller_fee_deduction = w.transactions[0].seller_fee or 0.0
+        total_seller_fee = w.transactions[0].seller_fee or 0.0
+        if w.winner_spot_id:
+            n_recipients = len([sa for sa in w.winner_spot.spot_assignments
+                                if sa.is_active and sa.cycle_id == w.cycle_id]) or 1
+        else:
+            n_recipients = 1
+        seller_fee_deduction = total_seller_fee / n_recipients
     net_amount = data.gross_amount - service_fee - (data.voucher_deduction or 0) - seller_fee_deduction
     d = PotDisbursement(
         week_id=data.week_id,
