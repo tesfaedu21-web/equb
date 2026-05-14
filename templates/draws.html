@@ -427,13 +427,36 @@
     <form @submit.prevent="recordDraw()" class="p-6 space-y-4">
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Winning Spot <span class="text-red-400">*</span></label>
-        <select x-model.number="drawForm.winner_spot_id" @change="checkWinnerPayment()" required>
-          <option :value="null">— Select winner spot —</option>
-          <template x-for="s in activeSpots" :key="s.id">
-            <option :value="s.id"
-                    x-text="`Spot #${s.number} — ${s.members.map(m=>m.name).join(' & ') || 'Unassigned'}`"></option>
-          </template>
-        </select>
+        <div class="relative">
+          <!-- Selected spot badge -->
+          <div x-show="drawForm.winner_spot_id"
+               class="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-sm">
+            <span class="font-semibold text-green-800" x-text="(() => { const s = activeSpots.find(s=>s.id===drawForm.winner_spot_id); return s ? 'Spot #' + s.number + ' — ' + (s.members?.map(m=>m.name).join(' & ') || 'Unassigned') : ''; })()"></span>
+            <button type="button" @click="drawForm.winner_spot_id=null; drawSpotSearch=''; drawSpotOpen=false; checkWinnerPayment()"
+                    class="text-gray-400 hover:text-red-500 ml-3 text-xl leading-none">&times;</button>
+          </div>
+          <!-- Search input -->
+          <input x-show="!drawForm.winner_spot_id"
+                 type="text" x-model="drawSpotSearch"
+                 @focus="drawSpotOpen=true" @input="drawSpotOpen=true"
+                 @keydown.escape="drawSpotOpen=false"
+                 placeholder="Type spot number…"
+                 autocomplete="off" class="w-full"/>
+          <!-- Dropdown results -->
+          <div x-show="drawSpotOpen && drawSpotSearch"
+               @click.outside="drawSpotOpen=false"
+               class="absolute z-50 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-52 overflow-y-auto">
+            <template x-for="s in activeSpots.filter(s => String(s.number).includes(drawSpotSearch.trim()))" :key="s.id">
+              <div @click="drawForm.winner_spot_id=s.id; drawSpotSearch=''; drawSpotOpen=false; checkWinnerPayment()"
+                   class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
+                <span class="font-bold text-equb-green w-10 flex-shrink-0">#<span x-text="s.number"></span></span>
+                <span class="text-gray-700 truncate amharic" x-text="s.members?.map(m=>m.name).join(' & ') || 'Unassigned'"></span>
+              </div>
+            </template>
+            <div x-show="activeSpots.filter(s => String(s.number).includes(drawSpotSearch.trim())).length === 0"
+                 class="px-4 py-3 text-sm text-gray-400 text-center">No matching spots</div>
+          </div>
+        </div>
       </div>
 
       <!-- Payment status check -->
@@ -484,7 +507,7 @@
         </div>
         <div class="flex justify-between">
           <span class="text-gray-500"
-                x-text="'Service Fee (' + (_spotShare(drawForm.winner_spot_id)==='full' ? '21,000' : '10,500') + ') (−)'"></span>
+                x-text="'Service Fee (' + fmt(_spotShare(drawForm.winner_spot_id)==='full' ? (appSettings.full_spot_amount??21000) : (appSettings.half_spot_amount??10500)) + ') (−)'"></span>
           <span class="text-orange-600 font-semibold" x-text="fmt(drawServiceFee(drawForm.winner_spot_id))"></span>
         </div>
         <div class="flex justify-between">
@@ -595,7 +618,7 @@
         </div>
         <div class="flex justify-between">
           <span class="text-gray-500"
-                x-text="'Service Fee (' + (saleShareType==='full' ? '21,000' : '10,500') + ') (−)'"></span>
+                x-text="'Service Fee (' + fmt(saleShareType==='full' ? (appSettings.full_spot_amount??21000) : (appSettings.half_spot_amount??10500)) + ') (−)'"></span>
           <span class="text-orange-600 font-semibold" x-text="fmt(saleServiceFee)"></span>
         </div>
         <div class="flex justify-between">
@@ -1044,6 +1067,7 @@ function draws() {
     startDrawsWeek: null,
     startDrawsAssocSpots: 0,
     drawForm: { winner_spot_id: null },
+    drawSpotSearch: '', drawSpotOpen: false,
     saleForm: { original_winner_id: null, seller_id: null, buyer_id: null, percentage: null, notes: '' },
     disbForm: { gross_amount: 0, service_fee: 0, voucher_deduction: 0, cheque_number: '', cheque_date: '', guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null, notes: '' },
     existingDisbursement: null,
@@ -1213,6 +1237,8 @@ function draws() {
     async openDraw(w) {
       this.activeWeek = w;
       this.drawForm = { winner_spot_id: null };
+      this.drawSpotSearch = '';
+      this.drawSpotOpen = false;
       this.paymentCheck = null;
       this.activeSpots = await this.api('GET', `/api/draws/active-spots?cycle_id=${this.selectedCycle}`).catch(() => []);
       this.showDrawModal = true;
