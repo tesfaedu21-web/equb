@@ -1026,12 +1026,13 @@
             <div>
               <label class="block text-xs text-gray-500 mb-1">
                 Service Fee (−)
-                <span class="ml-1 text-xs text-equb-green font-semibold">Auto</span>
+                <span x-show="!activeWeek?.transaction || !!voucherInfo"
+                      class="ml-1 text-xs text-equb-green font-semibold">Auto</span>
               </label>
-              <input x-model.number="disbForm.service_fee" type="number" step="100" readonly
-                     class="bg-gray-50 cursor-not-allowed text-gray-400"
-                     title="Auto-calculated: full spot = full amount, half spot = half amount"/>
-            </div>
+              <input x-model.number="disbForm.service_fee" type="number" step="100"
+                     :readonly="!activeWeek?.transaction || !!voucherInfo"
+                     :class="(!activeWeek?.transaction || !!voucherInfo) ? 'bg-gray-50 cursor-not-allowed text-gray-400' : ''"
+                     title="Auto-calculated for drawn weeks; editable for sold weeks without a drawn winner"/></div>
             <div>
               <label class="block text-xs text-gray-500 mb-1">Voucher Deduction (−)</label>
               <input x-model.number="disbForm.voucher_deduction" type="number" step="100"/>
@@ -1615,12 +1616,17 @@ function draws() {
 
       // Always reset disbForm with week-level values as a safe fallback
       if (this.existingDisbursements.length === 0) {
-        // For sold weeks: gross = buyer_receives (seller_fee already deducted), fees = 0
+        // For sold weeks: compute service fee + voucher from cycle settings
+        const cycle = this.cycles?.find(c => c.id === (w.cycle_id || this.selectedCycle));
+        const cs = cycle?.settings || {};
+        const totalSpots = (cs.total_member_spots || 0) + (cs.total_assoc_spots || 0);
+        const svcFee   = w.transaction ? (cs.full_spot_amount  || this.appSettings?.full_spot_amount  || 0) : 0;
+        const voucherFee = w.transaction ? ((cs.full_spot_voucher || this.appSettings?.full_spot_voucher || 0) * totalSpots) : 0;
         const grossFallback = w.transaction ? (w.transaction.buyer_receives || 0) : (w.net_pot || 0);
         this.disbForm = {
           gross_amount: grossFallback,
-          service_fee: 0,
-          voucher_deduction: 0,
+          service_fee: svcFee,
+          voucher_deduction: voucherFee,
           cheque_number: '',
           cheque_date: new Date().toISOString().slice(0, 10),
           guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null,

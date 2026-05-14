@@ -184,7 +184,8 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
         raise HTTPException(status_code=404, detail="Week not found")
     if w.status not in ("drawn", "sold"):
         raise HTTPException(status_code=400, detail="Week must be drawn or sold first")
-    if not w.winner_spot_id:
+    # Sold weeks may not have a drawn winner (sold from pending) — still allow disbursement
+    if not w.winner_spot_id and w.status != "sold":
         raise HTTPException(status_code=400, detail="No winner recorded for this week")
 
     if data.member_id:
@@ -209,11 +210,16 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
     if len(set(guarantor_ids)) < 3:
         raise HTTPException(status_code=400, detail="All three guarantors must be different people")
 
-    # Identify winner members (to block them from being their own guarantor)
-    winner_member_ids = {
-        sa.member_id for sa in w.winner_spot.spot_assignments
-        if sa.is_active and sa.cycle_id == w.cycle_id
-    } if w.winner_spot else set()
+    # Identify recipient members (to block them from being their own guarantor)
+    winner_member_ids = set()
+    if w.winner_spot:
+        winner_member_ids = {
+            sa.member_id for sa in w.winner_spot.spot_assignments
+            if sa.is_active and sa.cycle_id == w.cycle_id
+        }
+    elif w.status == "sold" and w.transactions:
+        # Sold without draw — block the buyer from being their own guarantor
+        winner_member_ids = {w.transactions[0].buyer_id}
 
     for gid in guarantor_ids:
         g = db.query(Member).filter(Member.id == gid).first()
@@ -230,22 +236,26 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
                 detail=f"{g.name} has left the group and cannot act as guarantor"
             )
 
-    # ── Service fee: auto-calculated per member for half-spot, total for full ──
+    # ── Service fee: auto-calculated when winner spot is known; use form value for sold-without-draw ──
     cycle = db.query(Cycle).filter(Cycle.id == w.cycle_id).first()
     gs    = db.query(Settings).first()
     cfg   = cycle_cfg(cycle, gs)
-    assignments = [sa for sa in w.winner_spot.spot_assignments
-                   if sa.is_active and sa.cycle_id == w.cycle_id] if w.winner_spot else []
-    if data.member_id:
-        member_sa = next((sa for sa in assignments if sa.member_id == data.member_id), None)
-        if not member_sa:
-            raise HTTPException(status_code=400, detail="member_id is not an active winner for this week")
-        service_fee = cfg.half_spot_amount if member_sa.share == "half" else cfg.full_spot_amount
+    if w.winner_spot_id:
+        assignments = [sa for sa in w.winner_spot.spot_assignments
+                       if sa.is_active and sa.cycle_id == w.cycle_id]
+        if data.member_id:
+            member_sa = next((sa for sa in assignments if sa.member_id == data.member_id), None)
+            if not member_sa:
+                raise HTTPException(status_code=400, detail="member_id is not an active winner for this week")
+            service_fee = cfg.half_spot_amount if member_sa.share == "half" else cfg.full_spot_amount
+        else:
+            service_fee = sum(
+                cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount
+                for sa in assignments
+            )
     else:
-        service_fee = sum(
-            cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount
-            for sa in assignments
-        )
+        # Sold without draw — accept service_fee from the request body as-is
+        service_fee = data.service_fee
 
     # ── Cash sufficiency check ────────────────────────────────────────────────
     cycle_week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == w.cycle_id).all()]
@@ -291,11 +301,14 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
             recipient = db.query(Member).filter(Member.id == data.member_id).first()
             if recipient:
                 send_disbursement_ready(w, recipient, data.cheque_number, db)
-        else:
-            winner_sas = w.winner_spot.spot_assignments if w.winner_spot else []
-            for sa in winner_sas:
+        elif w.winner_spot:
+            for sa in w.winner_spot.spot_assignments:
                 if sa.is_active and sa.cycle_id == w.cycle_id:
                     send_disbursement_ready(w, sa.member, data.cheque_number, db)
+        elif w.transactions:
+            buyer = db.query(Member).filter(Member.id == w.transactions[0].buyer_id).first()
+            if buyer:
+                send_disbursement_ready(w, buyer, data.cheque_number, db)
     except Exception:
         pass
     return _to_dict(d)
