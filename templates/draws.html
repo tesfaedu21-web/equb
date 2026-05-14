@@ -1566,8 +1566,26 @@ function draws() {
       const existingList = await this.api('GET', `/api/disbursements/week/${w.id}`).catch(() => []);
       this.existingDisbursements = existingList || [];
 
-      // Always fetch voucher info when there is a winner (needed to detect half-spot)
-      if (w.winner_spot) {
+      // Always reset disbForm with week-level net_pot as a safe fallback
+      if (this.existingDisbursements.length === 0) {
+        this.disbForm = {
+          gross_amount: w.net_pot || 0,
+          service_fee: 0,
+          voucher_deduction: 0,
+          cheque_number: '',
+          cheque_date: new Date().toISOString().slice(0, 10),
+          guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null,
+          notes: '',
+        };
+        this.g1Search = ''; this.g1Open = false;
+        this.g2Search = ''; this.g2Open = false;
+        this.g3Search = ''; this.g3Open = false;
+      } else {
+        this.existingDisbursement = this.existingDisbursements[0] || null;
+      }
+
+      // Fetch voucher info to get precise amounts and detect half-spot
+      if (w.winner_spot || w.winner_spot_id) {
         try {
           this.voucherInfo = await this.api('GET', `/api/disbursements/voucher-info/${w.id}`);
           this.isHalfSpot = this.voucherInfo.assignments?.length === 2;
@@ -1589,24 +1607,15 @@ function draws() {
               hf.member_id ? (this.existingDisbursements.find(d => d.member_id === hf.member_id) || null) : null
             );
           } else {
-            // Full spot: single-form pre-fill (only when not yet disbursed)
+            // Override disbForm with precise voucherInfo values when not yet disbursed
             if (this.existingDisbursements.length === 0) {
-              this.disbForm = {
-                gross_amount: this.voucherInfo.net_pot || 0,
-                service_fee: this.voucherInfo.service_fee || 0,
-                voucher_deduction: this.voucherInfo.voucher_deduction || 0,
-                cheque_number: '',
-                cheque_date: new Date().toISOString().slice(0, 10),
-                guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null,
-                notes: '',
-              };
-              this.g1Search = ''; this.g1Open = false;
-              this.g2Search = ''; this.g2Open = false;
-              this.g3Search = ''; this.g3Open = false;
+              this.disbForm.gross_amount     = this.voucherInfo.net_pot || this.disbForm.gross_amount;
+              this.disbForm.service_fee      = this.voucherInfo.service_fee || 0;
+              this.disbForm.voucher_deduction = this.voucherInfo.voucher_deduction || 0;
             }
             this.existingDisbursement = this.existingDisbursements[0] || null;
           }
-        } catch(e) { /* no winner yet */ }
+        } catch(e) { /* voucherInfo unavailable — use w.net_pot fallback already set above */ }
       }
       this.showDisbursementModal = true;
     },
