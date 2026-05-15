@@ -176,7 +176,7 @@
         <form @submit.prevent="saveSettings()" class="space-y-3">
           <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">Provider</label>
-            <select x-model="cfg.provider" class="text-sm">
+            <select x-model="cfg.provider" name="provider" id="provider" class="text-sm">
               <option value="africastalking">Africa's Talking</option>
               <option value="mock">Mock (test only)</option>
             </select>
@@ -184,16 +184,16 @@
           <div x-show="cfg.provider === 'africastalking'" class="space-y-3">
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">AT Username</label>
-              <input x-model="cfg.username" type="text" placeholder="sandbox or your username" class="text-sm"/>
+              <input x-model="cfg.username" type="text" name="at_username" id="at_username" placeholder="sandbox or your username" class="text-sm"/>
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">API Key</label>
-              <input x-model="cfg.api_key_input" type="password" placeholder="Enter API key…" class="text-sm"/>
+              <input x-model="cfg.api_key_input" type="password" name="api_key" id="api_key" placeholder="Enter API key…" class="text-sm"/>
               <div class="text-xs text-gray-400 mt-1" x-show="cfg.api_key">Key saved (hidden)</div>
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">Sender ID (optional)</label>
-              <input x-model="cfg.sender_id" type="text" placeholder="e.g. EQUB or +251…" class="text-sm"/>
+              <input x-model="cfg.sender_id" type="text" name="sender_id" id="sender_id" placeholder="e.g. EQUB or +251…" class="text-sm"/>
             </div>
           </div>
           <div class="flex items-center gap-2 pt-1">
@@ -225,11 +225,11 @@
     <form @submit.prevent="saveTemplate()" class="p-6 space-y-4">
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Title</label>
-        <input x-model="editTmpl.title" type="text" required/>
+        <input x-model="editTmpl.title" type="text" name="tmpl_title" id="tmpl_title" required/>
       </div>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
-        <textarea x-model="editTmpl.message" rows="5"
+        <textarea x-model="editTmpl.message" name="tmpl_message" id="tmpl_message" rows="5"
                   placeholder="Use {member_name}, {amount}, {week_number}, etc."></textarea>
         <div class="text-xs text-gray-400 mt-1">
           Keep messages under 160 chars for single SMS. Available variables:
