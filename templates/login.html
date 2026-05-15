@@ -7,22 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            equb: { green:'#078930', yellow:'#FCDD09', red:'#DA121A', dark:'#030c06' }
-          },
-          fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-            ethiopic: ['"Noto Sans Ethiopic"', 'sans-serif'],
-          },
-        }
-      }
-    }
-  </script>
+  <link rel="stylesheet" href="/static/css/tailwind.css"/>
 
   <style>
     * { box-sizing: border-box; }
@@ -257,7 +242,7 @@
 
             <!-- Username -->
             <div>
-              <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Username</label>
+              <label for="username" class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Username</label>
               <div class="relative">
                 <div class="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
                   <svg style="width:18px;height:18px" class="text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -265,7 +250,7 @@
                       d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                   </svg>
                 </div>
-                <input name="username" type="text" required autocomplete="username"
+                <input id="username" name="username" type="text" required autocomplete="username"
                        class="field {% if error and not locked %}error{% endif %}"
                        placeholder="Enter username" autofocus/>
               </div>
@@ -273,7 +258,7 @@
 
             <!-- Password -->
             <div>
-              <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Password</label>
+              <label for="password" class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Password</label>
               <div class="relative">
                 <div class="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
                   <svg style="width:18px;height:18px" class="text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -281,7 +266,7 @@
                       d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                   </svg>
                 </div>
-                <input name="password" :type="showPwd ? 'text' : 'password'" required
+                <input id="password" name="password" :type="showPwd ? 'text' : 'password'" required
                        autocomplete="current-password"
                        class="field pr-12 {% if error and not locked %}error{% endif %}"
                        placeholder="Enter password"/>
