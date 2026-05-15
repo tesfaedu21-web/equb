@@ -1451,7 +1451,7 @@ function draws() {
       q = q.trim();
       const isNum = /^\d+$/.test(q);
       return isNum
-        ? m.spot_numbers?.some(sn => String(sn).includes(q))
+        ? m.spot_numbers?.some(sn => sn === +q)
         : m.name?.toLowerCase().includes(q.toLowerCase());
     },
 
@@ -1601,6 +1601,19 @@ function draws() {
       this.buyerSearch = ''; this.buyerOpen = false;
       this.sellerSearch = ''; this.sellerOpen = false;
       this.activeMembers = await this.api('GET', `/api/draws/active-members?cycle_id=${this.selectedCycle}`).catch(() => []);
+      // Winner's status becomes "received" after draw, so they're excluded from active-members.
+      // Re-inject them so they appear as the default seller.
+      if (w.winner_spot?.members?.length > 0) {
+        for (const wm of w.winner_spot.members) {
+          if (!this.activeMembers.find(m => m.id === wm.id)) {
+            this.activeMembers.push({
+              id: wm.id, name: wm.name,
+              spot_numbers: [w.winner_spot.number],
+              share: wm.share, spot_count: 1,
+            });
+          }
+        }
+      }
       this.showSaleModal = true;
     },
 
