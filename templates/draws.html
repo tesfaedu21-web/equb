@@ -562,22 +562,43 @@
       <template x-if="!activeWeek?.is_group_week">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Original Winner (Seller)</label>
-          <div class="relative">
-            <div x-show="saleForm.original_winner_id" class="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-sm">
-              <span class="amharic font-semibold text-green-800" x-text="(() => { const m = activeMembers.find(m=>m.id===saleForm.original_winner_id); return m ? m.name + (m.spot_numbers?.length ? ' (Spot #'+m.spot_numbers[0]+')' : '') : ''; })()"></span>
-              <button type="button" @click="saleForm.original_winner_id=null; saleForm.seller_id=null; sellerSearch=''; sellerOpen=false" class="text-gray-400 hover:text-red-500 ml-3 text-xl leading-none">&times;</button>
+
+          <!-- Half-half spot: quick-pick which member is selling -->
+          <template x-if="activeWeek?.winner_spot?.members?.length > 1">
+            <div class="space-y-2">
+              <p class="text-xs text-gray-500">This is a half-half spot — select who is selling:</p>
+              <div class="flex gap-2">
+                <template x-for="wm in activeWeek.winner_spot.members" :key="wm.id">
+                  <button type="button"
+                          @click="saleForm.original_winner_id=wm.id; saleForm.seller_id=wm.id"
+                          :class="saleForm.original_winner_id===wm.id ? 'bg-equb-green text-white border-equb-green' : 'bg-white text-gray-700 border-gray-200 hover:border-equb-green hover:text-equb-green'"
+                          class="flex-1 amharic text-sm px-3 py-2 rounded-xl border font-medium transition-colors"
+                          x-text="wm.name"></button>
+                </template>
+              </div>
             </div>
-            <input x-show="!saleForm.original_winner_id" type="text" x-model="sellerSearch" @focus="sellerOpen=true" @input="sellerOpen=true" @keydown.escape="sellerOpen=false" placeholder="Type name or spot number…" autocomplete="off" class="w-full amharic"/>
-            <div x-show="sellerOpen && sellerSearch && !saleForm.original_winner_id" @click.outside="sellerOpen=false" class="absolute z-50 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-52 overflow-y-auto">
-              <template x-for="m in activeMembers.filter(m => _memberMatches(m, sellerSearch))" :key="m.id">
-                <div @click="saleForm.original_winner_id=m.id; saleForm.seller_id=m.id; sellerSearch=''; sellerOpen=false" class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
-                  <span class="font-bold text-equb-green w-10 flex-shrink-0" x-text="m.spot_numbers?.length ? '#'+m.spot_numbers[0] : '—'"></span>
-                  <span class="amharic truncate" x-text="m.name"></span>
-                </div>
-              </template>
-              <div x-show="activeMembers.filter(m => _memberMatches(m, sellerSearch)).length === 0" class="px-4 py-3 text-sm text-gray-400 text-center">No matching members</div>
+          </template>
+
+          <!-- Single winner: search input -->
+          <template x-if="!activeWeek?.winner_spot?.members || activeWeek.winner_spot.members.length <= 1">
+            <div class="relative">
+              <div x-show="saleForm.original_winner_id" class="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-sm">
+                <span class="amharic font-semibold text-green-800" x-text="(() => { const m = activeMembers.find(m=>m.id===saleForm.original_winner_id); return m ? m.name + (m.spot_numbers?.length ? ' (Spot #'+m.spot_numbers[0]+')' : '') : ''; })()"></span>
+                <button type="button" @click="saleForm.original_winner_id=null; saleForm.seller_id=null; sellerSearch=''; sellerOpen=false" class="text-gray-400 hover:text-red-500 ml-3 text-xl leading-none">&times;</button>
+              </div>
+              <input x-show="!saleForm.original_winner_id" type="text" x-model="sellerSearch" @focus="sellerOpen=true" @input="sellerOpen=true" @keydown.escape="sellerOpen=false" placeholder="Type name or spot number…" autocomplete="off" class="w-full amharic"/>
+              <div x-show="sellerOpen && sellerSearch && !saleForm.original_winner_id" @click.outside="sellerOpen=false" class="absolute z-50 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-52 overflow-y-auto">
+                <template x-for="m in activeMembers.filter(m => _memberMatches(m, sellerSearch))" :key="m.id">
+                  <div @click="saleForm.original_winner_id=m.id; saleForm.seller_id=m.id; sellerSearch=''; sellerOpen=false" class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
+                    <span class="font-bold text-equb-green w-10 flex-shrink-0" x-text="m.spot_numbers?.length ? '#'+m.spot_numbers[0] : '—'"></span>
+                    <span class="amharic truncate" x-text="m.name"></span>
+                  </div>
+                </template>
+                <div x-show="activeMembers.filter(m => _memberMatches(m, sellerSearch)).length === 0" class="px-4 py-3 text-sm text-gray-400 text-center">No matching members</div>
+              </div>
             </div>
-          </div>
+          </template>
+
         </div>
       </template>
 
