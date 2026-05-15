@@ -141,7 +141,7 @@
                       'badge badge-paid': l.status==='sent',
                       'badge badge-missed': l.status==='failed',
                       'badge badge-pending': l.status==='mock',
-                    }" x-text="l.status"></span>
+                    }" x-text="l.status ? l.status.charAt(0).toUpperCase() + l.status.slice(1) : ''"></span>
                   </td>
                   <td class="px-4 py-2.5 text-gray-400 text-xs" x-text="fmtDate(l.sent_at)"></td>
                 </tr>

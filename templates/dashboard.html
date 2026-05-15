@@ -261,7 +261,7 @@
           <div class="flex items-center justify-between">
             <span class="text-sm text-gray-500">Result</span>
             <span :class="stats.last_draw.status === 'drawn' ? 'badge badge-drawn' : 'badge badge-sold'"
-                  x-text="stats.last_draw.status"></span>
+                  x-text="stats.last_draw.status ? stats.last_draw.status.charAt(0).toUpperCase() + stats.last_draw.status.slice(1) : ''"></span>
           </div>
           <div class="flex items-center justify-between" x-show="stats.last_draw.winner">
             <span class="text-sm text-gray-500">Winner</span>

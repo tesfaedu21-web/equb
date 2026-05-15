@@ -178,7 +178,7 @@
                 <td class="px-4 py-3 font-medium text-gray-900 amharic" x-text="p.member_name"></td>
                 <td class="px-4 py-3 font-semibold text-gray-700" x-text="fmt(p.amount)"></td>
                 <td class="px-4 py-3">
-                  <span :class="`badge badge-${p.status}`" x-text="p.status"></span>
+                  <span :class="`badge badge-${p.status}`" x-text="p.status ? p.status.charAt(0).toUpperCase() + p.status.slice(1) : ''"></span>
                 </td>
                 <td class="px-4 py-3">
                   <template x-if="p.status==='paid' && p.payment_method">
@@ -446,7 +446,7 @@
                   <span x-show="!d.phone" class="text-gray-300">—</span>
                 </td>
                 <td class="px-5 py-3.5">
-                  <span :class="`badge badge-${d.status}`" x-text="d.status"></span>
+                  <span :class="`badge badge-${d.status}`" x-text="d.status ? d.status.charAt(0).toUpperCase() + d.status.slice(1) : ''"></span>
                 </td>
                 <td class="px-5 py-3.5 text-right">
                   <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-bold"

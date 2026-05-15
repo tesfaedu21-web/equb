@@ -254,7 +254,7 @@
               <td class="px-4 py-3 font-semibold text-equb-green whitespace-nowrap hidden sm:table-cell" x-text="fmt(m.total_weekly_contribution)"></td>
               <td class="px-4 py-3 text-gray-500 text-xs amharic hidden md:table-cell break-words max-w-[160px]" x-text="m.partners.join(', ') || '—'"></td>
               <td class="px-4 py-3">
-                <span :class="`badge badge-${m.status}`" x-text="m.status"></span>
+                <span :class="`badge badge-${m.status}`" x-text="m.status ? m.status.charAt(0).toUpperCase() + m.status.slice(1) : ''"></span>
               </td>
               <td class="px-4 py-3">
                 <div class="flex items-center gap-1.5">
