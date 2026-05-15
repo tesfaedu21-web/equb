@@ -82,8 +82,8 @@
               <td class="px-3 py-2.5 font-medium text-gray-800" x-text="u.full_name"></td>
               <td class="px-3 py-2.5 text-gray-500 font-mono text-xs" x-text="u.username"></td>
               <td class="px-3 py-2.5">
-                <span :class="u.role === 'admin' ? 'badge badge-admin' : 'badge badge-cashier'"
-                      x-text="u.role"></span>
+                <span :class="u.role === 'superadmin' ? 'badge badge-drawn' : u.role === 'admin' ? 'badge badge-admin' : 'badge badge-cashier'"
+                      x-text="u.role === 'superadmin' ? 'Owner' : u.role === 'admin' ? 'Admin' : 'Cashier'"></span>
               </td>
               <td class="px-3 py-2.5">
                 <span :class="u.is_active ? 'badge badge-active' : 'badge badge-left'"

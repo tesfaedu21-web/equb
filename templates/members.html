@@ -679,7 +679,7 @@ function members() {
         this.api('GET', '/api/auth/me').catch(() => ({})),
         this.loadCycles(),
       ]);
-      this.isAdmin = me.role === 'admin';
+      this.isAdmin = me.role === 'admin' || me.role === 'superadmin';
       await Promise.all([this.load(), this.loadSpots(), this.loadSettings()]);
     },
 

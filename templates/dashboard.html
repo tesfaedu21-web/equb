@@ -424,7 +424,7 @@
 <script>
 function dashboard() {
   return {
-    isAdmin: (window._equbCtx || {}).userRole === 'admin',
+    isAdmin: ['admin','superadmin'].includes((window._equbCtx || {}).userRole || ''),
     stats: {},
     trendData: [],
     ranking: [],

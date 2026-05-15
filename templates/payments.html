@@ -7,12 +7,12 @@
 <div class="p-8 space-y-6">
 
   <!-- Header -->
-  <div class="flex items-center justify-between">
+  <div class="flex items-center justify-between flex-wrap gap-3">
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Payments</h1>
       <p class="text-sm text-gray-500 mt-0.5">Track weekly payments — cash, bank, or cheque</p>
     </div>
-    <button @click="openNewPayment()" class="btn-secondary flex items-center gap-2 text-sm">
+    <button @click="openNewPayment()" class="btn-secondary flex items-center gap-2 text-sm flex-shrink-0">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
       </svg>
@@ -20,8 +20,9 @@
     </button>
   </div>
 
-  <!-- Tab switcher -->
-  <div class="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+  <!-- Tab switcher — horizontally scrollable on small screens -->
+  <div class="overflow-x-auto" style="margin:0 -4px;padding:0 4px 2px;">
+  <div class="flex gap-1 bg-gray-100 rounded-xl p-1" style="width:max-content;min-width:100%;">
     <button @click="activeTab='week'"
             :class="activeTab==='week' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'"
             class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all">
@@ -45,6 +46,7 @@
             class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5">
       📋 Daily Report
     </button>
+  </div>
   </div>
 
   <!-- ── WEEK VIEW ─────────────────────────────────────────────────────────── -->

@@ -1394,7 +1394,7 @@
 <script>
 function draws() {
   return {
-    isAdmin: (window._equbCtx || {}).userRole === 'admin',
+    isAdmin: ['admin','superadmin'].includes((window._equbCtx || {}).userRole || ''),
     cycles: [],
     weeks: [],
     activeCycle: null,
