@@ -464,10 +464,15 @@ function dashboard() {
       }
     },
 
-    _drawChart() {
+    _drawChart(_r = 0) {
       if (!window.Chart) return;
       const canvas = document.getElementById('trendChart');
       if (!canvas) return;
+      // Canvas has no layout dimensions yet — browser hasn't painted; retry
+      if (!canvas.clientWidth) {
+        if (_r < 15) setTimeout(() => this._drawChart(_r + 1), 50);
+        return;
+      }
       if (window._equbTrendChart) { window._equbTrendChart.destroy(); }
       const data = this.trendData;
       window._equbTrendChart = new Chart(canvas, {

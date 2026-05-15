@@ -668,10 +668,15 @@ function reports() {
       }
     },
 
-    _drawReportsChart() {
+    _drawReportsChart(_r = 0) {
       if (!window.Chart) return;
       const canvas = document.getElementById('reportsCollectionChart');
       if (!canvas) return;
+      // Canvas has no layout dimensions yet — browser hasn't painted; retry
+      if (!canvas.clientWidth) {
+        if (_r < 15) setTimeout(() => this._drawReportsChart(_r + 1), 50);
+        return;
+      }
       if (window._equbReportsChart) window._equbReportsChart.destroy();
       const weeks = this.paymentSummary.weeks || [];
       if (!weeks.length) return;
