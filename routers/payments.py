@@ -193,7 +193,6 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
             db.bulk_save_objects(new_records)
             db.commit()
 
-    from sqlalchemy import or_
     now = datetime.utcnow()
     q = (db.query(Payment)
          .filter(Payment.member_id == member_id,
@@ -202,12 +201,9 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
     # Always scope to the active cycle so old-cycle debt never bleeds in
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)
-    if include_week_id:
-        # Always include the explicitly requested week (e.g. current collection week)
-        # even if its draw_date is in the future
-        q = q.filter(or_(Week.draw_date <= now, Payment.week_id == include_week_id))
-    else:
-        q = q.filter(Week.draw_date <= now)
+    # Only show weeks whose draw_date has arrived — no future week payments allowed.
+    # include_week_id is honoured only when that week's draw_date is also <= now.
+    q = q.filter(Week.draw_date <= now)
     payments = q.order_by(Week.week_number).all()
     return {
         "member_id": member_id,
