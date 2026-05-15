@@ -103,8 +103,8 @@
       </div>
     </div>
 
-    <!-- Weekly collection chart -->
-    <div class="card" x-show="(paymentSummary.weeks || []).length > 0">
+    <!-- Weekly collection chart (hidden in print — table below serves as print version) -->
+    <div class="card no-print" x-show="(paymentSummary.weeks || []).length > 0">
       <div class="flex items-center justify-between mb-3">
         <h3 class="font-semibold text-gray-700">Weekly Collection — Paid vs Outstanding</h3>
         <span class="text-xs font-bold text-equb-green" x-text="(paymentSummary.collection_rate || 0) + '% overall'"></span>
@@ -762,26 +762,23 @@ function reports() {
     },
 
     printReport() {
-      // Convert chart canvas to a static image so it prints correctly
-      const canvas = document.getElementById('reportsCollectionChart');
-      let chartImg = null;
-      if (canvas && window._equbReportsChart) {
-        chartImg = document.createElement('img');
-        chartImg.src = canvas.toDataURL('image/png');
-        chartImg.style.cssText = 'width:100%;height:160px;object-fit:fill;display:block;';
-        canvas.parentNode.insertBefore(chartImg, canvas);
-        canvas.style.display = 'none';
-      }
-      // Force-show all tab sections (override Alpine x-show inline styles)
+      // Remove Alpine's inline style="display:none" so @media print CSS can show all sections
       const sections = document.querySelectorAll('[data-print-section]');
       const origStyles = [];
-      sections.forEach(s => { origStyles.push(s.style.display); s.style.display = 'block'; });
-      window.print();
-      // Restore after print dialog closes
+      sections.forEach(s => {
+        origStyles.push(s.getAttribute('style'));
+        s.removeAttribute('style');
+      });
+      // Small delay so browser repaints before print dialog opens
       setTimeout(() => {
-        sections.forEach((s, i) => { s.style.display = origStyles[i]; });
-        if (chartImg) { chartImg.remove(); canvas.style.display = ''; }
-      }, 1000);
+        window.print();
+        // Restore Alpine's inline styles after dialog closes
+        setTimeout(() => {
+          sections.forEach((s, i) => {
+            if (origStyles[i] !== null) s.setAttribute('style', origStyles[i]);
+          });
+        }, 500);
+      }, 80);
     },
   }
 }
