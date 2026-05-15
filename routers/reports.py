@@ -461,18 +461,46 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
     disbs = (db.query(PotDisbursement)
              .filter(PotDisbursement.week_id.in_(week_ids))
              .order_by(PotDisbursement.cheque_date).all())
+    # Pre-fetch cycle config once
+    cycle_obj = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    gs = db.query(Settings).first()
+    cfg = cycle_cfg(cycle_obj, gs) if cycle_obj else None
+
     rows = []
     for d in disbs:
         winner = ", ".join(
             sa.member.name for sa in d.winner_spot.spot_assignments
             if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
         ) if d.winner_spot else "—"
+
+        # Vendor payment = only members who actually PAID that week
+        vendor_payment = 0
+        vendor_paid_spots = 0
+        if cfg and d.week_id:
+            paid_pmts = db.query(Payment).filter(
+                Payment.week_id == d.week_id,
+                Payment.status == "paid"
+            ).all()
+            for pmt in paid_pmts:
+                for ms in db.query(MemberSpot).filter(
+                    MemberSpot.member_id == pmt.member_id,
+                    MemberSpot.cycle_id == cycle_id,
+                    MemberSpot.is_active == True
+                ).all():
+                    vendor_paid_spots += 1
+                    vendor_payment += (cfg.full_spot_voucher if ms.share == "full"
+                                       else cfg.half_spot_voucher)
+
+        voucher_deduction = d.voucher_deduction or 0
         rows.append({
             "id":                d.id,
             "week_number":       d.week.week_number if d.week else None,
             "cheque_date":       d.cheque_date.isoformat(),
             "winner":            winner,
-            "voucher_deduction": d.voucher_deduction or 0,
+            "voucher_deduction": voucher_deduction,
+            "vendor_payment":    round(vendor_payment, 2),
+            "vendor_paid_spots": vendor_paid_spots,
+            "assoc_retains":     round(voucher_deduction - vendor_payment, 2),
             "voucher_paid":      bool(d.voucher_paid),
             "voucher_paid_date": d.voucher_paid_date.isoformat() if d.voucher_paid_date else None,
         })

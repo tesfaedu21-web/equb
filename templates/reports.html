@@ -443,8 +443,8 @@
     <div class="card p-0 overflow-hidden">
       <div class="px-5 py-3 bg-gray-50 border-b">
         <p class="text-sm text-gray-600">
-          Members use vouchers at bars and restaurants. The association collects this amount from the winner's pot and pays the vendor.
-          Mark each week's voucher as paid once the vendor has been settled.
+          The association deducts the <strong>full voucher</strong> from the winner's pot (all spots).
+          The vendor is paid only for members who <strong>actually paid</strong> that week — missing members' vouchers stay with the association.
         </p>
       </div>
       <div class="overflow-x-auto">
@@ -454,7 +454,9 @@
               <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Week</th>
               <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Date</th>
               <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Winner / Buyer</th>
-              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Voucher Amount</th>
+              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Collected from Pot</th>
+              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Vendor Gets</th>
+              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Assoc Retains</th>
               <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Status</th>
               <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Paid Date</th>
               <th class="px-5 py-3 no-print-cell"></th>
@@ -467,6 +469,14 @@
                 <td class="px-5 py-3 text-gray-400 text-xs" x-text="fmtDate(v.cheque_date)"></td>
                 <td class="px-5 py-3 text-gray-800 amharic" x-text="v.winner"></td>
                 <td class="px-5 py-3 text-right font-bold text-orange-500" x-text="fmt(v.voucher_deduction)"></td>
+                <td class="px-5 py-3 text-right">
+                  <div class="font-bold text-green-600" x-text="fmt(v.vendor_payment || 0)"></div>
+                  <div class="text-xs text-gray-400" x-text="(v.vendor_paid_spots || 0) + ' paid spots'"></div>
+                </td>
+                <td class="px-5 py-3 text-right">
+                  <span x-show="(v.assoc_retains || 0) > 0" class="font-semibold text-yellow-600" x-text="fmt(v.assoc_retains || 0)"></span>
+                  <span x-show="!(v.assoc_retains > 0)" class="text-gray-300 text-xs">—</span>
+                </td>
                 <td class="px-5 py-3">
                   <span x-show="v.voucher_paid" class="badge bg-green-100 text-green-700">Paid to Vendor</span>
                   <span x-show="!v.voucher_paid && v.voucher_deduction > 0" class="badge bg-orange-100 text-orange-700">Outstanding</span>
@@ -487,7 +497,7 @@
               </tr>
             </template>
             <tr x-show="vouchers.length === 0">
-              <td colspan="7" class="px-5 py-10 text-center text-gray-400">No disbursements recorded yet</td>
+              <td colspan="9" class="px-5 py-10 text-center text-gray-400">No disbursements recorded yet</td>
             </tr>
           </tbody>
         </table>

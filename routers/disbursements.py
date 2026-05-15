@@ -114,14 +114,35 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
     gs    = db.query(Settings).first()
     cfg   = cycle_cfg(cycle, gs)
 
-    # Voucher accumulates over every draw week (member spots + assoc spots).
-    # Worker week is excluded — it is not a spot draw.
     total_spots = cfg.total_member_spots + cfg.total_assoc_spots
     # Total weeks members actually pay into (includes worker week if present)
     total_weeks = db.query(Week).filter(Week.cycle_id == w.cycle_id).count()
 
+    # Winner's pot deduction = FULL voucher for ALL spots (assoc collects full amount)
     full_voucher_total = cfg.full_spot_voucher * total_spots
     half_voucher_total = cfg.half_spot_voucher * total_spots
+
+    # Vendor payment = only members who actually paid this week
+    # (missing members did not attend — vendor does not receive for them)
+    paid_payments = db.query(Payment).filter(
+        Payment.week_id == week_id,
+        Payment.status == "paid"
+    ).all()
+    vendor_full_count = 0
+    vendor_half_count = 0
+    for pmt in paid_payments:
+        for ms in db.query(MemberSpot).filter(
+            MemberSpot.member_id == pmt.member_id,
+            MemberSpot.cycle_id == w.cycle_id,
+            MemberSpot.is_active == True
+        ).all():
+            if ms.share == "full":
+                vendor_full_count += 1
+            else:
+                vendor_half_count += 1
+    vendor_payment = (vendor_full_count * cfg.full_spot_voucher
+                      + vendor_half_count * cfg.half_spot_voucher)
+    vendor_paid_spots = vendor_full_count + vendor_half_count
 
     assignments = [sa for sa in w.winner_spot.spot_assignments
                    if sa.is_active and sa.cycle_id == w.cycle_id]
@@ -159,6 +180,9 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
         "service_fee": total_service_fee,
         "voucher_deduction": total_voucher,
         "net_after_all": net_after_all,
+        "vendor_payment": vendor_payment,
+        "vendor_paid_spots": vendor_paid_spots,
+        "assoc_retains": total_voucher - vendor_payment,
         "assignments": [
             {
                 "member_id": sa.member_id,
