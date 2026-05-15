@@ -1,7 +1,10 @@
+import logging
 import re
 import urllib.request
 import urllib.parse
 from fastapi import APIRouter, Depends, HTTPException, Request
+
+logger = logging.getLogger("equb.notifications")
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -85,7 +88,7 @@ def _render(template: str, vars: dict) -> str:
         template = template.replace("{" + k + "}", str(v))
     remaining = re.findall(r"\{(\w+)\}", template)
     if remaining:
-        print(f"[notifications] Warning: unreplaced template variables: {remaining}")
+        logger.warning("unreplaced template variables: %s", remaining)
     return template
 
 

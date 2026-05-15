@@ -1,10 +1,10 @@
+import logging
 import os
 import time
 import secrets
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-
 from fastapi import FastAPI, Request, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +16,12 @@ from routers import members, draws, payments, reports, notifications
 from routers import auth as auth_router
 from routers import settings as settings_router
 from routers import disbursements as disbursements_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("equb")
 
 _db_url = os.environ.get("DATABASE_URL", "")
 IS_PRODUCTION = bool(
@@ -121,9 +127,9 @@ async def auto_close_past_weeks():
             from routers.notifications import send_missed_payment
             for p in newly_missed:
                 send_missed_payment(p, db)
-            print(f"[scheduler] {len(newly_late)} → late, {len(newly_missed)} → missed")
+            logger.info("scheduler: %d → late, %d → missed", len(newly_late), len(newly_missed))
     except Exception as e:
-        print(f"[scheduler] Error: {e}")
+        logger.error("scheduler auto-close error: %s", e)
         db.rollback()
     finally:
         db.close()
@@ -158,9 +164,9 @@ async def send_pre_draw_reminders():
                 except Exception:
                     pass
         if sent:
-            print(f"[scheduler] Pre-draw reminders sent: {sent}")
+            logger.info("scheduler: pre-draw reminders sent: %d", sent)
     except Exception as e:
-        print(f"[scheduler] Pre-draw reminder error: {e}")
+        logger.error("scheduler pre-draw reminder error: %s", e)
     finally:
         db.close()
 
@@ -176,10 +182,10 @@ async def lifespan(app: FastAPI):
         scheduler.add_job(auto_close_past_weeks,   CronTrigger(hour=21, minute=0))
         scheduler.add_job(send_pre_draw_reminders, CronTrigger(hour=18, minute=0))
         scheduler.start()
-        print("[scheduler] Nightly auto-close job scheduled (21:00 UTC = midnight EAT)")
-        print("[scheduler] Pre-draw reminder job scheduled (18:00 UTC = 9 PM EAT)")
+        logger.info("scheduler: nightly auto-close scheduled (21:00 UTC)")
+        logger.info("scheduler: pre-draw reminders scheduled (18:00 UTC)")
     except ImportError:
-        print("[scheduler] APScheduler not installed — skipping scheduled jobs")
+        logger.warning("scheduler: APScheduler not installed — skipping scheduled jobs")
     yield
     if scheduler and scheduler.running:
         scheduler.shutdown(wait=False)
@@ -202,7 +208,7 @@ async def security_headers(request: Request, call_next):
     # CSP: allow CDN resources needed by the app
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' unpkg.com; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' unpkg.com cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
         "font-src 'self' fonts.gstatic.com data:; "
         "img-src 'self' data: blob: *; "
@@ -390,7 +396,7 @@ async def setup_admin(token: str = ""):
         )
         db.add(u)
         db.commit()
-        print(f"\n[SETUP] Admin created — username: admin / password: {pw}\n")
+        logger.warning("SETUP: Admin created — username: admin / password: %s", pw)
         return HTMLResponse(
             "<h2>Admin created!</h2>"
             "<p>Credentials printed to server logs. Check Railway logs for the temporary password.</p>"

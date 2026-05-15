@@ -1,11 +1,16 @@
+import hashlib
+import logging
+import os
+import secrets
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
     DateTime, ForeignKey, Text, UniqueConstraint, Index,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
-from datetime import datetime, timezone
-from dataclasses import dataclass
-import hashlib, secrets, os
+
+logger = logging.getLogger("equb.db")
 
 
 def _utcnow():
@@ -534,7 +539,7 @@ def _backfill_cycle_settings(db):
         c.group_week_interval  = getattr(gs, 'group_week_interval', 4)
     if cycles:
         db.commit()
-        print(f"[init] Backfilled settings into {len(cycles)} existing cycle(s)")
+        logger.info("Backfilled settings into %d existing cycle(s)", len(cycles))
 
 
 def init_db():
@@ -556,12 +561,10 @@ def init_db():
             db.add(User(username="admin", password_hash=_pwd.hash(_auto_pw),
                         full_name="Administrator", role="admin", is_active=True))
             db.commit()
-            print("\n" + "=" * 60)
-            print("[FIRST RUN] Admin account created!")
-            print(f"  Username : admin")
-            print(f"  Password : {_auto_pw}")
-            print("  Change this immediately via Settings → User Accounts")
-            print("=" * 60 + "\n")
+            logger.warning(
+                "FIRST RUN: Admin account created — username: admin / password: %s"
+                " — change this immediately via Settings → User Accounts", _auto_pw
+            )
         if db.query(Spot).count() == 0:
             s = Settings.__new__(Settings)
             cfg = db.query(Settings).first()
