@@ -554,54 +554,26 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
 
     entries = []
 
-    # 1. Member collections per week — grouped by paid_date (when cash was actually received)
-    from datetime import datetime as _dt, timedelta as _td
+    # 1. Member collections per week — only weeks that have already occurred
+    from datetime import datetime as _dt
     _today = _dt.utcnow().date()
     weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
     week_map = {w.id: w for w in weeks}
-
-    # Build collection windows: payments made between prev draw_date and this draw_date
-    # belong to this week's collection
-    sorted_weeks = sorted(weeks, key=lambda w: w.draw_date)
-    windows = []  # (week, window_start_date, window_end_date)
-    for i, w in enumerate(sorted_weeks):
-        start = (sorted_weeks[i - 1].draw_date.date() + _td(days=1)) if i > 0 else w.draw_date.date() - _td(days=365)
-        windows.append((w, start, w.draw_date.date()))
-
-    # Sum paid payments by which week's window their paid_date falls in
     payments = db.query(Payment).filter(
         Payment.week_id.in_(week_ids), Payment.status == "paid"
     ).all()
-    by_collection_week: dict = {}
-    no_date_total = 0.0
+    by_week = {}
     for p in payments:
-        if not p.paid_date:
-            no_date_total += p.amount
-            continue
-        pd = p.paid_date.date() if hasattr(p.paid_date, "date") else p.paid_date
-        matched = False
-        for w, ws, we in windows:
-            if ws <= pd <= we:
-                by_collection_week[w.id] = by_collection_week.get(w.id, 0) + p.amount
-                matched = True
-                break
-        if not matched and sorted_weeks:
-            # paid after all draw dates — attribute to last past week
-            for w, ws, we in reversed(windows):
-                if we <= _today:
-                    by_collection_week[w.id] = by_collection_week.get(w.id, 0) + p.amount
-                    break
-
-    for w in sorted_weeks:
-        total = by_collection_week.get(w.id, 0)
-        if total == 0:
-            continue
+        by_week.setdefault(p.week_id, 0)
+        by_week[p.week_id] += p.amount
+    for wid, total in sorted(by_week.items(), key=lambda x: week_map[x[0]].week_number):
+        w = week_map[wid]
         if w.draw_date.date() > _today:
-            continue   # skip future weeks
+            continue   # skip future weeks — pre-payments not yet a ledger event
         entries.append({
             "date":        w.draw_date.isoformat(),
             "type":        "collection",
-            "description": f"Week {w.week_number} — Cash Collected",
+            "description": f"Week {w.week_number} — Member Contributions",
             "credit":      total,
             "debit":       0,
         })
