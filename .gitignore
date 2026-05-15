@@ -46,3 +46,7 @@ railway_cookies.txt
 
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json
+
+# Generated Tailwind CSS (built by Railway at deploy time)
+static/css/tailwind.css
+node_modules/

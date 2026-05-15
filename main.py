@@ -181,7 +181,7 @@ async def security_headers(request: Request, call_next):
     # CSP: allow CDN resources needed by the app
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com unpkg.com; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' unpkg.com; "
         "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
         "font-src 'self' fonts.gstatic.com data:; "
         "img-src 'self' data: blob: *; "
