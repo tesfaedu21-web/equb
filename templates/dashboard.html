@@ -455,12 +455,12 @@ function dashboard() {
           this.api('GET', `/api/reports/member-ranking${qs}`).catch(()=>[]),
         ]);
         this.trendData = this.trendData.filter(w => w.week_status !== 'pending');
-        await this.$nextTick();
-        this._drawChart();
       } catch(e) {
         this.showToast('Failed to load stats', 'error');
       } finally {
         this.loading = false;
+        await this.$nextTick();
+        this._drawChart();
       }
     },
 
