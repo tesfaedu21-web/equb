@@ -333,7 +333,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-50">
-                <template x-for="(p, i) in summaryData.payments" :key="p.member_id">
+                <template x-for="(p, i) in summaryData.payments" :key="i">
                   <tr class="hover:bg-gray-50/70">
                     <td class="px-5 py-3 text-gray-400 text-xs" x-text="i + 1"></td>
                     <td class="px-5 py-3 font-medium text-gray-900 amharic" x-text="p.member_name"></td>
@@ -354,11 +354,11 @@
                   </tr>
                 </template>
                 <tr class="border-t-2 border-gray-200 bg-gray-50">
-                  <td colspan="5" class="px-5 py-3 font-bold text-gray-700 text-right">Total</td>
+                  <td colspan="6" class="px-5 py-3 font-bold text-gray-700 text-right">Total</td>
                   <td class="px-5 py-3 text-right font-bold text-equb-green" x-text="fmt(summaryData.total_paid)"></td>
                 </tr>
                 <tr x-show="summaryData.payments.length === 0">
-                  <td colspan="6" class="px-5 py-10 text-center text-gray-400">No paid payments recorded for this week.</td>
+                  <td colspan="7" class="px-5 py-10 text-center text-gray-400">No paid payments recorded for this week.</td>
                 </tr>
               </tbody>
             </table>
