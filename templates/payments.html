@@ -1145,7 +1145,9 @@ function payments() {
 
     async loadSummaryWeeks() {
       if (!this.summaryCycle) return;
-      this.summaryWeeks = await this.api('GET', `/api/draws/cycles/${this.summaryCycle}/weeks`).catch(() => []);
+      const today = new Date(); today.setHours(23, 59, 59, 999);
+      const all = await this.api('GET', `/api/draws/cycles/${this.summaryCycle}/weeks`).catch(() => []);
+      this.summaryWeeks = all.filter(w => new Date(w.draw_date) <= today);
       // Default to the most recently drawn/sold week (previous collection week)
       const lastDrawn = [...this.summaryWeeks].reverse().find(w => w.status === 'drawn' || w.status === 'sold');
       this.summaryWeekId = lastDrawn ? lastDrawn.id : '';
