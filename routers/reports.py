@@ -572,9 +572,12 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
     ).all()
     by_collection_week: dict = {}
     for p in payments:
-        if not p.paid_date:
-            continue   # skip payments with no recorded date
-        pd = p.paid_date.date() if hasattr(p.paid_date, "date") else p.paid_date
+        # Use paid_date when available, fall back to the week's draw_date
+        if p.paid_date:
+            pd = p.paid_date.date() if hasattr(p.paid_date, "date") else p.paid_date
+        else:
+            wk = week_map.get(p.week_id)
+            pd = wk.draw_date.date() if wk else _today
         for w, ws, we in windows:
             if ws <= pd <= we:
                 by_collection_week[w.id] = by_collection_week.get(w.id, 0) + p.amount
