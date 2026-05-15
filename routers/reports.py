@@ -554,7 +554,9 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
 
     entries = []
 
-    # 1. Member collections per week
+    # 1. Member collections per week — only weeks that have already occurred
+    from datetime import datetime as _dt
+    _today = _dt.utcnow().date()
     weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
     week_map = {w.id: w for w in weeks}
     payments = db.query(Payment).filter(
@@ -566,6 +568,8 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
         by_week[p.week_id] += p.amount
     for wid, total in sorted(by_week.items(), key=lambda x: week_map[x[0]].week_number):
         w = week_map[wid]
+        if w.draw_date.date() > _today:
+            continue   # skip future weeks — pre-payments not yet a ledger event
         entries.append({
             "date":        w.draw_date.isoformat(),
             "type":        "collection",
