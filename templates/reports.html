@@ -660,10 +660,12 @@ function reports() {
           const active = this.allCycles.find(c => c.status === 'active') || this.allCycles[0];
           if (active) this.paymentSummary = await this.api('GET', `/api/payments/summary/cycle/${active.id}`).catch(() => ({}));
         }
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally {
+        this.loading = false;
         await this.$nextTick();
         this._drawReportsChart();
-      } catch(e) { this.showToast(e.message, 'error'); }
-      finally { this.loading = false; }
+      }
     },
 
     _drawReportsChart() {
