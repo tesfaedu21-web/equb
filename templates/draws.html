@@ -657,12 +657,12 @@
       <!-- Summary -->
       <div class="bg-gray-50 border rounded-xl p-4 text-sm space-y-2">
         <div class="flex justify-between">
-          <span class="text-gray-500">Gross Pot</span>
-          <span class="font-semibold" x-text="fmt(activeWeek?.gross_pot)"></span>
+          <span class="text-gray-500" x-text="saleShareType==='half' ? 'Gross Pot (½ share)' : 'Gross Pot'"></span>
+          <span class="font-semibold" x-text="fmt(saleGross)"></span>
         </div>
         <div class="flex justify-between">
-          <span class="text-gray-500">Association (−)</span>
-          <span class="text-red-500 font-semibold" x-text="fmt(activeWeek?.association_amount)"></span>
+          <span class="text-gray-500" x-text="saleShareType==='half' ? 'Association ½ (−)' : 'Association (−)'"></span>
+          <span class="text-red-500 font-semibold" x-text="fmt(saleAssoc)"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-gray-500"
@@ -678,7 +678,7 @@
           <div class="flex justify-between">
             <span class="text-gray-500"
                   x-text="(activeWeek?.is_group_week ? 'Association Fee (' : 'Seller Fee (') + saleForm.percentage + '%) (−)'"></span>
-            <span class="text-purple-600 font-semibold" x-text="fmt((activeWeek?.gross_pot||0) * saleForm.percentage / 100)"></span>
+            <span class="text-purple-600 font-semibold" x-text="fmt(saleGross * saleForm.percentage / 100)"></span>
           </div>
         </template>
         <div class="flex justify-between border-t pt-2 mt-2">
@@ -1440,7 +1440,20 @@ function draws() {
         const buyer = this.activeMembers?.find(m => m.id === this.saleForm.buyer_id);
         return buyer?.share || 'full';
       }
-      return this.activeWeek?.winner_spot?.members?.[0]?.share || 'full';
+      // Use the selected seller's share, falling back to first winner member
+      const members = this.activeWeek?.winner_spot?.members || [];
+      const seller = members.find(m => m.id === this.saleForm.original_winner_id) || members[0];
+      return seller?.share || 'full';
+    },
+
+    get saleGross() {
+      const g = this.activeWeek?.gross_pot || 0;
+      return this.saleShareType === 'half' ? g / 2 : g;
+    },
+
+    get saleAssoc() {
+      const a = this.activeWeek?.association_amount || 0;
+      return this.saleShareType === 'half' ? a / 2 : a;
     },
 
     get saleVoucherDeduction() {
@@ -1459,10 +1472,11 @@ function draws() {
 
     get buyerReceives() {
       if (!this.activeWeek) return 0;
-      const net = this.activeWeek.net_pot || 0;
-      const gross = this.activeWeek.gross_pot || 0;
+      const net = this.saleShareType === 'half'
+        ? (this.activeWeek.net_pot || 0) / 2
+        : (this.activeWeek.net_pot || 0);
       let amount = net;
-      if (this.saleForm.percentage) amount -= gross * this.saleForm.percentage / 100;
+      if (this.saleForm.percentage) amount -= this.saleGross * this.saleForm.percentage / 100;
       amount -= this.saleVoucherDeduction;
       amount -= this.saleServiceFee;
       return amount;
