@@ -358,6 +358,8 @@ async def payments_page(request: Request):
 
 @app.get("/reports",     response_class=HTMLResponse)
 async def reports_page(request: Request):
+    if getattr(request.state, "user_role", "") != "admin":
+        return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "reports.html", _ctx(request))
 
 @app.get("/notifications", response_class=HTMLResponse)
