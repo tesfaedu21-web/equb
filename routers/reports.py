@@ -274,43 +274,66 @@ def ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
 
 @router.get("/weekly-summary/{week_id}")
 def weekly_payment_summary(week_id: int, db: Session = Depends(get_db)):
-    """Payment totals by method for a given week — for printable summary."""
+    """Payment totals by method for a given week — actual cash received in that week's window."""
+    from datetime import timedelta
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Week not found")
 
-    payments = db.query(Payment).filter(
-        Payment.week_id == week_id,
+    # Determine this week's collection window: prev draw_date+1 → this draw_date
+    prev_week = (db.query(Week)
+                 .filter(Week.cycle_id == w.cycle_id, Week.week_number == w.week_number - 1)
+                 .first())
+    window_start = (prev_week.draw_date + timedelta(days=1)) if prev_week else (w.draw_date - timedelta(days=365))
+    window_end = w.draw_date
+
+    # All paid payments in the cycle whose paid_date falls in this window
+    cycle_week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == w.cycle_id).all()]
+    all_paid = db.query(Payment).filter(
+        Payment.week_id.in_(cycle_week_ids),
         Payment.status == "paid",
     ).all()
 
+    payments = []
+    for p in all_paid:
+        if p.paid_date:
+            pd = p.paid_date.date() if hasattr(p.paid_date, "date") else p.paid_date
+        else:
+            # No paid_date: attribute to the week it belongs to
+            pw = db.query(Week).filter(Week.id == p.week_id).first()
+            pd = pw.draw_date.date() if pw else window_end.date()
+        if window_start.date() <= pd <= window_end.date():
+            payments.append(p)
+
     totals = {"cash": 0.0, "bank_transfer": 0.0, "cheque": 0.0, "other": 0.0}
-    count = {"cash": 0, "bank_transfer": 0, "cheque": 0, "other": 0}
+    count  = {"cash": 0,   "bank_transfer": 0,   "cheque": 0,   "other": 0}
     rows = []
     for p in payments:
         method = p.payment_method or "cash"
         bucket = method if method in totals else "other"
         totals[bucket] += p.amount
-        count[bucket] += 1
+        count[bucket]  += 1
         rows.append({
-            "member_id": p.member_id,
+            "member_id":   p.member_id,
             "member_name": p.member.name if p.member else "",
-            "amount": p.amount,
-            "method": method,
-            "reference": p.reference,
-            "paid_date": p.paid_date.isoformat() if p.paid_date else None,
+            "week_number": p.week.week_number if p.week else None,
+            "amount":      p.amount,
+            "method":      method,
+            "reference":   p.reference,
+            "paid_date":   p.paid_date.isoformat() if p.paid_date else None,
         })
 
+    rows.sort(key=lambda r: (r["method"], r["member_name"]))
     return {
-        "week_id": week_id,
-        "week_number": w.week_number,
-        "draw_date": w.draw_date.isoformat(),
-        "is_group_week": w.is_group_week,
+        "week_id":        week_id,
+        "week_number":    w.week_number,
+        "draw_date":      w.draw_date.isoformat(),
+        "is_group_week":  w.is_group_week,
         "is_worker_week": bool(getattr(w, "is_worker_week", False)),
-        "total_paid": sum(totals.values()),
-        "totals": totals,
-        "count": count,
-        "payments": rows,
+        "total_paid":     sum(totals.values()),
+        "totals":         totals,
+        "count":          count,
+        "payments":       rows,
     }
 
 

@@ -325,6 +325,7 @@
                 <tr>
                   <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">#</th>
                   <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Member</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">For Week</th>
                   <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Method</th>
                   <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Reference</th>
                   <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Date</th>
@@ -336,6 +337,10 @@
                   <tr class="hover:bg-gray-50/70">
                     <td class="px-5 py-3 text-gray-400 text-xs" x-text="i + 1"></td>
                     <td class="px-5 py-3 font-medium text-gray-900 amharic" x-text="p.member_name"></td>
+                    <td class="px-5 py-3 text-xs text-gray-500">
+                      <span :class="p.week_number !== summaryData.week_number ? 'text-amber-600 font-semibold' : ''"
+                            x-text="'Wk ' + p.week_number"></span>
+                    </td>
                     <td class="px-5 py-3">
                       <span :class="{
                         'badge bg-green-100 text-green-700': p.method==='cash',
