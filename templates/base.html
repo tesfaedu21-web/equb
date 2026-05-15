@@ -573,8 +573,8 @@
         <div class="flex-1 min-w-0 user-detail">
           <div class="text-white text-sm font-semibold truncate leading-tight" x-text="userName"></div>
           <div class="text-xs mt-0.5"
-               :class="isAdmin ? 'text-amber-400/80' : 'text-green-400/60'"
-               x-text="isAdmin ? 'Administrator' : 'Cashier'">
+               :class="isSuperAdmin ? 'text-yellow-300/90' : isAdmin ? 'text-amber-400/80' : 'text-green-400/60'"
+               x-text="isSuperAdmin ? 'Owner' : isAdmin ? 'Administrator' : 'Cashier'">
           </div>
         </div>
         <a href="/logout" title="Sign out"
@@ -608,7 +608,7 @@
       </div>
       <div class="flex items-center gap-1.5 flex-shrink-0">
         <div class="w-2 h-2 rounded-full bg-green-500"></div>
-        <span class="text-xs text-gray-400 font-medium" x-text="isAdmin ? 'Admin' : 'Cashier'"></span>
+        <span class="text-xs text-gray-400 font-medium" x-text="isSuperAdmin ? 'Owner' : isAdmin ? 'Admin' : 'Cashier'"></span>
       </div>
     </div>
 
@@ -671,7 +671,8 @@ function app() {
     groupTagline:ctx.groupTagline|| 'Equb Manager',
     logoUrl:     ctx.logoUrl     || '',
 
-    get isAdmin() { return this.userRole === 'admin'; },
+    get isSuperAdmin() { return this.userRole === 'superadmin'; },
+    get isAdmin() { return this.userRole === 'admin' || this.userRole === 'superadmin'; },
 
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed;

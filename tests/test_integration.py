@@ -146,7 +146,7 @@ def seed(client):  # client dependency ensures lifespan / init_db runs first
                 username="int_admin",
                 password_hash=_pwd.hash("Admin1234!"),
                 full_name="Integration Admin",
-                role="admin",
+                role="superadmin",
                 is_active=True,
             ))
 

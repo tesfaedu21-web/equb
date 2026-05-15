@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from database import get_db, User, _pwd  # _pwd is the stdlib-based hasher
-from routers.deps import _require_admin
+from database import get_db, User, _pwd
+from routers.deps import _require_admin, _require_superadmin
 
 router = APIRouter()
+
+_VALID_ROLES = {"superadmin", "admin", "cashier"}
 
 
 class UserCreate(BaseModel):
@@ -71,7 +73,16 @@ def list_users(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/users")
 def create_user(data: UserCreate, request: Request, db: Session = Depends(get_db)):
+    caller_role = getattr(request.state, "user_role", None)
     _require_admin(request)
+
+    if data.role not in _VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(sorted(_VALID_ROLES))}")
+    if data.role == "superadmin":
+        raise HTTPException(status_code=403, detail="Cannot create another owner account.")
+    if data.role == "admin" and caller_role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only the owner can create admin accounts.")
+
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
     _validate_password(data.password)
@@ -89,10 +100,30 @@ def create_user(data: UserCreate, request: Request, db: Session = Depends(get_db
 
 @router.put("/users/{user_id}")
 def update_user(user_id: int, data: UserUpdate, request: Request, db: Session = Depends(get_db)):
+    caller_role = getattr(request.state, "user_role", None)
+    caller_id   = getattr(request.state, "user_id", None)
     _require_admin(request)
+
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Superadmin account can only be edited by themselves
+    if u.role == "superadmin" and caller_id != user_id:
+        raise HTTPException(status_code=403, detail="The owner account can only be edited by the owner.")
+
+    # Only superadmin can edit admin accounts
+    if u.role == "admin" and caller_role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only the owner can modify admin accounts.")
+
+    # Block assigning superadmin role
+    if data.role == "superadmin":
+        raise HTTPException(status_code=403, detail="Cannot assign the owner role.")
+
+    # Only superadmin can promote someone to admin
+    if data.role == "admin" and caller_role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only the owner can promote a user to admin.")
+
     for field, val in data.model_dump(exclude_none=True).items():
         setattr(u, field, val)
     db.commit()

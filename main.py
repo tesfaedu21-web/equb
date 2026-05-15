@@ -333,7 +333,7 @@ async def logout(request: Request):
 # ── Manual trigger for auto-close (admin only) ────────────────────────────────
 @app.post("/api/admin/auto-close-weeks")
 async def manual_auto_close(request: Request):
-    if getattr(request.state, "user_role", "") != "admin":
+    if getattr(request.state, "user_role", "") not in ("admin", "superadmin"):
         return JSONResponse({"detail": "Admin only"}, status_code=403)
     await auto_close_past_weeks()
     return {"ok": True, "message": "Past pending payments marked as missed"}
@@ -358,19 +358,19 @@ async def payments_page(request: Request):
 
 @app.get("/reports",     response_class=HTMLResponse)
 async def reports_page(request: Request):
-    if getattr(request.state, "user_role", "") != "admin":
+    if getattr(request.state, "user_role", "") not in ("admin", "superadmin"):
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "reports.html", _ctx(request))
 
 @app.get("/notifications", response_class=HTMLResponse)
 async def notifications_page(request: Request):
-    if getattr(request.state, "user_role", "") != "admin":
+    if getattr(request.state, "user_role", "") not in ("admin", "superadmin"):
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "notifications.html", _ctx(request))
 
 @app.get("/settings",    response_class=HTMLResponse)
 async def settings_page(request: Request):
-    if getattr(request.state, "user_role", "") != "admin":
+    if getattr(request.state, "user_role", "") not in ("admin", "superadmin"):
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "settings.html", _ctx(request))
 
@@ -392,7 +392,7 @@ async def setup_admin(token: str = ""):
         u = User(
             username="admin",
             full_name="Administrator",
-            role="admin",
+            role="superadmin",
             is_active=True,
             password_hash=_pwd.hash(pw),
         )

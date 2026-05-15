@@ -559,7 +559,7 @@ def init_db():
             import secrets as _sec
             _auto_pw = _sec.token_urlsafe(12)
             db.add(User(username="admin", password_hash=_pwd.hash(_auto_pw),
-                        full_name="Administrator", role="admin", is_active=True))
+                        full_name="Administrator", role="superadmin", is_active=True))
             db.commit()
             logger.warning(
                 "FIRST RUN: Admin account created — username: admin / password: %s"
