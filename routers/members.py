@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
+from routers.deps import _require_admin
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -223,8 +224,7 @@ def available_spots(db: Session = Depends(get_db)):
 def apply_settings_to_cycle(request: Request, db: Session = Depends(get_db)):
     """Push global Settings amounts into the active cycle's own settings and all active
     MemberSpot records. Use after changing global spot amounts for the current cycle."""
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     settings = db.query(Settings).first()
     if not settings:
         raise HTTPException(status_code=500, detail="Settings not configured")
@@ -302,7 +302,10 @@ def export_members(format: str = Query("csv", pattern="^(csv|xlsx)$"),
                    "Weekly Contribution (ETB)", "Partners", "Notes"]
 
     def _row(m):
-        assignments = [sa for sa in m.spot_assignments if sa.is_active]
+        if cycle_id:
+            assignments = [sa for sa in m.spot_assignments if sa.is_active and sa.cycle_id == cycle_id]
+        else:
+            assignments = [sa for sa in m.spot_assignments if sa.is_active]
         return [
             m.name,
             m.phone or "",
@@ -315,6 +318,7 @@ def export_members(format: str = Query("csv", pattern="^(csv|xlsx)$"),
                 for sa in assignments if sa.share == "half"
                 for other in sa.spot.spot_assignments
                 if other.is_active and other.member_id != m.id
+                and (not cycle_id or other.cycle_id == cycle_id)
             ))),
             m.notes or "",
         ]
@@ -500,8 +504,7 @@ def delete_all_members(request: Request, db: Session = Depends(get_db)):
     Members with no payment records are hard-deleted.
     Members that have payment records are soft-deleted (marked as left).
     """
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
 
     # Remove all spot assignments first
     db.query(MemberSpot).delete(synchronize_session=False)
@@ -527,8 +530,7 @@ def delete_all_members(request: Request, db: Session = Depends(get_db)):
 @router.delete("/permanent/{member_id}")
 def delete_member_permanent(member_id: int, request: Request, db: Session = Depends(get_db)):
     """Hard-delete a member and all their records. Admin only."""
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -705,7 +707,20 @@ def add_spot(member_id: int, data: SpotAdd, db: Session = Depends(get_db)):
 
 @router.delete("/{member_id}/spots/{spot_id}")
 def remove_spot(member_id: int, spot_id: int, db: Session = Depends(get_db)):
-    sa = db.query(MemberSpot).filter_by(member_id=member_id, spot_id=spot_id).first()
+    active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    cycle_id = active_cycle.id if active_cycle else None
+    # Prefer the active-cycle-scoped assignment; fall back to any matching row (legacy data)
+    sa = (
+        db.query(MemberSpot)
+        .filter(MemberSpot.member_id == member_id,
+                MemberSpot.spot_id == spot_id,
+                MemberSpot.cycle_id == cycle_id)
+        .first()
+    )
+    if not sa:
+        sa = (db.query(MemberSpot)
+              .filter(MemberSpot.member_id == member_id, MemberSpot.spot_id == spot_id)
+              .first())
     if not sa:
         raise HTTPException(status_code=404, detail="Spot assignment not found")
     sa.is_active = False

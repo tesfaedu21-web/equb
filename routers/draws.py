@@ -2,10 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from database import (get_db, Week, Cycle, Spot, Member, MemberSpot,
                       PotTransaction, Settings, Payment, PaymentBatch,
                       PotDisbursement, AssociationExpense, cycle_cfg)
+from routers.deps import _require_admin
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 router = APIRouter()
 
@@ -242,8 +247,7 @@ def _sync_spots(db: Session, n_member: int, n_assoc: int):
 @router.post("/sync-spots")
 def sync_spots(request: Request, db: Session = Depends(get_db)):
     """Sync Spot table to match current settings (total_member_spots + total_assoc_spots). Admin only."""
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     s = db.query(Settings).first()
     if not s:
         raise HTTPException(status_code=500, detail="Settings not configured")
@@ -256,8 +260,7 @@ def sync_spots(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/cycles")
 def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
 
     start = datetime.fromisoformat(data.start_date)
     gs = db.query(Settings).first()
@@ -276,7 +279,7 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
     existing = db.query(Cycle).filter(Cycle.status == "active").first()
     if existing:
         existing.status = "completed"
-        existing.end_date = datetime.utcnow()
+        existing.end_date = _utcnow()
 
     # ── Fresh start: reset spot statuses for the new cycle ───────────────────
     db.query(Spot).update({"status": "active"}, synchronize_session=False)
@@ -339,8 +342,7 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
 
 @router.post("/cycles/{cycle_id}/start-draws")
 def start_draws(cycle_id: int, data: StartDrawsData, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -392,7 +394,7 @@ def start_draws(cycle_id: int, data: StartDrawsData, request: Request, db: Sessi
 
     cycle.draw_phase = "active"
     cycle.draw_start_week = data.at_week_number
-    cycle.draw_started_at = datetime.utcnow()
+    cycle.draw_started_at = _utcnow()
     db.commit()
 
     total_weeks = db.query(Week).filter(Week.cycle_id == cycle.id).count()
@@ -417,8 +419,7 @@ def recalculate_pot(cycle_id: int, request: Request, db: Session = Depends(get_d
     Only pending weeks are updated — drawn/sold weeks are left as recorded.
     Admin only.
     """
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -514,8 +515,7 @@ def get_week(week_id: int, db: Session = Depends(get_db)):
 
 @router.post("/weeks/{week_id}/draw")
 def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -588,8 +588,7 @@ def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = 
 
 @router.post("/batch-draw")
 def record_batch_draw(data: BatchDrawResult, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     """Record multiple draw results at once (batch event after collection phase)."""
     results = []
     for item in data.draws:
@@ -622,8 +621,7 @@ def record_batch_draw(data: BatchDrawResult, request: Request, db: Session = Dep
 
 @router.post("/weeks/{week_id}/sell")
 def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -682,7 +680,7 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
     if buyer_payment and buyer_payment.status != "paid":
         buyer_payment.status = "paid"
         buyer_payment.payment_method = "pot_sale"
-        buyer_payment.paid_date = datetime.utcnow()
+        buyer_payment.paid_date = _utcnow()
         buyer_payment.reference = f"Pot purchase week {w.week_number}"
 
     # Mark buyer's spot as received (current cycle only)
@@ -836,8 +834,7 @@ def closure_checklist(cycle_id: int, db: Session = Depends(get_db)):
 @router.post("/cycles/{cycle_id}/reactivate")
 def reactivate_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
     """Restore a completed cycle back to active status. Admin only."""
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -845,7 +842,7 @@ def reactivate_cycle(cycle_id: int, request: Request, db: Session = Depends(get_
     other = db.query(Cycle).filter(Cycle.status == "active", Cycle.id != cycle_id).first()
     if other:
         other.status = "completed"
-        other.end_date = datetime.utcnow()
+        other.end_date = _utcnow()
     cycle.status = "active"
     cycle.end_date = None
     db.commit()
@@ -855,8 +852,7 @@ def reactivate_cycle(cycle_id: int, request: Request, db: Session = Depends(get_
 @router.delete("/cycles/{cycle_id}")
 def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
     """Permanently delete a cycle and all its related data. Admin only."""
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -906,18 +902,71 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
 
     cycle_name = cycle.name
     db.flush()
-    from database import Cycle as _Cycle
-    db.query(_Cycle).filter(_Cycle.id == cycle_id).delete(synchronize_session=False)
+    db.query(Cycle).filter(Cycle.id == cycle_id).delete(synchronize_session=False)
     db.commit()
     return {"ok": True, "deleted": cycle_name}
+
+
+def _assoc_fund_data(db: Session, cycle_id: Optional[int]) -> dict:
+    """Shared computation for association fund totals — used by both summary and settlement endpoints."""
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first() if cycle_id else None
+    gs = db.query(Settings).first()
+    cfg = cycle_cfg(cycle, gs)
+
+    weeks_q = db.query(Week).filter(Week.cycle_id == cycle_id) if cycle_id else db.query(Week)
+    completed_weeks = weeks_q.filter(Week.status.in_(["drawn", "sold"])).all()
+    completed_week_ids = [w.id for w in completed_weeks]
+    weekly_deductions = _actual_assoc_collected(db, completed_week_ids, cycle_id) if cycle_id else 0.0
+
+    tx_q = (db.query(PotTransaction)
+            .filter(PotTransaction.transaction_type.in_(["assoc_spot_sale", "group_week_sale"])))
+    if cycle_id:
+        week_ids = [w.id for w in weeks_q.all()]
+        tx_q = tx_q.filter(PotTransaction.week_id.in_(week_ids)) if week_ids else tx_q.filter(False)
+    assoc_txs = tx_q.all()
+    spot_sales_profit = sum(t.seller_fee or 0 for t in assoc_txs)
+
+    total_fund = weekly_deductions + spot_sales_profit
+
+    exp_q = (db.query(AssociationExpense).filter(AssociationExpense.cycle_id == cycle_id)
+             if cycle_id else db.query(AssociationExpense))
+    expenses = exp_q.order_by(AssociationExpense.expense_date).all()
+    total_expenses = sum(e.amount for e in expenses)
+    net_fund = total_fund - total_expenses
+
+    assignments = (db.query(MemberSpot).filter(MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True).all()
+                   if cycle_id else [])
+    full_count = sum(1 for a in assignments if a.share == "full")
+    half_count = sum(1 for a in assignments if a.share == "half")
+    total_shares = full_count * 1.0 + half_count * 0.5
+    per_share = round(net_fund / total_shares, 2) if total_shares > 0 else 0
+
+    return {
+        "cycle": cycle,
+        "cfg": cfg,
+        "weeks": weeks_q.all(),
+        "completed_weeks": completed_weeks,
+        "weekly_deductions": weekly_deductions,
+        "assoc_txs": assoc_txs,
+        "spot_sales_profit": spot_sales_profit,
+        "total_fund": total_fund,
+        "expenses": expenses,
+        "total_expenses": total_expenses,
+        "net_fund": net_fund,
+        "assignments": assignments,
+        "full_count": full_count,
+        "half_count": half_count,
+        "total_shares": total_shares,
+        "per_share": per_share,
+    }
 
 
 @router.get("/association-fund")
 def association_fund(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """
     Full association fund summary for a cycle:
-      weekly_deductions   = sum of Week.association_amount for drawn/sold weeks
-      spot_sales_profit   = sum of seller_fee for assoc_spot_sale transactions
+      weekly_deductions   = sum of actual assoc deductions for drawn/sold weeks
+      spot_sales_profit   = sum of seller_fee for assoc_spot_sale/group_week_sale
       total_fund          = weekly_deductions + spot_sales_profit
       total_expenses      = sum of AssociationExpense.amount for this cycle
       net_fund            = total_fund - total_expenses
@@ -928,70 +977,30 @@ def association_fund(cycle_id: Optional[int] = None, db: Session = Depends(get_d
         active = db.query(Cycle).filter(Cycle.status == "active").first()
         cycle_id = active.id if active else None
 
-    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first() if cycle_id else None
-
-    # ── Weekly deductions (actual collected, not theoretical) ─────────────────
-    weeks_q = db.query(Week).filter(Week.cycle_id == cycle_id) if cycle_id else db.query(Week)
-    completed_weeks = weeks_q.filter(Week.status.in_(["drawn", "sold"])).all()
-    completed_week_ids = [w.id for w in completed_weeks]
-    weekly_deductions = _actual_assoc_collected(db, completed_week_ids, cycle_id) if cycle_id else 0.0
-
-    # ── Association spot + group-week sales profit ────────────────────────────
-    tx_q = (db.query(PotTransaction)
-            .filter(PotTransaction.transaction_type.in_(["assoc_spot_sale", "group_week_sale"])))
-    if cycle_id:
-        week_ids = [w.id for w in weeks_q.all()]
-        if week_ids:
-            tx_q = tx_q.filter(PotTransaction.week_id.in_(week_ids))
-        else:
-            tx_q = tx_q.filter(False)
-    assoc_txs = tx_q.all()
-    spot_sales_profit = sum(t.seller_fee or 0 for t in assoc_txs)
-
-    total_fund = weekly_deductions + spot_sales_profit
-
-    # ── Expenses ──────────────────────────────────────────────────────────────
-    exp_q = db.query(AssociationExpense).filter(AssociationExpense.cycle_id == cycle_id) \
-        if cycle_id else db.query(AssociationExpense)
-    expenses = exp_q.order_by(AssociationExpense.expense_date).all()
-    total_expenses = sum(e.amount for e in expenses)
-    net_fund = total_fund - total_expenses
-
-    # ── Per-member return calculation ─────────────────────────────────────────
-    # Each full assignment = 1 share; each half assignment = 0.5 share
-    assignments = []
-    if cycle_id:
-        assignments = db.query(MemberSpot).filter(
-            MemberSpot.cycle_id == cycle_id,
-            MemberSpot.is_active == True,
-        ).all()
-    full_assignments = sum(1 for a in assignments if a.share == "full")
-    half_assignments = sum(1 for a in assignments if a.share == "half")
-    total_shares = full_assignments * 1.0 + half_assignments * 0.5
-
-    per_full_return = round(net_fund / total_shares, 2) if total_shares > 0 else 0
+    d = _assoc_fund_data(db, cycle_id)
+    per_full_return = d["per_share"]
     per_half_return = round(per_full_return / 2, 2)
 
     return {
         "cycle_id": cycle_id,
-        "cycle_name": cycle.name if cycle else None,
-        "weeks_completed": len(completed_weeks),
-        "weekly_deductions": weekly_deductions,
-        "spot_sales_profit": spot_sales_profit,
-        "total_fund": total_fund,
-        "total_expenses": total_expenses,
-        "net_fund": net_fund,
+        "cycle_name": d["cycle"].name if d["cycle"] else None,
+        "weeks_completed": len(d["completed_weeks"]),
+        "weekly_deductions": d["weekly_deductions"],
+        "spot_sales_profit": d["spot_sales_profit"],
+        "total_fund": d["total_fund"],
+        "total_expenses": d["total_expenses"],
+        "net_fund": d["net_fund"],
         "member_assignments": {
-            "full": full_assignments,
-            "half": half_assignments,
-            "total_shares": total_shares,
+            "full": d["full_count"],
+            "half": d["half_count"],
+            "total_shares": d["total_shares"],
         },
         "per_full_member_return": per_full_return,
         "per_half_member_return": per_half_return,
         "expenses": [
             {"id": e.id, "description": e.description, "amount": e.amount,
              "expense_date": e.expense_date.isoformat(), "notes": e.notes}
-            for e in expenses
+            for e in d["expenses"]
         ],
         "spot_sale_transactions": [
             {
@@ -1002,7 +1011,7 @@ def association_fund(cycle_id: Optional[int] = None, db: Session = Depends(get_d
                 "buyer_receives": t.buyer_receives,
                 "date": t.transaction_date.isoformat(),
             }
-            for t in assoc_txs
+            for t in d["assoc_txs"]
         ],
     }
 
@@ -1012,12 +1021,11 @@ def association_fund(cycle_id: Optional[int] = None, db: Session = Depends(get_d
 @router.post("/association-expenses")
 def add_expense(data: ExpenseCreate, request: Request, db: Session = Depends(get_db)):
     """Record an expense deducted from the association fund (paper, pen, etc.)."""
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     cycle = db.query(Cycle).filter(Cycle.id == data.cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
-    expense_date = datetime.fromisoformat(data.expense_date) if data.expense_date else datetime.utcnow()
+    expense_date = datetime.fromisoformat(data.expense_date) if data.expense_date else _utcnow()
     e = AssociationExpense(
         cycle_id=data.cycle_id,
         description=data.description,
@@ -1046,8 +1054,7 @@ def list_expenses(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
 
 @router.delete("/association-expenses/{expense_id}")
 def delete_expense(expense_id: int, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     e = db.query(AssociationExpense).filter(AssociationExpense.id == expense_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Expense not found")
@@ -1062,52 +1069,19 @@ def delete_expense(expense_id: int, request: Request, db: Session = Depends(get_
 def association_settlement(cycle_id: int, db: Session = Depends(get_db)):
     """
     Per-member breakdown of association fund return at end of cycle.
-    Shows how much each member receives back based on their share type and spot count.
-
-    Return is proportional to contribution:
-      full spot member:  1 share  → per_full_return ETB
-      half spot member:  0.5 share → per_half_return ETB
-    A member with multiple spots receives the sum of each spot's return.
+    Return is proportional to share: full=1 share, half=0.5 share.
     """
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
 
-    # Get fund totals (reuse the association_fund logic)
-    weeks = db.query(Week).filter(Week.cycle_id == cycle_id).all()
-    week_ids = [w.id for w in weeks]
-    completed_week_ids_settle = [w.id for w in weeks if w.status in ("drawn", "sold")]
-    weekly_deductions = _actual_assoc_collected(db, completed_week_ids_settle, cycle_id)
+    d = _assoc_fund_data(db, cycle_id)
+    cfg = d["cfg"]
+    per_share = d["per_share"]
 
-    assoc_txs = db.query(PotTransaction).filter(
-        PotTransaction.transaction_type.in_(["assoc_spot_sale", "group_week_sale"]),
-        PotTransaction.week_id.in_(week_ids),
-    ).all() if week_ids else []
-    spot_sales_profit = sum(t.seller_fee or 0 for t in assoc_txs)
-
-    total_expenses = sum(
-        e.amount for e in db.query(AssociationExpense).filter(
-            AssociationExpense.cycle_id == cycle_id
-        ).all()
-    )
-
-    total_fund = weekly_deductions + spot_sales_profit
-    net_fund = total_fund - total_expenses
-
-    # Assignments for this cycle
-    assignments = db.query(MemberSpot).filter(
-        MemberSpot.cycle_id == cycle_id,
-        MemberSpot.is_active == True,
-    ).all()
-    full_count = sum(1 for a in assignments if a.share == "full")
-    half_count = sum(1 for a in assignments if a.share == "half")
-    total_shares = full_count * 1.0 + half_count * 0.5
-    per_share = round(net_fund / total_shares, 2) if total_shares > 0 else 0
-
-    # Group assignments by member
     from collections import defaultdict
     member_assignments: dict = defaultdict(list)
-    for a in assignments:
+    for a in d["assignments"]:
         member_assignments[a.member_id].append(a)
 
     member_returns = []
@@ -1116,11 +1090,15 @@ def association_settlement(cycle_id: int, db: Session = Depends(get_db)):
         shares = sum(1.0 if a.share == "full" else 0.5 for a in member_spots)
         return_amount = round(per_share * shares, 2)
         spots_info = [
-            {"spot_number": a.spot.number if a.spot else None,
-             "share": a.share,
-             "contribution_per_week": a.weekly_contribution,
-             "association_per_week": a.weekly_contribution * (1000 / 21000) if a.share == "full"
-                                     else a.weekly_contribution * (500 / 10500)}
+            {
+                "spot_number": a.spot.number if a.spot else None,
+                "share": a.share,
+                "contribution_per_week": a.weekly_contribution,
+                "association_per_week": (
+                    cfg.association_deduction if a.share == "full"
+                    else cfg.association_deduction / 2
+                ),
+            }
             for a in member_spots
         ]
         member_returns.append({
@@ -1133,17 +1111,18 @@ def association_settlement(cycle_id: int, db: Session = Depends(get_db)):
         })
 
     member_returns.sort(key=lambda x: x["member_name"] or "")
+    weeks = d["weeks"]
 
     return {
         "cycle_id": cycle_id,
         "cycle_name": cycle.name,
-        "weeks_completed": sum(1 for w in weeks if w.status in ("drawn", "sold")),
+        "weeks_completed": len(d["completed_weeks"]),
         "total_weeks": len(weeks),
-        "weekly_deductions": weekly_deductions,
-        "spot_sales_profit": spot_sales_profit,
-        "total_fund": total_fund,
-        "total_expenses": total_expenses,
-        "net_fund": net_fund,
+        "weekly_deductions": d["weekly_deductions"],
+        "spot_sales_profit": d["spot_sales_profit"],
+        "total_fund": d["total_fund"],
+        "total_expenses": d["total_expenses"],
+        "net_fund": d["net_fund"],
         "per_share_return": per_share,
         "per_full_member_return": per_share,
         "per_half_member_return": round(per_share / 2, 2),

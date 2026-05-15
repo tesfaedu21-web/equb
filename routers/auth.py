@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 from database import get_db, User, _pwd  # _pwd is the stdlib-based hasher
+from routers.deps import _require_admin
 
 router = APIRouter()
 
@@ -27,9 +28,6 @@ class PasswordChange(BaseModel):
 
 _MIN_PASSWORD_LEN = 8
 
-def _require_admin(request: Request):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
 
 def _validate_password(pw: str):
     if len(pw) < _MIN_PASSWORD_LEN:

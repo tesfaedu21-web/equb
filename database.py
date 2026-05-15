@@ -3,8 +3,14 @@ from sqlalchemy import (
     DateTime, ForeignKey, Text, UniqueConstraint, Index,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
-from datetime import datetime
+from datetime import datetime, timezone
+from dataclasses import dataclass
 import hashlib, secrets, os
+
+
+def _utcnow():
+    """Naive UTC datetime — avoids deprecated datetime.utcnow()."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # Load .env file if it exists (for local PostgreSQL development)
 _env_path = os.path.join(os.path.dirname(__file__), ".env")
@@ -43,7 +49,13 @@ if DATABASE_URL.startswith("postgres://"):
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+        pool_timeout=30,
+    )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -89,7 +101,7 @@ class User(Base):
     full_name = Column(String, nullable=False)
     role = Column(String, default="cashier")   # admin | cashier
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
 
 # ── Cycle ────────────────────────────────────────────────────────────────────
@@ -106,7 +118,7 @@ class Cycle(Base):
     draw_start_week = Column(Integer, nullable=True)      # week number when admin started draws
     draw_started_at = Column(DateTime, nullable=True)
     notes = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     # Per-cycle financial settings — set at creation, independent of global Settings
     full_spot_amount     = Column(Float,   nullable=True)
@@ -151,8 +163,8 @@ class Member(Base):
     phone = Column(String)
     status = Column(String, default="active")             # active | received | left
     notes = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     spot_assignments = relationship("MemberSpot", back_populates="member",
                                    foreign_keys="MemberSpot.member_id")
@@ -177,7 +189,7 @@ class MemberSpot(Base):
     share = Column(String, default="full")                # full | half
     weekly_contribution = Column(Float, default=21000)    # 21000 full, 10500 half
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     member = relationship("Member", back_populates="spot_assignments",
                          foreign_keys=[member_id])
@@ -225,7 +237,7 @@ class PaymentBatch(Base):
     reference = Column(String, nullable=True)
     notes = Column(Text)
     collected_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     member = relationship("Member")
     payments = relationship("Payment", back_populates="batch")
@@ -250,7 +262,7 @@ class Payment(Base):
     status = Column(String, default="pending")            # pending | paid | late | missed
     notes = Column(Text)
     collected_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     member = relationship("Member", back_populates="payments")
     week = relationship("Week", back_populates="payments")
@@ -279,7 +291,7 @@ class PotTransaction(Base):
     gross_amount = Column(Float, nullable=False)
     seller_fee = Column(Float, nullable=True)              # profit → seller (or assoc fund if assoc_spot_sale)
     buyer_receives = Column(Float, nullable=False)
-    transaction_date = Column(DateTime, default=datetime.utcnow)
+    transaction_date = Column(DateTime, default=_utcnow)
     notes = Column(Text)
 
     week = relationship("Week", back_populates="transactions")
@@ -313,7 +325,7 @@ class PotDisbursement(Base):
     voucher_paid = Column(Boolean, default=False)
     voucher_paid_date = Column(DateTime, nullable=True)
     notes = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     week = relationship("Week")
     winner_spot = relationship("Spot", foreign_keys=[winner_spot_id])
@@ -332,9 +344,9 @@ class AssociationExpense(Base):
     cycle_id = Column(Integer, ForeignKey("cycles.id"), nullable=False)
     description = Column(String, nullable=False)   # paper, pen, meeting costs, etc.
     amount = Column(Float, nullable=False)
-    expense_date = Column(DateTime, default=datetime.utcnow)
+    expense_date = Column(DateTime, default=_utcnow)
     notes = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     cycle = relationship("Cycle")
 
@@ -369,7 +381,7 @@ class NotificationLog(Base):
     message = Column(Text, nullable=False)
     status = Column(String, default="pending")
     provider_response = Column(Text, nullable=True)
-    sent_at = Column(DateTime, default=datetime.utcnow)
+    sent_at = Column(DateTime, default=_utcnow)
 
     member = relationship("Member")
 
@@ -422,25 +434,38 @@ def _seed_templates(db) -> None:
     db.commit()
 
 
-def cycle_cfg(cycle, global_s):
+@dataclass
+class CycleCfg:
+    full_spot_amount: float
+    half_spot_amount: float
+    association_deduction: float
+    full_spot_voucher: float
+    half_spot_voucher: float
+    total_member_spots: int
+    total_assoc_spots: int
+    group_week_interval: int
+    include_worker_slot: bool
+
+
+def cycle_cfg(cycle, global_s) -> CycleCfg:
     """Return effective financial settings for a cycle.
     Cycle's own values take precedence; falls back to global settings for legacy cycles."""
     def _pick(cycle_val, global_val, fallback):
         v = cycle_val if cycle_val is not None else global_val
         return v if v is not None else fallback
-    cv = cycle  # may be None (pre-cycle context)
+    cv = cycle
     gs = global_s
-    class Cfg:
-        full_spot_amount     = _pick(getattr(cv, 'full_spot_amount', None),     getattr(gs, 'full_spot_amount', None),     21000)
-        half_spot_amount     = _pick(getattr(cv, 'half_spot_amount', None),     getattr(gs, 'half_spot_amount', None),     10500)
-        association_deduction= _pick(getattr(cv, 'association_deduction', None),getattr(gs, 'association_deduction', None),1000)
-        full_spot_voucher    = _pick(getattr(cv, 'full_spot_voucher', None),    getattr(gs, 'full_spot_voucher', None),    80)
-        half_spot_voucher    = _pick(getattr(cv, 'half_spot_voucher', None),    getattr(gs, 'half_spot_voucher', None),    40)
-        total_member_spots   = _pick(getattr(cv, 'total_member_spots', None),   getattr(gs, 'total_member_spots', None),   113)
-        total_assoc_spots    = _pick(getattr(cv, 'total_assoc_spots', None),    getattr(gs, 'total_assoc_spots', None),    5)
-        group_week_interval  = _pick(getattr(cv, 'group_week_interval', None),  getattr(gs, 'group_week_interval', None),  4)
-        include_worker_slot  = _pick(None,                                       getattr(gs, 'include_worker_slot', None),  True)
-    return Cfg()
+    return CycleCfg(
+        full_spot_amount     = _pick(getattr(cv, 'full_spot_amount', None),      getattr(gs, 'full_spot_amount', None),      21000),
+        half_spot_amount     = _pick(getattr(cv, 'half_spot_amount', None),      getattr(gs, 'half_spot_amount', None),      10500),
+        association_deduction= _pick(getattr(cv, 'association_deduction', None), getattr(gs, 'association_deduction', None), 1000),
+        full_spot_voucher    = _pick(getattr(cv, 'full_spot_voucher', None),     getattr(gs, 'full_spot_voucher', None),     80),
+        half_spot_voucher    = _pick(getattr(cv, 'half_spot_voucher', None),     getattr(gs, 'half_spot_voucher', None),     40),
+        total_member_spots   = _pick(getattr(cv, 'total_member_spots', None),    getattr(gs, 'total_member_spots', None),    113),
+        total_assoc_spots    = _pick(getattr(cv, 'total_assoc_spots', None),     getattr(gs, 'total_assoc_spots', None),     5),
+        group_week_interval  = _pick(getattr(cv, 'group_week_interval', None),   getattr(gs, 'group_week_interval', None),   4),
+        include_worker_slot  = _pick(None,                                        getattr(gs, 'include_worker_slot', None),   True),
+    )
 
 
 def _migrate(engine):
@@ -497,7 +522,7 @@ def _backfill_cycle_settings(db):
     gs = db.query(Settings).first()
     if not gs:
         return
-    cycles = db.query(Cycle).filter(Cycle.full_spot_amount == None).all()
+    cycles = db.query(Cycle).filter(Cycle.full_spot_amount.is_(None)).all()
     for c in cycles:
         c.full_spot_amount     = gs.full_spot_amount
         c.half_spot_amount     = gs.half_spot_amount

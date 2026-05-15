@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from database import get_db, Settings
+from routers.deps import _require_admin
 
 router = APIRouter()
 
@@ -50,8 +51,7 @@ def get_settings(db: Session = Depends(get_db)):
 
 @router.put("")
 def update_settings(data: SettingsUpdate, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     s = db.query(Settings).first()
     if not s:
         raise HTTPException(status_code=404, detail="Settings not found")

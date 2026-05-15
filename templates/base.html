@@ -18,6 +18,9 @@
         radial-gradient(ellipse at 20% 100%, rgba(7,137,48,0.04) 0%, transparent 45%);
       background-attachment: fixed;
     }
+    @media (max-width: 767px) {
+      body { background-attachment: scroll; }
+    }
     .amharic, input.amharic, .name-field { font-family: 'Noto Sans Ethiopic', sans-serif; }
 
     /* ── Sidebar ──────────────────────────────────────────────────────────── */
@@ -385,6 +388,8 @@
   <script src="https://unpkg.com/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 
+<body x-data="app()" x-init="initApp()">
+
 <!-- Server-side context (JSON island — avoids VS Code JS false-positive linting errors) -->
 <script type="application/json" id="equb-ctx">
 {"userName":{{ user_name | tojson }},"userRole":{{ user_role | tojson }},"groupName":{{ group_name | tojson }},"groupTagline":{{ group_tagline | tojson }},"logoUrl":{{ (logo_url or '') | tojson }}}
@@ -392,8 +397,6 @@
 <script>
   window._equbCtx = JSON.parse(document.getElementById('equb-ctx').textContent);
 </script>
-
-<body x-data="app()" x-init="initApp()">
 
 <!-- Global loading bar -->
 <div id="global-loader" style="display:none"></div>
@@ -605,7 +608,7 @@
       </div>
     </div>
 
-    <div class="page-top-accent hidden md:block"></div>
+    <div class="page-top-accent hidden md:block sticky top-0 z-[1]"></div>
     <div class="flex-1">{% block content %}{% endblock %}</div>
   </main>
 </div>

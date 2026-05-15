@@ -1,13 +1,13 @@
-import json
+import re
 import urllib.request
 import urllib.parse
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime
 from database import (get_db, Member, Payment, Week, Cycle, MemberSpot,
                       NotificationSettings, NotificationTemplate, NotificationLog)
+from routers.deps import _require_admin
 
 router = APIRouter()
 
@@ -83,6 +83,9 @@ def _send_africastalking(phone: str, message: str, cfg: NotificationSettings) ->
 def _render(template: str, vars: dict) -> str:
     for k, v in vars.items():
         template = template.replace("{" + k + "}", str(v))
+    remaining = re.findall(r"\{(\w+)\}", template)
+    if remaining:
+        print(f"[notifications] Warning: unreplaced template variables: {remaining}")
     return template
 
 
@@ -241,7 +244,8 @@ def send_disbursement_ready(week, member, cheque_number: str, db: Session) -> st
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("/settings")
-def get_settings(db: Session = Depends(get_db)):
+def get_settings(request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     cfg = db.query(NotificationSettings).first()
     return {
         "provider": cfg.provider,
@@ -253,7 +257,8 @@ def get_settings(db: Session = Depends(get_db)):
 
 
 @router.put("/settings")
-def update_settings(data: SettingsUpdate, db: Session = Depends(get_db)):
+def update_settings(data: SettingsUpdate, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     cfg = db.query(NotificationSettings).first()
     if data.provider is not None:
         cfg.provider = data.provider
@@ -330,7 +335,8 @@ def send_to_members(data: SendRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/broadcast/payment-reminder")
-def broadcast_payment_reminder(week_id: int, db: Session = Depends(get_db)):
+def broadcast_payment_reminder(week_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     """Send reminder to all members with pending/late payment for a specific week."""
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
@@ -370,7 +376,8 @@ def broadcast_payment_reminder(week_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/broadcast/missed-payments")
-def broadcast_missed_payments(db: Session = Depends(get_db)):
+def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     """Send missed payment notice to all members with any unpaid weeks in the active cycle."""
     tmpl = db.query(NotificationTemplate).filter_by(key="missed_payment").first()
     cfg = db.query(NotificationSettings).first()

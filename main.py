@@ -1,6 +1,8 @@
 import os
 import time
+import secrets
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Request, Form
@@ -15,12 +17,19 @@ from routers import auth as auth_router
 from routers import settings as settings_router
 from routers import disbursements as disbursements_router
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "equb-secret-change-in-production-2024")
 _db_url = os.environ.get("DATABASE_URL", "")
 IS_PRODUCTION = bool(
     os.environ.get("RAILWAY_ENVIRONMENT") or
     (_db_url.startswith("postgresql") and "localhost" not in _db_url and "127.0.0.1" not in _db_url)
 )
+
+_sk_env = os.environ.get("SECRET_KEY")
+if not _sk_env and IS_PRODUCTION:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is required in production. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
+SECRET_KEY = _sk_env or "dev-only-insecure-key-set-SECRET_KEY-in-production"
 
 # ── Rate limiting (in-memory, per IP) ────────────────────────────────────────
 _login_attempts: dict = defaultdict(list)   # ip -> [unix timestamps]
@@ -65,6 +74,11 @@ app.include_router(disbursements_router.router, prefix="/api/disbursements", tag
 
 
 # ── Nightly scheduler jobs ────────────────────────────────────────────────────
+def _utcnow():
+    """Naive UTC datetime — compatible with naive datetimes stored in the DB."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 async def auto_close_past_weeks():
     """
     Nightly at 21:00 UTC (midnight EAT):
@@ -74,7 +88,7 @@ async def auto_close_past_weeks():
     """
     db = next(get_db())
     try:
-        now = datetime.utcnow()
+        now = _utcnow()
         late_cutoff   = now - timedelta(days=0)   # draw_date < now → at least late
         missed_cutoff = now - timedelta(days=3)   # draw_date < now-3d → missed
 
@@ -123,7 +137,7 @@ async def send_pre_draw_reminders():
     db = next(get_db())
     try:
         from routers.notifications import send_payment_reminder
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = _utcnow()
         cutoff = now + timedelta(hours=48)
         upcoming_weeks = (
             db.query(Week)
@@ -151,10 +165,10 @@ async def send_pre_draw_reminders():
         db.close()
 
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_db()
-    # Schedule nightly jobs (UTC times = EAT - 3h)
+    scheduler = None
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
@@ -166,6 +180,13 @@ async def startup():
         print("[scheduler] Pre-draw reminder job scheduled (18:00 UTC = 9 PM EAT)")
     except ImportError:
         print("[scheduler] APScheduler not installed — skipping scheduled jobs")
+    yield
+    if scheduler and scheduler.running:
+        scheduler.shutdown(wait=False)
+
+
+# Wire lifespan after definition (app is created above; lifespan references scheduler functions below it)
+app.router.lifespan_context = lifespan
 
 
 # ── Security headers ──────────────────────────────────────────────────────────
@@ -359,20 +380,28 @@ async def setup_admin(token: str = ""):
         existing = db.query(User).filter(User.username == "admin").first()
         if existing:
             return HTMLResponse("<h2>Admin already exists. Login at /login</h2>")
+        pw = secrets.token_urlsafe(16)
         u = User(
             username="admin",
             full_name="Administrator",
             role="admin",
             is_active=True,
-            password_hash=_pwd.hash("Equb@2024!"),
+            password_hash=_pwd.hash(pw),
         )
         db.add(u)
         db.commit()
+        print(f"\n[SETUP] Admin created — username: admin / password: {pw}\n")
         return HTMLResponse(
             "<h2>Admin created!</h2>"
-            "<p>Username: <strong>admin</strong> / Password: <strong>Equb@2024!</strong></p>"
+            "<p>Credentials printed to server logs. Check Railway logs for the temporary password.</p>"
             "<p><a href='/login'>Go to login</a> and change your password immediately.</p>"
             "<p><strong>Set SETUP_DISABLED=true in your environment to disable this endpoint.</strong></p>"
         )
     finally:
         db.close()
+
+
+# ── Health check ──────────────────────────────────────────────────────────────
+@app.get("/health")
+async def health():
+    return {"status": "ok"}

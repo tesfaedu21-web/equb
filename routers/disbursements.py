@@ -3,8 +3,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func as sqla_func
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot, Cycle, cycle_cfg
+from routers.deps import _require_admin
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 router = APIRouter()
 
@@ -200,8 +205,7 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
 
 @router.post("")
 def create_disbursement(data: DisbursementCreate, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
 
     w = db.query(Week).filter(Week.id == data.week_id).first()
     if not w:
@@ -351,8 +355,7 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
 @router.put("/{disbursement_id}")
 def update_disbursement(disbursement_id: int, data: DisbursementUpdate,
                         request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_admin(request)
     d = db.query(PotDisbursement).filter(PotDisbursement.id == disbursement_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Disbursement not found")

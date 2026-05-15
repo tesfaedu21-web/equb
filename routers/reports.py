@@ -1,9 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, cycle_cfg
+from routers.deps import _require_admin
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 router = APIRouter()
 
@@ -223,7 +228,7 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
     # ── Debtors count (members with any past-due unpaid weeks) ──────────────
     debtors_count = 0
     if cycle:
-        now_dt = datetime.utcnow()
+        now_dt = _utcnow()
         debtors_count = (
             db.query(Payment.member_id)
             .join(Week, Week.id == Payment.week_id)
@@ -584,7 +589,7 @@ def mark_voucher_paid(disbursement_id: int, db: Session = Depends(get_db)):
     if not d:
         raise HTTPException(status_code=404, detail="Disbursement not found")
     d.voucher_paid = True
-    d.voucher_paid_date = datetime.utcnow()
+    d.voucher_paid_date = _utcnow()
     db.commit()
     return {"ok": True, "voucher_paid_date": d.voucher_paid_date.isoformat()}
 
@@ -627,8 +632,7 @@ def list_expenses(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
 
 @router.post("/association-expenses")
 def add_expense(data: ExpenseCreate, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(403, "Admin only")
+    _require_admin(request)
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     if not cycle:
         raise HTTPException(404, "No active cycle")
@@ -637,7 +641,7 @@ def add_expense(data: ExpenseCreate, request: Request, db: Session = Depends(get
         description=data.description.strip(),
         amount=data.amount,
         expense_date=(datetime.fromisoformat(data.expense_date)
-                      if data.expense_date else datetime.utcnow()),
+                      if data.expense_date else _utcnow()),
         notes=data.notes,
     )
     db.add(exp)
@@ -650,8 +654,7 @@ def add_expense(data: ExpenseCreate, request: Request, db: Session = Depends(get
 
 @router.delete("/association-expenses/{expense_id}")
 def delete_expense(expense_id: int, request: Request, db: Session = Depends(get_db)):
-    if getattr(request.state, "user_role", None) != "admin":
-        raise HTTPException(403, "Admin only")
+    _require_admin(request)
     exp = db.query(AssociationExpense).filter(AssociationExpense.id == expense_id).first()
     if not exp:
         raise HTTPException(404, "Expense not found")

@@ -3,10 +3,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
-from datetime import datetime, date as _date
+from datetime import datetime, date as _date, timezone
 from collections import defaultdict
 from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle
 from routers.notifications import send_payment_confirmed
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 router = APIRouter()
 
@@ -193,7 +197,7 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
             db.bulk_save_objects(new_records)
             db.commit()
 
-    now = datetime.utcnow()
+    now = _utcnow()
     q = (db.query(Payment)
          .filter(Payment.member_id == member_id,
                  Payment.status.in_(["pending", "late", "missed"]))
@@ -226,7 +230,7 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    pay_date = datetime.fromisoformat(data.payment_date) if data.payment_date else datetime.utcnow()
+    pay_date = datetime.fromisoformat(data.payment_date) if data.payment_date else _utcnow()
 
     payments = (db.query(Payment)
                 .filter(Payment.member_id == data.member_id,
@@ -290,7 +294,7 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
     if data.paid_date:
         p.paid_date = datetime.fromisoformat(data.paid_date)
     elif data.status == "paid" and not p.paid_date:
-        p.paid_date = datetime.utcnow()
+        p.paid_date = _utcnow()
     if data.notes is not None:
         p.notes = data.notes
     if data.status == "paid" and was_unpaid:
@@ -306,7 +310,7 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
 
 @router.post("/bulk")
 def bulk_update(data: BulkPayment, request: Request, db: Session = Depends(get_db)):
-    paid_date = datetime.fromisoformat(data.paid_date) if data.paid_date else datetime.utcnow()
+    paid_date = datetime.fromisoformat(data.paid_date) if data.paid_date else _utcnow()
     cashier_id = getattr(request.state, "user_id", None)
     updated = 0
     for mid in data.member_ids:
@@ -329,7 +333,10 @@ def bulk_update(data: BulkPayment, request: Request, db: Session = Depends(get_d
             if data.status == "paid":
                 p.paid_date = paid_date
                 p.collected_by_id = cashier_id
-                send_payment_confirmed(p, db)
+                try:
+                    send_payment_confirmed(p, db)
+                except Exception:
+                    pass
             updated += 1
     db.commit()
     return {"updated": updated}
@@ -347,7 +354,7 @@ def member_batches(member_id: int, limit: int = 50, db: Session = Depends(get_db
 @router.get("/outstanding-members")
 def outstanding_members(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """All members (active or received) that have unpaid past-due weeks in the given cycle."""
-    now = datetime.utcnow()
+    now = _utcnow()
 
     if not cycle_id:
         active = db.query(Cycle).filter(Cycle.status == "active").first()
