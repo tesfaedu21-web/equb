@@ -1,4 +1,1 @@
-providers = ["python", "node"]
-
-[phases.build]
-cmds = ["npm run build:css"]
+providers = ["python"]

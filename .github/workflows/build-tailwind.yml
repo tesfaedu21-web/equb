@@ -1,0 +1,36 @@
+name: Build Tailwind CSS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "templates/**"
+      - "static/css/input.css"
+      - "tailwind.config.js"
+      - "package.json"
+      - ".github/workflows/build-tailwind.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Tailwind CSS
+        run: npm run build:css
+
+      - name: Commit built CSS if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f static/css/tailwind.css
+          git diff --staged --quiet || (git commit -m "chore: build tailwind.css [skip ci]" && git push)
