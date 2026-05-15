@@ -188,7 +188,8 @@
                     </template>
                     <template x-if="w.status === 'drawn'">
                       <div class="flex items-center justify-end gap-2">
-                        <button @click="openSale(w)"
+                        <button x-show="!collectedWeeks.has(w.id)"
+                                @click="openSale(w)"
                                 class="text-xs btn-secondary py-1 px-3"
                                 x-text="w.winner_spot?.spot_type === 'association' ? 'Record Sale' : 'Sell Pot'"></button>
                         <button x-show="w.winner_spot?.spot_type !== 'association'"
@@ -1383,6 +1384,7 @@ function draws() {
     hg10S:'', hg10O:false, hg11S:'', hg11O:false, hg12S:'', hg12O:false,
     voucherInfo: null,
     disbursedWeeks: new Set(),
+    collectedWeeks: new Set(),
     paymentCheck: null,
     buyerPaymentCheck: null,
     batchRows: [],
@@ -1510,6 +1512,7 @@ function draws() {
         // Track which weeks already have disbursements recorded — scoped to this cycle
         const disbs = await this.api('GET', `/api/disbursements?cycle_id=${this.selectedCycle}`).catch(() => []);
         this.disbursedWeeks = new Set(disbs.map(d => d.week_id));
+        this.collectedWeeks = new Set(disbs.filter(d => d.status === 'collected').map(d => d.week_id));
         // Load members for this cycle (guarantor dropdowns + active members)
         const members = await this.api('GET', `/api/members?cycle_id=${this.selectedCycle}`).catch(() => []);
         this.allMembers = members.filter ? members.filter(m => m.status !== 'left') : [];
@@ -1866,6 +1869,7 @@ function draws() {
         this.activeCycle = null;
         this.weeks = [];
         this.disbursedWeeks = new Set();
+        this.collectedWeeks = new Set();
         this.cycles = await this.api('GET', '/api/draws/cycles');
         if (this.cycles.length > 0) {
           this.selectedCycle = this.cycles[0].id;
