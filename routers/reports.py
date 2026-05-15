@@ -774,6 +774,9 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
     batch_rows.sort(key=lambda x: x["payment_date"] or "")
 
     # ── Unpaid / outstanding weeks ────────────────────────────────────────────
+    # Only show weeks up to the most recent drawn/sold week — exclude future pending weeks
+    from datetime import datetime as _dt
+    _today = _dt.utcnow().date()
     unpaid = [
         {
             "week_number": p.week.week_number,
@@ -781,7 +784,10 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
             "status":      p.status,
             "amount":      float(p.amount),
         }
-        for p in ps if p.status in ("pending", "missed", "late") and p.week
+        for p in ps
+        if p.status in ("pending", "missed", "late")
+        and p.week
+        and p.week.draw_date.date() <= _today
     ]
 
     return {
@@ -797,6 +803,6 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
             "late":                sum(1 for p in ps if p.status == "late"),
             "pending":             sum(1 for p in ps if p.status == "pending"),
             "total_paid_amount":   float(sum(p.amount for p in ps if p.status == "paid")),
-            "total_owed_amount":   float(sum(p.amount for p in ps if p.status in ("missed", "late", "pending"))),
+            "total_owed_amount":   float(sum(p.amount for p in unpaid)),
         },
     }
