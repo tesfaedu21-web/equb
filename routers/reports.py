@@ -8,6 +8,68 @@ from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, Po
 router = APIRouter()
 
 
+def _calc_vendor_payments(db, disbs, cycle_id):
+    """
+    For each disbursement, calculate how much the vendor actually receives
+    (only paid spots for that week, not all spots).
+    Returns dict: {disbursement_id: {"vendor_payment": float, "vendor_paid_spots": int}}
+    """
+    if not disbs:
+        return {}
+
+    from sqlalchemy import func as _func
+    from database import cycle_cfg as _ccfg
+
+    # Get cycle config once
+    cycle_obj = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    gs = db.query(Settings).first()
+    cfg = _ccfg(cycle_obj, gs) if cycle_obj else None
+    if not cfg:
+        return {d.id: {"vendor_payment": 0, "vendor_paid_spots": 0} for d in disbs}
+
+    week_ids = [d.week_id for d in disbs]
+
+    # Single query: all paid payments for those weeks
+    paid_pmts = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids), Payment.status == "paid"
+    ).all()
+
+    # Group member_ids by week_id
+    members_by_week: dict = {}
+    for p in paid_pmts:
+        members_by_week.setdefault(p.week_id, set()).add(p.member_id)
+
+    # Single query: all active MemberSpots for relevant members in this cycle
+    all_member_ids = {mid for mids in members_by_week.values() for mid in mids}
+    if not all_member_ids:
+        return {d.id: {"vendor_payment": 0, "vendor_paid_spots": 0} for d in disbs}
+
+    ms_rows = db.query(MemberSpot).filter(
+        MemberSpot.member_id.in_(all_member_ids),
+        MemberSpot.cycle_id == cycle_id,
+        MemberSpot.is_active == True,
+    ).all()
+
+    # Index MemberSpots by member_id
+    ms_by_member: dict = {}
+    for ms in ms_rows:
+        ms_by_member.setdefault(ms.member_id, []).append(ms)
+
+    result = {}
+    for d in disbs:
+        paid_members = members_by_week.get(d.week_id, set())
+        vendor_payment = 0.0
+        vendor_paid_spots = 0
+        for mid in paid_members:
+            for ms in ms_by_member.get(mid, []):
+                vendor_paid_spots += 1
+                vendor_payment += (cfg.full_spot_voucher if ms.share == "full"
+                                   else cfg.half_spot_voucher)
+        result[d.id] = {"vendor_payment": round(vendor_payment, 2),
+                         "vendor_paid_spots": vendor_paid_spots}
+    return result
+
+
 @router.get("/dashboard")
 def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     gs = db.query(Settings).first()
@@ -397,9 +459,14 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
     ).all()
     total_cheques      = sum(d.net_amount for d in disbs)
     total_voucher      = sum(d.voucher_deduction or 0 for d in disbs)
-    voucher_paid_amt   = sum(d.voucher_deduction or 0 for d in disbs if d.voucher_paid)
-    voucher_outstanding= total_voucher - voucher_paid_amt
     total_service_fee  = sum(d.service_fee or 0 for d in disbs)
+
+    # Vendor payment = only paid spots (not full deduction which assoc collects from winner)
+    vendor_data = _calc_vendor_payments(db, disbs, cycle_id)
+    total_vendor_payment   = sum(v["vendor_payment"] for v in vendor_data.values())
+    voucher_paid_amt       = sum(vendor_data[d.id]["vendor_payment"] for d in disbs if d.voucher_paid)
+    voucher_outstanding    = sum(vendor_data[d.id]["vendor_payment"] for d in disbs if not d.voucher_paid)
+    assoc_retains_voucher  = total_voucher - total_vendor_payment
 
     # Association fund: from actual paid member payments
     completed_weeks = db.query(Week).filter(
@@ -418,7 +485,8 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
     association_expenses = sum(e.amount for e in expenses)
     association_balance  = association_fund - association_expenses
 
-    # Cash held by association = In - Cheques - Vouchers paid - Expenses
+    # Cash held by association = In - Cheques - Vendor voucher payments - Expenses
+    # (assoc retains the difference between full voucher deduction and vendor payment)
     cash_out = total_cheques + voucher_paid_amt + association_expenses
     cash_balance = total_collected - cash_out
 
@@ -433,6 +501,8 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
         "total_collected":       total_collected,
         "total_cheques":         total_cheques,
         "total_voucher":         total_voucher,
+        "total_vendor_payment":  total_vendor_payment,
+        "assoc_retains_voucher": assoc_retains_voucher,
         "voucher_paid":          voucher_paid_amt,
         "voucher_outstanding":   voucher_outstanding,
         "total_service_fee":     total_service_fee,
@@ -656,6 +726,7 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
     disbs = (db.query(PotDisbursement)
              .filter(PotDisbursement.week_id.in_(week_ids))
              .order_by(PotDisbursement.cheque_date).all())
+    gl_vendor_data = _calc_vendor_payments(db, disbs, cycle_id)
     for d in disbs:
         winner = ", ".join(
             sa.member.name for sa in d.winner_spot.spot_assignments
@@ -669,14 +740,15 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
             "credit":      0,
             "debit":       d.net_amount,
         })
-        # Voucher payment (if paid to vendor)
+        # Voucher payment (if paid to vendor) — only the vendor's portion (paid spots)
         if d.voucher_paid and d.voucher_deduction:
+            vp = gl_vendor_data.get(d.id, {}).get("vendor_payment", d.voucher_deduction)
             entries.append({
                 "date":        (d.voucher_paid_date or d.cheque_date).isoformat(),
                 "type":        "voucher",
                 "description": f"Week {wk.week_number if wk else '?'} — Voucher Paid to Vendor",
                 "credit":      0,
-                "debit":       d.voucher_deduction,
+                "debit":       vp,
             })
 
     # 3. Association expenses

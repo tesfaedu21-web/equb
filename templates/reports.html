@@ -310,16 +310,23 @@
         <div class="flex items-center justify-between py-3 border-b">
           <div>
             <div class="font-semibold text-gray-700">Voucher Pool — Paid to Vendors</div>
-            <div class="text-xs text-gray-400">Bar / restaurant payments made</div>
+            <div class="text-xs text-gray-400">Vendor payment (paid spots only)</div>
           </div>
           <div class="font-bold text-green-500" x-text="fmt(balanceSheet.voucher_paid)"></div>
         </div>
         <div class="flex items-center justify-between py-3 border-b">
           <div>
             <div class="font-semibold text-orange-600">Vouchers Outstanding (Liability)</div>
-            <div class="text-xs text-gray-400">Vouchers deducted but not yet paid to vendors</div>
+            <div class="text-xs text-gray-400">Vendor amount owed for weeks not yet settled</div>
           </div>
           <div class="font-bold text-orange-500" x-text="fmt(balanceSheet.voucher_outstanding)"></div>
+        </div>
+        <div class="flex items-center justify-between py-3 border-b">
+          <div>
+            <div class="font-semibold text-gray-700">Assoc Retains from Voucher</div>
+            <div class="text-xs text-gray-400">Full pot deduction − vendor payment (absent members)</div>
+          </div>
+          <div class="font-bold text-yellow-600" x-text="fmt(balanceSheet.assoc_retains_voucher || 0)"></div>
         </div>
         <div class="flex items-center justify-between py-3">
           <div>

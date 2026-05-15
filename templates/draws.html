@@ -798,7 +798,7 @@
                     <span>− Service fee</span><span x-text="'−' + fmt(a.service_fee)"></span>
                   </div>
                   <div class="flex justify-between text-amber-700">
-                    <span>− Voucher</span><span x-text="'−' + fmt(a.voucher)"></span>
+                    <span>− Voucher pot deduction</span><span x-text="'−' + fmt(a.voucher)"></span>
                   </div>
                   <template x-if="activeWeek?.transaction">
                     <div class="flex justify-between text-purple-700">
@@ -812,6 +812,17 @@
                   </div>
                 </div>
               </template>
+              <!-- Vendor vs Assoc voucher split for half-spot -->
+              <div class="pl-4 mt-1 space-y-0.5 text-gray-500 text-[10px] border-t border-amber-100 pt-1">
+                <div class="flex justify-between">
+                  <span>↳ Vendor receives (<span x-text="voucherInfo.vendor_paid_spots"></span> paid spots)</span>
+                  <span x-text="fmt(voucherInfo.vendor_payment)"></span>
+                </div>
+                <div class="flex justify-between">
+                  <span>↳ Assoc retains</span>
+                  <span x-text="fmt(voucherInfo.assoc_retains)"></span>
+                </div>
+              </div>
             </div>
           </template>
 
@@ -1015,9 +1026,22 @@
                   </div>
                   <!-- Voucher: from voucherInfo if available, else from disbForm (pure voucher only) -->
                   <div class="flex justify-between text-amber-700">
-                    <span x-text="voucherInfo ? ('− Voucher (' + (voucherInfo.full_spot_voucher_rate||0) + '×' + (voucherInfo.total_spots||0) + ') (−)') : '− Voucher (−)'"></span>
+                    <span x-text="voucherInfo ? ('− Voucher pot deduction (' + (voucherInfo.full_spot_voucher_rate||0) + '×' + (voucherInfo.total_spots||0) + ') (−)') : '− Voucher (−)'"></span>
                     <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.voucher_deduction||0) : (disbForm.voucher_deduction||0))"></span>
                   </div>
+                  <!-- Vendor vs Assoc voucher split (only when voucherInfo available) -->
+                  <template x-if="voucherInfo">
+                    <div class="pl-4 space-y-0.5 text-gray-500 text-[10px]">
+                      <div class="flex justify-between">
+                        <span>↳ Vendor receives (<span x-text="voucherInfo.vendor_paid_spots"></span> paid spots)</span>
+                        <span x-text="fmt(voucherInfo.vendor_payment)"></span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span>↳ Assoc retains</span>
+                        <span x-text="fmt(voucherInfo.assoc_retains)"></span>
+                      </div>
+                    </div>
+                  </template>
                   <!-- Percentage fee always from transaction -->
                   <div class="flex justify-between text-purple-700">
                     <span x-text="'− ' + (activeWeek.is_group_week ? 'Association Fee' : 'Seller Fee') + ' (' + (activeWeek.transaction.percentage||0) + '%) (−)'"></span>
@@ -1045,11 +1069,22 @@
                         <span x-text="'−' + fmt(a.service_fee)"></span>
                       </div>
                       <div class="flex justify-between text-amber-700">
-                        <span class="amharic">− Voucher (ቦኖ)</span>
+                        <span class="amharic">− Voucher pot deduction (ቦኖ)</span>
                         <span x-text="'−' + fmt(a.voucher)"></span>
                       </div>
                     </div>
                   </template>
+                  <!-- Vendor vs Assoc voucher split -->
+                  <div class="pl-4 mt-1 space-y-0.5 text-gray-500 text-[10px]">
+                    <div class="flex justify-between">
+                      <span>↳ Vendor receives (<span x-text="voucherInfo.vendor_paid_spots"></span> paid spots)</span>
+                      <span x-text="fmt(voucherInfo.vendor_payment)"></span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span>↳ Assoc retains</span>
+                      <span x-text="fmt(voucherInfo.assoc_retains)"></span>
+                    </div>
+                  </div>
                   <div class="flex justify-between font-bold text-green-700 border-t border-amber-200 pt-1 mt-1">
                     <span>Net to Winner</span>
                     <span x-text="fmt(voucherInfo.net_after_all)"></span>
