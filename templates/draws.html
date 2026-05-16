@@ -1162,32 +1162,33 @@
           <!-- Amounts -->
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="block text-xs text-gray-500 mb-1">
+              <label class="block text-xs text-gray-500 mb-1 flex items-center gap-1">
                 Gross Amount (ETB)
-                <span x-show="!!activeWeek?.transaction" class="ml-1 text-xs text-equb-green font-semibold">Auto</span>
+                <span x-show="!!activeWeek?.transaction" class="text-equb-green font-semibold">Auto</span>
               </label>
               <input x-model.number="disbForm.gross_amount" type="number" step="100"
                      :readonly="!!activeWeek?.transaction"
                      :class="activeWeek?.transaction ? 'bg-gray-50 cursor-not-allowed text-gray-400' : ''" />
             </div>
             <div>
-              <label class="block text-xs text-gray-500 mb-1">
+              <label class="block text-xs text-gray-500 mb-1 flex items-center gap-1">
                 Service Fee (−)
-                <span class="ml-1 text-xs text-equb-green font-semibold">Auto</span>
+                <span class="text-equb-green font-semibold">Auto</span>
               </label>
               <input x-model.number="disbForm.service_fee" type="number" step="100" readonly
                      class="bg-gray-50 cursor-not-allowed text-gray-400"
                      title="Auto-calculated from spot amount"/>
             </div>
             <div>
-              <label class="block text-xs text-gray-500 mb-1">
-                Voucher Deduction (−)
-                <span x-show="!!activeWeek?.transaction" class="ml-1 text-xs text-equb-green font-semibold">Auto</span>
+              <label class="block text-xs text-gray-500 mb-1 flex items-center gap-1">
+                Voucher (−)
+                <span x-show="!!activeWeek?.transaction" class="text-equb-green font-semibold">Auto</span>
               </label>
               <input x-model.number="disbForm.voucher_deduction" type="number" step="100"
                      :readonly="!!activeWeek?.transaction"
                      :class="activeWeek?.transaction ? 'bg-gray-50 cursor-not-allowed text-gray-400' : ''"
-                     title="Auto-calculated for sold weeks"/></div>
+                     title="Auto-calculated for sold weeks"/>
+            </div>
           </div>
           <div class="bg-gray-50 rounded-xl p-3 flex justify-between text-sm font-semibold">
             <span class="text-gray-600">Net Cheque Amount</span>
