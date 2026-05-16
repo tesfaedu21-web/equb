@@ -122,6 +122,38 @@
         </div>
       </template>
 
+      <!-- Cycle KPIs + progress bar -->
+      <div x-show="weeks.length > 0" class="space-y-3">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="card py-3 px-4 text-center">
+            <div class="text-xl font-bold text-blue-600" x-text="weeks.filter(w=>w.status==='drawn').length"></div>
+            <div class="text-xs text-gray-400 mt-0.5">Drawn</div>
+          </div>
+          <div class="card py-3 px-4 text-center">
+            <div class="text-xl font-bold text-purple-600" x-text="weeks.filter(w=>w.status==='sold').length"></div>
+            <div class="text-xs text-gray-400 mt-0.5">Sold</div>
+          </div>
+          <div class="card py-3 px-4 text-center">
+            <div class="text-xl font-bold text-amber-500" x-text="weeks.filter(w=>w.status==='pending').length"></div>
+            <div class="text-xs text-gray-400 mt-0.5">Pending</div>
+          </div>
+          <div class="card py-3 px-4 text-center">
+            <div class="text-xl font-bold text-gray-900" x-text="weeks.length"></div>
+            <div class="text-xs text-gray-400 mt-0.5">Total Weeks</div>
+          </div>
+        </div>
+        <div class="card py-3 px-4">
+          <div class="flex justify-between text-xs text-gray-500 mb-1.5">
+            <span class="font-medium">Cycle Progress</span>
+            <span x-text="`${weeks.filter(w=>w.status!=='pending').length} / ${weeks.length} weeks completed`"></span>
+          </div>
+          <div class="bg-gray-100 rounded-full h-2.5 overflow-hidden">
+            <div class="bg-equb-green h-2.5 rounded-full transition-all duration-500"
+                 :style="`width:${weeks.length ? (weeks.filter(w=>w.status!=='pending').length/weeks.length*100) : 0}%`"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Filter tabs -->
       <div class="flex gap-2 flex-wrap">
         <button @click="filter='all'" :class="filter==='all' ? 'btn-primary' : 'btn-secondary'" class="text-xs px-3 py-1.5">All</button>
@@ -129,6 +161,13 @@
         <button @click="filter='drawn'" :class="filter==='drawn' ? 'btn-primary' : 'btn-secondary'" class="text-xs px-3 py-1.5">Drawn</button>
         <button @click="filter='sold'" :class="filter==='sold' ? 'btn-primary' : 'btn-secondary'" class="text-xs px-3 py-1.5">Sold</button>
         <button @click="filter='group'" :class="filter==='group' ? 'btn-primary' : 'btn-secondary'" class="text-xs px-3 py-1.5">Group Weeks</button>
+        <button x-show="weeks.some(w => w.status !== 'pending' && !disbursedWeeks.has(w.id))"
+                @click="filter='undisbursed'"
+                :class="filter==='undisbursed' ? 'btn-primary' : 'btn-secondary'"
+                class="text-xs px-3 py-1.5 flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>
+          Needs Disburse
+        </button>
         <button x-show="activeCycle?.draw_phase === 'active' && pendingBatchCount > 0"
                 @click="openBatchDraw()"
                 class="text-xs px-3 py-1.5 bg-amber-100 text-amber-800 font-semibold rounded-xl hover:bg-amber-200 ml-auto">
@@ -144,34 +183,47 @@
               <tr>
                 <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide w-14">Wk</th>
                 <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Date</th>
-                <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden sm:table-cell">Type</th>
                 <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Net Pot</th>
                 <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
-                <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">Winner / Buyer</th>
+                <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Winner / Spot</th>
                 <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Action</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-50">
               <template x-for="w in filteredWeeks" :key="w.id">
                 <tr class="hover:bg-gray-50/70 transition-colors"
-                    :class="[w.is_group_week ? 'bg-amber-50/40' : '', w.status === 'pending' && !weekArrived(w) ? 'opacity-50' : '']">
+                    :class="[
+                      w.is_group_week ? 'bg-amber-50/40' : '',
+                      w.status === 'pending' && !weekArrived(w) ? 'opacity-50' : '',
+                      currentWeek?.id === w.id ? 'ring-2 ring-inset ring-equb-green bg-green-50/30' : ''
+                    ]">
                   <td class="px-4 py-3">
-                    <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-bold"
-                          :class="w.is_group_week ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'"
-                          x-text="w.week_number"></span>
+                    <div class="flex flex-col items-center gap-0.5">
+                      <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-bold"
+                            :class="currentWeek?.id === w.id ? 'bg-equb-green text-white shadow-sm' : (w.is_group_week ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600')"
+                            x-text="w.week_number"></span>
+                      <span x-show="w.is_group_week && currentWeek?.id !== w.id" class="text-[9px] font-bold text-amber-600 uppercase tracking-wide leading-none">Grp</span>
+                      <span x-show="w.is_group_week && currentWeek?.id === w.id" class="text-[9px] font-bold text-equb-green uppercase tracking-wide leading-none">Now·G</span>
+                      <span x-show="!w.is_group_week && currentWeek?.id === w.id" class="text-[9px] font-bold text-equb-green uppercase tracking-wide leading-none">Now</span>
+                    </div>
                   </td>
                   <td class="px-4 py-3 text-gray-600 whitespace-nowrap" x-text="fmtDate(w.draw_date)"></td>
-                  <td class="px-4 py-3 hidden sm:table-cell">
-                    <span x-show="w.is_group_week" class="badge badge-group">Group</span>
-                    <span x-show="!w.is_group_week" class="badge bg-gray-100 text-gray-600">Regular</span>
-                  </td>
                   <td class="px-4 py-3 font-semibold text-equb-green whitespace-nowrap" x-text="fmt(w.net_pot)"></td>
                   <td class="px-4 py-3">
-                    <span :class="`badge badge-${w.status}`" x-text="w.status.charAt(0).toUpperCase() + w.status.slice(1)"></span>
+                    <div class="flex flex-col gap-1 items-start">
+                      <span :class="`badge badge-${w.status}`" x-text="w.status.charAt(0).toUpperCase() + w.status.slice(1)"></span>
+                      <span x-show="w.status !== 'pending'"
+                            :class="disbursedWeeks.has(w.id) ? 'text-green-600' : 'text-amber-500'"
+                            class="text-[10px] font-semibold leading-none"
+                            x-text="disbursedWeeks.has(w.id) ? '✓ Disbursed' : '⏳ Awaiting'"></span>
+                    </div>
                   </td>
-                  <td class="px-4 py-3 text-gray-600 text-sm amharic hidden md:table-cell max-w-[180px] truncate">
+                  <td class="px-4 py-3 text-gray-600 text-sm amharic max-w-[200px] truncate">
                     <template x-if="w.status === 'drawn' && w.winner_spot">
-                      <span x-text="w.winner_spot.members.map(m=>m.name).join(' & ')"></span>
+                      <span>
+                        <span class="font-bold text-equb-green text-xs">#<span x-text="w.winner_spot.number"></span></span>
+                        <span class="ml-1" x-text="w.winner_spot.members.map(m=>m.name).join(' & ')"></span>
+                      </span>
                     </template>
                     <template x-if="w.status === 'sold' && w.transaction">
                       <div>
@@ -220,7 +272,7 @@
                 </tr>
               </template>
               <tr x-show="filteredWeeks.length === 0">
-                <td colspan="7" class="px-5 py-12 text-center text-gray-400">No weeks match the current filter</td>
+                <td colspan="6" class="px-5 py-12 text-center text-gray-400">No weeks match the current filter</td>
               </tr>
             </tbody>
           </table>
@@ -1460,12 +1512,17 @@ function draws() {
 
     get filteredWeeks() {
       return this.weeks.filter(w => {
-        if (this.filter === 'pending') return w.status === 'pending';
-        if (this.filter === 'drawn') return w.status === 'drawn';
-        if (this.filter === 'sold') return w.status === 'sold';
-        if (this.filter === 'group') return w.is_group_week;
+        if (this.filter === 'pending')     return w.status === 'pending';
+        if (this.filter === 'drawn')       return w.status === 'drawn';
+        if (this.filter === 'sold')        return w.status === 'sold';
+        if (this.filter === 'group')       return w.is_group_week;
+        if (this.filter === 'undisbursed') return w.status !== 'pending' && !this.disbursedWeeks.has(w.id);
         return true;
       });
+    },
+
+    get currentWeek() {
+      return this.weeks.find(w => w.status === 'pending' && this.weekArrived(w)) || null;
     },
 
     get pendingBatchCount() {
