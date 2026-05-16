@@ -421,6 +421,7 @@ class NotificationLog(Base):
     message = Column(Text, nullable=False)
     status = Column(String, default="pending")
     provider_response = Column(Text, nullable=True)
+    batch_id = Column(String, nullable=True)
     sent_at = Column(DateTime, default=_utcnow)
 
     member = relationship("Member")
@@ -561,6 +562,8 @@ def _migrate(engine):
             notes TEXT,
             created_at TIMESTAMP
         )""",
+        # Group broadcast SMS sends under a single batch_id for grouped log display
+        "ALTER TABLE notification_logs ADD COLUMN batch_id VARCHAR",
         # Physical voucher cards returned by vendor — manually recorded per week
         """CREATE TABLE IF NOT EXISTS voucher_returns (
             id SERIAL PRIMARY KEY,

@@ -1,5 +1,6 @@
 import logging
 import re
+import uuid
 import urllib.request
 import urllib.parse
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -13,6 +14,10 @@ from database import (get_db, Member, Payment, Week, Cycle, MemberSpot,
 from routers.deps import _require_admin
 
 router = APIRouter()
+
+
+def _batch_id():
+    return uuid.uuid4().hex[:12]
 
 
 # ── Models ──────────────────────────────────────────────────────────────────
@@ -311,6 +316,7 @@ def send_to_members(data: SendRequest, db: Session = Depends(get_db)):
     active = db.query(Cycle).filter(Cycle.status == "active").first()
     active_cycle_id = active.id if active else None
 
+    bid = _batch_id() if len(data.member_ids) > 1 else None
     results = []
     for mid in data.member_ids:
         m = db.query(Member).filter(Member.id == mid).first()
@@ -327,6 +333,7 @@ def send_to_members(data: SendRequest, db: Session = Depends(get_db)):
             member_id=m.id, phone=m.phone,
             template_key=data.template_key, message=msg,
             status=status, provider_response=response,
+            batch_id=bid,
         )
         db.add(log)
         results.append({"member_id": mid, "name": m.name, "phone": m.phone,
@@ -353,6 +360,7 @@ def broadcast_payment_reminder(week_id: int, request: Request, db: Session = Dep
                        Payment.status.in_(["pending", "late"]))
                .all())
 
+    bid = _batch_id()
     results = []
     for p in pending:
         m = p.member
@@ -370,6 +378,7 @@ def broadcast_payment_reminder(week_id: int, request: Request, db: Session = Dep
             member_id=m.id, phone=m.phone,
             template_key="payment_reminder", message=msg,
             status=status, provider_response=response,
+            batch_id=bid,
         )
         db.add(log)
         results.append({"member_id": m.id, "name": m.name, "status": status})
@@ -398,6 +407,7 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
     else:
         members = db.query(Member).filter(Member.status == "active").all()
 
+    bid = _batch_id()
     results = []
     for m in members:
         if not m.phone:
@@ -411,6 +421,7 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
             member_id=m.id, phone=m.phone,
             template_key="missed_payment", message=msg,
             status=status, provider_response=response,
+            batch_id=bid,
         )
         db.add(log)
         results.append({"member_id": m.id, "name": m.name,
@@ -421,19 +432,46 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/logs")
-def notification_logs(limit: int = 100, db: Session = Depends(get_db)):
-    logs = (db.query(NotificationLog)
-            .order_by(NotificationLog.sent_at.desc())
-            .limit(limit).all())
-    return [
-        {
+def notification_logs(db: Session = Depends(get_db)):
+    """Return broadcast batches (grouped) and individual notifications separately."""
+    all_logs = (db.query(NotificationLog)
+                .order_by(NotificationLog.sent_at.desc())
+                .limit(1000).all())
+
+    def _entry(l):
+        return {
             "id": l.id,
             "member_name": l.member.name if l.member else None,
             "phone": l.phone,
-            "template_key": l.template_key,
-            "message": l.message,
             "status": l.status,
             "sent_at": l.sent_at.isoformat(),
+            "error": l.provider_response if l.status == "failed" else None,
         }
-        for l in logs
-    ]
+
+    batch_map: dict = {}
+    individuals = []
+
+    for l in all_logs:
+        if l.batch_id:
+            if l.batch_id not in batch_map:
+                batch_map[l.batch_id] = {
+                    "batch_id": l.batch_id,
+                    "template_key": l.template_key,
+                    "sent_at": l.sent_at.isoformat(),
+                    "total": 0, "sent": 0, "failed": 0, "mock": 0,
+                    "logs": [],
+                }
+            b = batch_map[l.batch_id]
+            b["total"] += 1
+            if l.status == "sent":
+                b["sent"] += 1
+            elif l.status == "failed":
+                b["failed"] += 1
+            elif l.status == "mock":
+                b["mock"] += 1
+            b["logs"].append(_entry(l))
+        else:
+            individuals.append({**_entry(l), "template_key": l.template_key})
+
+    batches = sorted(batch_map.values(), key=lambda b: b["sent_at"], reverse=True)
+    return {"batches": batches, "individuals": individuals[:100]}
