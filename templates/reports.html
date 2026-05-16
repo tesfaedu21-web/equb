@@ -139,10 +139,10 @@
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between text-xs mb-1">
-                  <span class="text-gray-500" x-text="fmtDate(w.draw_date)"></span>
-                  <span class="font-semibold text-gray-700" x-text="fmt(w.paid) + ' / ' + fmt(w.expected)"></span>
+                  <span class="text-gray-500 payment-row-date" x-text="fmtDate(w.draw_date)"></span>
+                  <span class="font-semibold text-gray-700 payment-row-amount" x-text="fmt(w.paid) + ' / ' + fmt(w.expected)"></span>
                 </div>
-                <div class="bg-gray-100 rounded-full h-1.5">
+                <div class="bg-gray-100 rounded-full h-1.5 payment-row-bar">
                   <div class="bg-equb-green h-1.5 rounded-full"
                        :style="`width:${w.expected ? Math.min(w.paid/w.expected*100,100) : 0}%`"></div>
                 </div>
@@ -604,10 +604,16 @@
 .print-header, .print-section-title { display: none; }
 
 @media print {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+
   /* Hide nav and UI chrome */
   body > div > aside, .mobile-topbar, .page-top-accent, .no-print { display: none !important; }
   main { width: 100% !important; overflow: visible !important; padding: 0 !important; }
   body { background: white !important; font-size: 11px; margin: 0; }
+
+  /* Force ALL sections to show — backup for Alpine x-show */
+  [data-print-section] { display: block !important; }
 
   /* Print header */
   .print-header {
@@ -620,16 +626,16 @@
   }
   .print-header-logo {
     width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
-    background: linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%);
+    background: linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%) !important;
   }
   .print-header-org { font-size: 18px; font-weight: 800; color: #111827; }
   .print-header-cycle { font-size: 12px; color: #374151; font-weight: 600; margin-top: 1px; }
   .print-header-date { font-size: 10px; color: #9ca3af; margin-top: 2px; }
 
-  /* Section dividers */
+  /* Section title — page break before each section except first */
   .print-section-title {
     display: block !important;
-    font-size: 13px; font-weight: 800; text-transform: uppercase;
+    font-size: 12px; font-weight: 800; text-transform: uppercase;
     letter-spacing: 0.05em; color: #078930;
     border-bottom: 1px solid #d1fae5;
     padding-bottom: 4px; margin-bottom: 12px;
@@ -654,15 +660,20 @@
   [class*="max-h-"] { max-height: none !important; }
   .overflow-y-auto, .overflow-x-auto { overflow: visible !important; }
 
-  /* KPI grid — 3 per row in print */
-  .grid.grid-cols-2.lg\:grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; }
-  .grid.grid-cols-1.lg\:grid-cols-2 { grid-template-columns: repeat(2, 1fr) !important; gap: 6px !important; }
-  .grid.grid-cols-1.lg\:grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; }
+  /* Stack all grids to single column in print — prevents tight 2-col wrapping */
+  .grid { grid-template-columns: 1fr !important; gap: 8px !important; }
+  /* KPI row stays 3-col since those cards are small */
+  .grid.grid-cols-2.lg\:grid-cols-3,
+  .grid.grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; }
+
+  /* Payment list rows — prevent date/amount wrapping */
+  .payment-row-date, .payment-row-amount { white-space: nowrap; }
+  /* Hide progress bars in print */
+  .payment-row-bar { display: none !important; }
 
   /* Hide interactive elements */
   .no-print-cell { display: none !important; }
   #addExpenseForm { display: none !important; }
-  .print-title, .print-subtitle { display: none; }
   button { display: none !important; }
 }
 </style>
