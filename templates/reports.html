@@ -4,86 +4,17 @@
 
 {% block head %}
 <style>
-/* Screen: hide print-only elements */
-.print-header, .print-section-title { display: none; }
-
+/* Minimal fallback for Ctrl+P — main Print button opens a proper popup */
 @media print {
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
-
-  /* Hide sidebar, topbar, chrome */
-  body > div > aside,
-  .mobile-topbar,
-  .page-top-accent,
-  .no-print { display: none !important; }
-
+  body > div > aside, .mobile-topbar, .page-top-accent, .no-print { display: none !important; }
   main { width: 100% !important; overflow: visible !important; padding: 0 !important; }
-  body { background: white !important; font-size: 11px; margin: 0; }
-
-  /* Force all tab sections visible */
-  [data-print-section] { display: block !important; }
-
-  /* Print header */
-  .print-header {
-    display: flex !important;
-    align-items: center;
-    gap: 14px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #078930;
-    margin-bottom: 18px;
-  }
-  .print-header-logo {
-    width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
-    background: linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%) !important;
-  }
-  .print-header-org { font-size: 18px; font-weight: 800; color: #111827; }
-  .print-header-cycle { font-size: 12px; color: #374151; font-weight: 600; margin-top: 1px; }
-  .print-header-date { font-size: 10px; color: #9ca3af; margin-top: 2px; }
-
-  /* Section titles & page breaks */
-  .print-section-title {
-    display: block !important;
-    font-size: 12px; font-weight: 800; text-transform: uppercase;
-    letter-spacing: 0.05em; color: #078930;
-    border-bottom: 1px solid #d1fae5;
-    padding-bottom: 4px; margin-bottom: 12px;
-    page-break-before: always;
-  }
-  [data-print-section]:first-of-type .print-section-title { page-break-before: avoid; }
-
-  /* Cards */
-  .card {
-    box-shadow: none !important;
-    border: 1px solid #e5e7eb !important;
-    border-radius: 6px !important;
-    padding: 10px 12px !important;
-    break-inside: avoid;
-    margin-bottom: 10px;
-  }
-
-  /* Tables */
-  table { font-size: 10px; width: 100%; }
-  th, td { padding: 3px 6px !important; }
-  .badge { font-size: 9px; padding: 1px 5px; }
-  h3 { font-size: 12px; font-weight: 700; margin-bottom: 6px !important; }
-
-  /* Remove scroll/height constraints */
+  body { background: white !important; }
+  button { display: none !important; }
+  .no-print-cell { display: none !important; }
   [class*="max-h-"] { max-height: none !important; }
   .overflow-y-auto, .overflow-x-auto { overflow: visible !important; }
-
-  /* Grid: single column by default, keep 3-col stat grids */
-  .grid { grid-template-columns: 1fr !important; gap: 8px !important; }
-  .grid.grid-cols-2.lg\:grid-cols-3,
-  .grid.grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; }
-
-  /* Payment rows */
-  .payment-row-date, .payment-row-amount { white-space: nowrap; }
-  .payment-row-bar { display: none !important; }
-  .no-print-cell { display: none !important; }
-
-  /* Hide interactive chrome */
-  #addExpenseForm { display: none !important; }
-  button { display: none !important; }
 }
 </style>
 {% endblock %}
@@ -112,16 +43,6 @@
         </svg>
         Print Report
       </button>
-    </div>
-  </div>
-
-  <!-- Print-only header -->
-  <div class="print-header">
-    <div class="print-header-logo"></div>
-    <div>
-      <div class="print-header-org" x-text="settings?.group_name || 'እቁብ'"></div>
-      <div class="print-header-cycle" x-text="'Financial Report — ' + (allCycles.find(c=>c.id==selectedCycle)?.name || 'Active Cycle')"></div>
-      <div class="print-header-date" x-text="'Printed: ' + new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})"></div>
     </div>
   </div>
 
@@ -163,8 +84,7 @@
   </div>
 
   <!-- ── SUMMARY TAB ─────────────────────────────────────────────────────────── -->
-  <div x-show="(activeTab==='summary' || printing) && !loading" x-cloak class="space-y-6" data-print-section>
-    <div class="print-section-title">Summary</div>
+  <div x-show="activeTab==='summary' && !loading" x-cloak class="space-y-6">
 
     <!-- KPI cards -->
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -350,8 +270,7 @@
   </div>
 
   <!-- ── BALANCE SHEET TAB ───────────────────────────────────────────────────── -->
-  <div x-show="(activeTab==='balance' || printing) && !loading" x-cloak class="space-y-6" data-print-section>
-    <div class="print-section-title">Balance Sheet</div>
+  <div x-show="activeTab==='balance' && !loading" x-cloak class="space-y-6">
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
@@ -524,8 +443,7 @@
   </div>
 
   <!-- ── VOUCHERS TAB ────────────────────────────────────────────────────────── -->
-  <div x-show="(activeTab==='vouchers' || printing) && !loading" x-cloak class="space-y-6" data-print-section>
-    <div class="print-section-title">Vouchers</div>
+  <div x-show="activeTab==='vouchers' && !loading" x-cloak class="space-y-6">
 
     <!-- Summary cards -->
     <div class="grid grid-cols-3 gap-4">
@@ -612,8 +530,7 @@
   </div>
 
   <!-- ── GENERAL LEDGER TAB ─────────────────────────────────────────────────── -->
-  <div x-show="(activeTab==='ledger' || printing) && !loading" x-cloak data-print-section>
-    <div class="print-section-title">General Ledger</div>
+  <div x-show="activeTab==='ledger' && !loading" x-cloak>
     <div class="card p-0 overflow-hidden">
       <div class="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
         <div>
@@ -704,7 +621,6 @@ function reports() {
     savingVoucher: null,
     savingExpense: false,
     loading: true,
-    printing: false,
     newExpense: { description: '', amount: null, expense_date: '', notes: '' },
 
     async load() {
@@ -859,15 +775,465 @@ function reports() {
     },
 
     printReport() {
-      // Set printing=true so all x-show sections become visible via Alpine reactivity
-      this.printing = true;
-      this.$nextTick(() => {
-        setTimeout(() => {
-          window.print();
-          // Reset after dialog closes (user may take time to confirm)
-          setTimeout(() => { this.printing = false; }, 1000);
-        }, 150);
-      });
+      // Build a standalone popup window — no Alpine/Tailwind, full print control
+      const orgName   = this.settings?.group_name || 'እቁብ';
+      const cycle     = this.allCycles.find(c => c.id == this.selectedCycle);
+      const cycleName = cycle?.name || 'Active Cycle';
+      const printedAt = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+
+      const fmtN = n => (n === null || n === undefined) ? '—' : new Intl.NumberFormat('en-ET').format(Math.round(n)) + ' ETB';
+      const fmtD = iso => this.fmtDate(iso);
+
+      // ── Row builders ─────────────────────────────────────────────────────────
+      const weeks = this.paymentSummary.weeks || [];
+      const weekRows = weeks.map(w => {
+        const rate = w.expected ? Math.round(w.paid / w.expected * 100) : 0;
+        const rateColor = rate >= 100 ? '#078930' : rate >= 70 ? '#d97706' : '#ef4444';
+        const badges = [
+          w.pending ? `<span class="bdg bdg-o">${w.pending} pending</span>` : '',
+          w.missed  ? `<span class="bdg bdg-r">${w.missed} missed</span>`  : '',
+        ].filter(Boolean).join(' ');
+        return `<tr>
+          <td>${w.week_number}${w.is_group_week ? ' <span class="bdg bdg-y">G</span>' : ''}</td>
+          <td>${fmtD(w.draw_date)}</td>
+          <td class="r grn">${fmtN(w.paid)}</td>
+          <td class="r muted">${fmtN(w.expected)}</td>
+          <td class="r" style="color:${rateColor};font-weight:700">${rate}%</td>
+          <td>${badges}</td>
+        </tr>`;
+      }).join('');
+
+      const assocRows = (this.assocFund.weeks || []).map(w => `<tr>
+        <td>${w.week_number}</td>
+        <td>${fmtD(w.draw_date)}</td>
+        <td class="r" style="color:#d97706;font-weight:700">${fmtN(w.amount)}</td>
+        <td>${w.is_group_week ? '<span class="bdg bdg-y">Group</span>' : ''}</td>
+      </tr>`).join('');
+
+      const disbRows = this.ledger.map(r => `<tr>
+        <td>#${r.week_number}</td>
+        <td>${fmtD(r.cheque_date)}</td>
+        <td>${r.winner || '—'}</td>
+        <td class="r">${fmtN(r.gross_amount)}</td>
+        <td class="r red">${fmtN(r.association_amount)}</td>
+        <td class="r ora">${r.service_fee ? fmtN(r.service_fee) : '—'}</td>
+        <td class="r" style="color:#fb923c">${r.voucher_deduction ? fmtN(r.voucher_deduction) : '—'}</td>
+        <td class="r grn bld">${fmtN(r.net_amount)}</td>
+        <td class="mono">${r.cheque_number || '—'}</td>
+      </tr>`).join('');
+
+      const txRows = this.transactions.map(t => `<tr>
+        <td>#${t.week_number}</td>
+        <td><span class="bdg ${t.type==='group_week_sale' ? 'bdg-y' : 'bdg-p'}">${t.type==='group_week_sale' ? 'Group Sale' : 'Member Sale'}</span></td>
+        <td>${t.buyer || '—'}</td>
+        <td class="muted">${t.seller || '—'}</td>
+        <td class="r" style="color:#7c3aed">${t.percentage ? t.percentage + '%' : '—'}</td>
+        <td class="r red">${t.seller_fee ? fmtN(t.seller_fee) : '—'}</td>
+        <td class="r grn bld">${fmtN(t.buyer_receives)}</td>
+        <td>${fmtD(t.date)}</td>
+      </tr>`).join('');
+
+      const expenseRows = this.expenses.map(e => `<tr>
+        <td>${e.description || '—'}</td>
+        <td>${e.expense_date ? fmtD(e.expense_date) : '—'}</td>
+        <td class="r red bld">${fmtN(e.amount)}</td>
+      </tr>`).join('');
+
+      const voucherRows = this.vouchers.map(v => `<tr>
+        <td>#${v.week_number}</td>
+        <td>${fmtD(v.cheque_date)}</td>
+        <td>${v.winner || '—'}</td>
+        <td class="r" style="color:#f97316;font-weight:700">${fmtN(v.voucher_deduction)}</td>
+        <td class="r"><div class="grn bld">${fmtN(v.vendor_payment || 0)}</div><div class="micro muted">${v.vendor_paid_spots || 0} paid spots</div></td>
+        <td class="r" style="color:#d97706;font-weight:600">${(v.assoc_retains || 0) > 0 ? fmtN(v.assoc_retains) : '—'}</td>
+        <td>${v.voucher_paid
+          ? '<span class="bdg bdg-g">Paid to Vendor</span>'
+          : v.voucher_deduction > 0 ? '<span class="bdg bdg-o">Outstanding</span>' : '—'}</td>
+        <td>${v.voucher_paid_date ? fmtD(v.voucher_paid_date) : '—'}</td>
+      </tr>`).join('');
+
+      const typeClass = t => ({ collection:'bdg-g', cheque:'bdg-r', voucher:'bdg-o', expense:'bdg-y' }[t] || '');
+      const typeLabel = t => ({ collection:'Collection', cheque:'Cheque', voucher:'Voucher', expense:'Expense' }[t] || t);
+      const ledgerRows = this.generalLedger.map(e => `<tr>
+        <td style="white-space:nowrap">${fmtD(e.date)}</td>
+        <td><span class="bdg ${typeClass(e.type)}">${typeLabel(e.type)}</span></td>
+        <td>${e.description || '—'}</td>
+        <td class="r grn">${e.credit ? fmtN(e.credit) : '—'}</td>
+        <td class="r red">${e.debit ? '(' + fmtN(e.debit) + ')' : '—'}</td>
+        <td class="r bld" style="color:${e.balance >= 0 ? '#2563eb' : '#ef4444'}">${fmtN(e.balance)}</td>
+      </tr>`).join('');
+
+      const bs = this.balanceSheet;
+      const totalDisbGross  = this.ledger.reduce((s,r) => s + (r.gross_amount       || 0), 0);
+      const totalDisbAssoc  = this.ledger.reduce((s,r) => s + (r.association_amount  || 0), 0);
+      const totalDisbSvc    = this.ledger.reduce((s,r) => s + (r.service_fee         || 0), 0);
+      const totalDisbVch    = this.ledger.reduce((s,r) => s + (r.voucher_deduction   || 0), 0);
+      const totalDisbNet    = this.ledger.reduce((s,r) => s + (r.net_amount          || 0), 0);
+      const totalLedgerCr   = this.generalLedger.reduce((s,e) => s + (e.credit || 0), 0);
+      const totalLedgerDr   = this.generalLedger.reduce((s,e) => s + (e.debit  || 0), 0);
+      const lastBalance     = this.generalLedger.length ? this.generalLedger[this.generalLedger.length - 1].balance : 0;
+
+      // ── HTML document ────────────────────────────────────────────────────────
+      const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Financial Report — ${cycleName}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+         padding: 28px 32px; color: #111; font-size: 12px; line-height: 1.4; }
+  @page { margin: 12mm 14mm; size: A4; }
+  @media print { body { padding: 0; } }
+
+  /* ── Org header ── */
+  .org-header { display:flex; align-items:center; gap:14px; padding-bottom:12px;
+                border-bottom:3px solid #078930; margin-bottom:20px; }
+  .org-logo   { width:40px; height:40px; border-radius:10px; flex-shrink:0;
+                background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%); }
+  .org-name   { font-size:20px; font-weight:800; color:#111; }
+  .org-sub    { font-size:12px; color:#078930; font-weight:600; margin-top:2px; }
+  .org-date   { margin-left:auto; font-size:10px; color:#9ca3af; text-align:right; line-height:1.6; }
+
+  /* ── Sections ── */
+  .section { page-break-before:always; padding-top:18px; }
+  .section-hdr { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.07em;
+                 color:#078930; border-bottom:2px solid #d1fae5; padding-bottom:4px; margin-bottom:14px; }
+
+  /* ── KPI grid ── */
+  .kpi3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; }
+  .kpi6 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; }
+  .kpi  { border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; text-align:center; }
+  .kpi .lbl { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+              color:#9ca3af; margin-bottom:6px; }
+  .kpi .val { font-size:19px; font-weight:800; line-height:1.1; }
+  .kpi .sub { font-size:9px; color:#9ca3af; margin-top:4px; }
+
+  /* ── Two-col layout ── */
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+
+  /* ── Cards ── */
+  .card { border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px;
+          margin-bottom:12px; break-inside:avoid; }
+  .card-title { font-size:11px; font-weight:700; color:#374151; margin-bottom:8px; }
+
+  /* ── Tables ── */
+  table { width:100%; border-collapse:collapse; font-size:10px; }
+  thead th { background:#f9fafb; padding:5px 8px; text-align:left;
+             font-size:9px; color:#9ca3af; text-transform:uppercase;
+             letter-spacing:.04em; border-bottom:2px solid #e5e7eb; font-weight:700; }
+  th.r, td.r { text-align:right; }
+  tbody tr { border-bottom:1px solid #f3f4f6; }
+  tbody tr:last-child { border-bottom:none; }
+  td { padding:5px 8px; }
+  tfoot td { padding:6px 8px; border-top:2px solid #e5e7eb;
+             background:#f9fafb; font-weight:700; font-size:10px; }
+
+  /* ── Badges ── */
+  .bdg { display:inline-block; padding:1px 6px; border-radius:4px;
+         font-size:9px; font-weight:600; white-space:nowrap; }
+  .bdg-g { background:#dcfce7; color:#166534; }
+  .bdg-r { background:#fee2e2; color:#991b1b; }
+  .bdg-o { background:#ffedd5; color:#9a3412; }
+  .bdg-y { background:#fef9c3; color:#854d0e; }
+  .bdg-p { background:#f3e8ff; color:#6b21a8; }
+
+  /* ── Balance breakdown ── */
+  .brow { display:flex; justify-content:space-between; align-items:flex-start;
+          padding:7px 0; border-bottom:1px solid #f3f4f6; gap:12px; }
+  .brow:last-child { border-bottom:none; }
+  .brow-lbl  { font-weight:600; color:#374151; font-size:11px; }
+  .brow-sub  { font-size:9px; color:#9ca3af; margin-top:2px; }
+  .brow-val  { font-weight:700; font-size:13px; white-space:nowrap; flex-shrink:0; }
+  .brow-note { font-size:9px; color:#ef4444; margin-top:1px; }
+
+  /* ── Accounting equation ── */
+  .eq-row { display:flex; justify-content:space-between; padding:3px 0;
+            font-size:11px; font-family:monospace; }
+  .eq-total { border-top:2px solid #e5e7eb; margin-top:5px; padding-top:5px; font-weight:800; }
+
+  /* ── Utilities ── */
+  .grn  { color:#078930; }  .red  { color:#ef4444; }
+  .ora  { color:#f97316; }  .muted { color:#9ca3af; }
+  .bld  { font-weight:700; }  .mono { font-family:monospace; font-size:9px; }
+  .micro { font-size:9px; }
+
+  /* ── Footer ── */
+  .footer { margin-top:20px; padding-top:8px; border-top:1px solid #e5e7eb;
+            display:flex; justify-content:space-between; font-size:9px; color:#9ca3af; }
+</style></head><body>
+
+<!-- Org header -->
+<div class="org-header">
+  <div class="org-logo"></div>
+  <div>
+    <div class="org-name">${orgName}</div>
+    <div class="org-sub">Financial Report — ${cycleName}</div>
+  </div>
+  <div class="org-date">Printed: ${printedAt}</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 1 — SUMMARY
+══════════════════════════════════════════════════════════ -->
+<div class="section-hdr">Summary</div>
+
+<div class="kpi6">
+  <div class="kpi">
+    <div class="lbl">Total Collected</div>
+    <div class="val grn">${fmtN(this.stats.total_collected)}</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">Association Fund</div>
+    <div class="val" style="color:${(this.stats.association_fund||0)<0?'#ef4444':'#d97706'}">${fmtN(this.stats.association_fund)}</div>
+    ${(this.stats.association_fund||0)<0 ? '<div class="sub red">Deficit — expenses exceed collections</div>' : ''}
+  </div>
+  <div class="kpi">
+    <div class="lbl">Service Fee</div>
+    <div class="val ora">${fmtN(this.stats.total_service_fee||0)}</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">Voucher Pool</div>
+    <div class="val" style="color:#fb923c">${fmtN(this.stats.total_voucher||0)}</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">Weeks Done</div>
+    <div class="val" style="color:#3b82f6">${this.stats.weeks_done||0} <span style="font-size:13px;color:#9ca3af">/ ${this.stats.total_weeks||0}</span></div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">Collection Rate</div>
+    <div class="val" style="color:#a855f7">${this.paymentSummary.collection_rate||0}%</div>
+  </div>
+</div>
+
+<div class="two">
+  <!-- Payment by Week -->
+  <div class="card">
+    <div class="card-title">Payment Collection by Week</div>
+    <table>
+      <thead>
+        <tr><th>Wk</th><th>Date</th><th class="r">Paid</th><th class="r">Expected</th><th class="r">Rate</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        ${weekRows || '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:12px">No data</td></tr>'}
+      </tbody>
+      ${weeks.length ? `<tfoot><tr>
+        <td colspan="2" class="r muted">Totals</td>
+        <td class="r grn">${fmtN(weeks.reduce((s,w)=>s+(w.paid||0),0))}</td>
+        <td class="r muted">${fmtN(weeks.reduce((s,w)=>s+(w.expected||0),0))}</td>
+        <td class="r" style="color:#a855f7">${this.paymentSummary.collection_rate||0}%</td>
+        <td></td>
+      </tr></tfoot>` : ''}
+    </table>
+  </div>
+
+  <!-- Association Fund by Week -->
+  <div class="card">
+    <div class="card-title">Association Fund by Week</div>
+    <table>
+      <thead>
+        <tr><th>Wk</th><th>Date</th><th class="r">Amount</th><th>Type</th></tr>
+      </thead>
+      <tbody>
+        ${assocRows || '<tr><td colspan="4" style="text-align:center;color:#9ca3af;padding:12px">No draws yet</td></tr>'}
+      </tbody>
+      ${(this.assocFund.weeks||[]).length ? `<tfoot><tr>
+        <td colspan="2" class="r muted">Total</td>
+        <td class="r bld" style="color:#d97706">${fmtN(this.assocFund.total)}</td>
+        <td></td>
+      </tr></tfoot>` : ''}
+    </table>
+  </div>
+</div>
+
+${this.ledger.length ? `
+<div class="card">
+  <div class="card-title">Winner Disbursements (Cheques Issued)</div>
+  <table>
+    <thead>
+      <tr><th>Wk</th><th>Date</th><th>Winner / Buyer</th><th class="r">Gross</th><th class="r">Assoc (−)</th><th class="r">Service (−)</th><th class="r">Voucher (−)</th><th class="r">Net Cheque</th><th>Cheque #</th></tr>
+    </thead>
+    <tbody>${disbRows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" class="r muted">Totals</td>
+        <td class="r">${fmtN(totalDisbGross)}</td>
+        <td class="r red">${fmtN(totalDisbAssoc)}</td>
+        <td class="r ora">${fmtN(totalDisbSvc)}</td>
+        <td class="r" style="color:#fb923c">${fmtN(totalDisbVch)}</td>
+        <td class="r grn bld">${fmtN(totalDisbNet)}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+</div>` : ''}
+
+${this.transactions.length ? `
+<div class="card">
+  <div class="card-title">Pot Sale Transactions</div>
+  <table>
+    <thead>
+      <tr><th>Wk</th><th>Type</th><th>Buyer</th><th>Seller</th><th class="r">%</th><th class="r">Seller Fee</th><th class="r">Buyer Gets</th><th>Date</th></tr>
+    </thead>
+    <tbody>${txRows}</tbody>
+  </table>
+</div>` : ''}
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 2 — BALANCE SHEET
+══════════════════════════════════════════════════════════ -->
+<div class="section">
+<div class="section-hdr">Balance Sheet</div>
+
+<div class="kpi3">
+  <div class="kpi" style="border-left:4px solid #078930">
+    <div class="lbl">Cash In — Member Collections</div>
+    <div class="val grn">${fmtN(bs.total_collected)}</div>
+    <div class="sub">${bs.disbursements_count||0} weeks drawn</div>
+  </div>
+  <div class="kpi" style="border-left:4px solid #f87171">
+    <div class="lbl">Cash Out — Cheques Issued</div>
+    <div class="val red">${fmtN(bs.total_cheques)}</div>
+    <div class="sub">Net paid to winners</div>
+  </div>
+  <div class="kpi" style="border-left:4px solid #60a5fa">
+    <div class="lbl">Cash Balance (Held)</div>
+    <div class="val" style="color:#2563eb">${fmtN(bs.cash_balance)}</div>
+    <div class="sub">Collections − Cheques − Vouchers − Expenses</div>
+  </div>
+</div>
+
+<div class="two">
+  <!-- Balance breakdown -->
+  <div class="card">
+    <div class="card-title">Balance Breakdown — Where the Money Is</div>
+    <div class="brow">
+      <div><div class="brow-lbl">Association Fund</div><div class="brow-sub">Deducted from weekly collections</div>
+        ${bs.association_expenses ? `<div class="brow-note">− ${fmtN(bs.association_expenses)} expenses</div>` : ''}</div>
+      <div class="brow-val" style="color:#d97706">${fmtN(bs.association_fund)}</div>
+    </div>
+    <div class="brow">
+      <div><div class="brow-lbl">Association Fund Net Balance</div><div class="brow-sub">After expenses paid out</div></div>
+      <div class="brow-val" style="color:#ca8a04">${fmtN(bs.association_balance)}</div>
+    </div>
+    <div class="brow">
+      <div><div class="brow-lbl">Service Fees Collected</div><div class="brow-sub">Deducted from winner pots</div></div>
+      <div class="brow-val ora">${fmtN(bs.total_service_fee)}</div>
+    </div>
+    <div class="brow">
+      <div><div class="brow-lbl">Voucher Pool — Paid to Vendors</div><div class="brow-sub">Vendor payment (paid spots only)</div></div>
+      <div class="brow-val grn">${fmtN(bs.voucher_paid)}</div>
+    </div>
+    <div class="brow">
+      <div><div class="brow-lbl" style="color:#ea580c">Vouchers Outstanding (Liability)</div><div class="brow-sub">Vendor amount owed — not yet settled</div></div>
+      <div class="brow-val ora">${fmtN(bs.voucher_outstanding)}</div>
+    </div>
+    <div class="brow">
+      <div><div class="brow-lbl">Assoc Retains from Voucher</div><div class="brow-sub">Full pot deduction − vendor payment</div></div>
+      <div class="brow-val" style="color:#d97706">${fmtN(bs.assoc_retains_voucher||0)}</div>
+    </div>
+    <div class="brow">
+      <div><div class="brow-lbl">Collected for Pending Draws</div><div class="brow-sub">Weeks not yet drawn — money held</div></div>
+      <div class="brow-val" style="color:#2563eb">${fmtN(bs.pending_draw_balance)}</div>
+    </div>
+  </div>
+
+  <div>
+    <!-- Accounting equation -->
+    <div class="card">
+      <div class="card-title">Accounting Check</div>
+      <div class="eq-row"><span>Total Collected</span><span class="grn bld">${fmtN(bs.total_collected)}</span></div>
+      <div class="eq-row red"><span>− Winner Cheques</span><span>(${fmtN(bs.total_cheques)})</span></div>
+      <div class="eq-row ora"><span>− Vouchers Paid to Vendors</span><span>(${fmtN(bs.voucher_paid)})</span></div>
+      <div class="eq-row red"><span>− Association Expenses</span><span>(${fmtN(bs.association_expenses)})</span></div>
+      <div class="eq-row eq-total" style="color:#2563eb"><span>= Cash Balance</span><span>${fmtN(bs.cash_balance)}</span></div>
+    </div>
+
+    ${this.expenses.length ? `
+    <div class="card">
+      <div class="card-title">Association Fund Expenses</div>
+      <table>
+        <thead><tr><th>Description</th><th>Date</th><th class="r">Amount</th></tr></thead>
+        <tbody>${expenseRows}</tbody>
+        <tfoot><tr>
+          <td colspan="2" class="r muted">Total</td>
+          <td class="r red bld">${fmtN(this.expenses.reduce((s,e)=>s+(e.amount||0),0))}</td>
+        </tr></tfoot>
+      </table>
+    </div>` : ''}
+  </div>
+</div>
+</div>
+
+${this.vouchers.length ? `
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 3 — VOUCHERS
+══════════════════════════════════════════════════════════ -->
+<div class="section">
+<div class="section-hdr">Vouchers</div>
+
+<div class="kpi3">
+  <div class="kpi">
+    <div class="lbl">Total Voucher Pool</div>
+    <div class="val" style="color:#fb923c">${fmtN(bs.total_voucher||0)}</div>
+    <div class="sub">Deducted from winner pots</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">Paid to Vendors</div>
+    <div class="val grn">${fmtN(bs.voucher_paid||0)}</div>
+    <div class="sub">${this.vouchers.filter(v=>v.voucher_paid).length} week(s) settled</div>
+  </div>
+  <div class="kpi" style="border:1px solid #fed7aa;background:#fff7ed">
+    <div class="lbl" style="color:#ea580c">Outstanding — Owed to Vendors</div>
+    <div class="val" style="color:#ea580c">${fmtN(bs.voucher_outstanding||0)}</div>
+    <div class="sub" style="color:#f97316">${this.vouchers.filter(v=>!v.voucher_paid&&v.voucher_deduction>0).length} week(s) pending</div>
+  </div>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Wk</th><th>Date</th><th>Winner / Buyer</th><th class="r">Collected from Pot</th><th class="r">Vendor Gets</th><th class="r">Assoc Retains</th><th>Status</th><th>Paid Date</th></tr>
+    </thead>
+    <tbody>${voucherRows}</tbody>
+  </table>
+</div>
+</div>` : ''}
+
+${this.generalLedger.length ? `
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 4 — GENERAL LEDGER
+══════════════════════════════════════════════════════════ -->
+<div class="section">
+<div class="section-hdr">General Ledger — All Financial Movements</div>
+<div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Type</th><th>Description</th><th class="r">In (+)</th><th class="r">Out (−)</th><th class="r">Balance</th></tr>
+    </thead>
+    <tbody>${ledgerRows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" class="r muted">Totals</td>
+        <td class="r grn">${fmtN(totalLedgerCr)}</td>
+        <td class="r red">(${fmtN(totalLedgerDr)})</td>
+        <td class="r bld" style="color:#2563eb">${fmtN(lastBalance)}</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+</div>` : ''}
+
+<div class="footer">
+  <span>${orgName} — Financial Report · ${cycleName}</span>
+  <span>Printed: ${printedAt}</span>
+</div>
+
+</body></html>`;
+
+      const win = window.open('', '_blank', 'width=1000,height=750');
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 500);
     },
   }
 }
