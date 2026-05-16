@@ -29,6 +29,16 @@
     </div>
   </div>
 
+  <!-- Print-only header -->
+  <div class="print-header">
+    <div class="print-header-logo"></div>
+    <div>
+      <div class="print-header-org" x-text="settings?.group_name || 'እቁብ'"></div>
+      <div class="print-header-cycle" x-text="'Financial Report — ' + (allCycles.find(c=>c.id==selectedCycle)?.name || 'Active Cycle')"></div>
+      <div class="print-header-date" x-text="'Printed: ' + new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})"></div>
+    </div>
+  </div>
+
   <!-- Tabs -->
   <div class="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit no-print">
     <button @click="activeTab='summary'"
@@ -67,7 +77,8 @@
   </div>
 
   <!-- ── SUMMARY TAB ─────────────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='summary' && !loading" x-cloak class="space-y-6" data-print-section>
+  <div x-show="(activeTab==='summary' || printing) && !loading" x-cloak class="space-y-6" data-print-section>
+    <div class="print-section-title">Summary</div>
 
     <!-- KPI cards -->
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -253,7 +264,8 @@
   </div>
 
   <!-- ── BALANCE SHEET TAB ───────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='balance' && !loading" x-cloak class="space-y-6" data-print-section>
+  <div x-show="(activeTab==='balance' || printing) && !loading" x-cloak class="space-y-6" data-print-section>
+    <div class="print-section-title">Balance Sheet</div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
@@ -426,7 +438,8 @@
   </div>
 
   <!-- ── VOUCHERS TAB ────────────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='vouchers' && !loading" x-cloak class="space-y-6" data-print-section>
+  <div x-show="(activeTab==='vouchers' || printing) && !loading" x-cloak class="space-y-6" data-print-section>
+    <div class="print-section-title">Vouchers</div>
 
     <!-- Summary cards -->
     <div class="grid grid-cols-3 gap-4">
@@ -513,7 +526,8 @@
   </div>
 
   <!-- ── GENERAL LEDGER TAB ─────────────────────────────────────────────────── -->
-  <div x-show="activeTab==='ledger' && !loading" x-cloak data-print-section>
+  <div x-show="(activeTab==='ledger' || printing) && !loading" x-cloak data-print-section>
+    <div class="print-section-title">General Ledger</div>
     <div class="card p-0 overflow-hidden">
       <div class="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
         <div>
@@ -586,36 +600,71 @@
 
 {% block scripts %}
 <style>
+/* Screen: hide print-only elements */
+.print-header, .print-section-title { display: none; }
+
 @media print {
-  /* Hide everything except report content */
-  body > div > aside,
-  .mobile-topbar, .page-top-accent,
-  .no-print { display: none !important; }
-  main { width: 100% !important; overflow: visible !important; }
-  body { background: white !important; font-size: 12px; }
+  /* Hide nav and UI chrome */
+  body > div > aside, .mobile-topbar, .page-top-accent, .no-print { display: none !important; }
+  main { width: 100% !important; overflow: visible !important; padding: 0 !important; }
+  body { background: white !important; font-size: 11px; margin: 0; }
+
+  /* Print header */
+  .print-header {
+    display: flex !important;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #078930;
+    margin-bottom: 18px;
+  }
+  .print-header-logo {
+    width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%);
+  }
+  .print-header-org { font-size: 18px; font-weight: 800; color: #111827; }
+  .print-header-cycle { font-size: 12px; color: #374151; font-weight: 600; margin-top: 1px; }
+  .print-header-date { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+
+  /* Section dividers */
+  .print-section-title {
+    display: block !important;
+    font-size: 13px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #078930;
+    border-bottom: 1px solid #d1fae5;
+    padding-bottom: 4px; margin-bottom: 12px;
+    page-break-before: always;
+  }
+  [data-print-section]:first-of-type .print-section-title { page-break-before: avoid; }
+
+  /* Cards */
   .card {
     box-shadow: none !important; border: 1px solid #e5e7eb !important;
-    border-radius: 8px !important; break-inside: avoid;
+    border-radius: 6px !important; padding: 10px 12px !important;
+    break-inside: avoid; margin-bottom: 10px;
   }
-  /* Tab sections — all visible in print */
-  [data-print-section] { display: block !important; margin-top: 24px; }
-  /* Page breaks before major sections */
-  [data-print-section]:not(:first-of-type) { page-break-before: auto; }
-  table { font-size: 11px; }
-  th, td { padding: 4px 8px !important; }
-  .badge { font-size: 10px; padding: 1px 6px; }
-  /* Print title */
-  .print-title { display: block !important; font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-  .print-subtitle { display: block !important; font-size: 12px; color: #6b7280; margin-bottom: 16px; }
-  h3 { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
-  /* Remove scroll limits so all rows show */
-  .max-h-96, .max-h-72 { max-height: none !important; }
+
+  /* Tables */
+  table { font-size: 10px; width: 100%; }
+  th, td { padding: 3px 6px !important; }
+  .badge { font-size: 9px; padding: 1px 5px; }
+  h3 { font-size: 12px; font-weight: 700; margin-bottom: 6px !important; }
+
+  /* Remove ALL scroll/height limits */
+  [class*="max-h-"] { max-height: none !important; }
   .overflow-y-auto, .overflow-x-auto { overflow: visible !important; }
-  /* Hide action buttons in voucher table and expense form */
+
+  /* KPI grid — 3 per row in print */
+  .grid.grid-cols-2.lg\:grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; }
+  .grid.grid-cols-1.lg\:grid-cols-2 { grid-template-columns: repeat(2, 1fr) !important; gap: 6px !important; }
+  .grid.grid-cols-1.lg\:grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; }
+
+  /* Hide interactive elements */
   .no-print-cell { display: none !important; }
   #addExpenseForm { display: none !important; }
+  .print-title, .print-subtitle { display: none; }
+  button { display: none !important; }
 }
-.print-title, .print-subtitle { display: none; }
 </style>
 <script>
 function reports() {
@@ -630,16 +679,21 @@ function reports() {
     generalLedger: [],
     expenses: [],
     allCycles: [],
+    settings: {},
     selectedCycle: '',
     activeTab: 'summary',
     savingVoucher: null,
     savingExpense: false,
     loading: true,
+    printing: false,
     newExpense: { description: '', amount: null, expense_date: '', notes: '' },
 
     async load() {
       try {
-        this.allCycles = await this.api('GET', '/api/draws/cycles').catch(() => []);
+        [this.allCycles, this.settings] = await Promise.all([
+          this.api('GET', '/api/draws/cycles').catch(() => []),
+          this.api('GET', '/api/settings').catch(() => ({})),
+        ]);
         const active = this.allCycles.find(c => c.status === 'active') || this.allCycles[0];
         if (active && !this.selectedCycle) this.selectedCycle = active.id;
         await this.loadAll();
@@ -786,23 +840,15 @@ function reports() {
     },
 
     printReport() {
-      // Remove Alpine's inline style="display:none" so @media print CSS can show all sections
-      const sections = document.querySelectorAll('[data-print-section]');
-      const origStyles = [];
-      sections.forEach(s => {
-        origStyles.push(s.getAttribute('style'));
-        s.removeAttribute('style');
-      });
-      // Small delay so browser repaints before print dialog opens
-      setTimeout(() => {
-        window.print();
-        // Restore Alpine's inline styles after dialog closes
+      // Set printing=true so all x-show sections become visible via Alpine reactivity
+      this.printing = true;
+      this.$nextTick(() => {
         setTimeout(() => {
-          sections.forEach((s, i) => {
-            if (origStyles[i] !== null) s.setAttribute('style', origStyles[i]);
-          });
-        }, 500);
-      }, 80);
+          window.print();
+          // Reset after dialog closes (user may take time to confirm)
+          setTimeout(() => { this.printing = false; }, 1000);
+        }, 150);
+      });
     },
   }
 }
