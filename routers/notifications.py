@@ -499,6 +499,16 @@ def notification_logs(db: Session = Depends(get_db)):
             # True one-off (draw_winner, disbursement_ready, etc.)
             individuals.append({**_entry(l), "template_key": l.template_key})
 
-    all_batches = list(batch_map.values()) + list(day_map.values())
+    # Only collapse day-groups that have more than 1 member — single sends stay individual
+    day_batches = []
+    for g in day_map.values():
+        if g["total"] > 1:
+            day_batches.append(g)
+        else:
+            log = g["logs"][0]
+            individuals.append({**log, "template_key": g["template_key"]})
+
+    all_batches = list(batch_map.values()) + day_batches
     batches = sorted(all_batches, key=lambda b: b["sent_at"], reverse=True)
-    return {"batches": batches, "individuals": individuals[:50]}
+    individuals_sorted = sorted(individuals, key=lambda l: l["sent_at"], reverse=True)
+    return {"batches": batches, "individuals": individuals_sorted[:50]}
