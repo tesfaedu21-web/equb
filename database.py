@@ -356,6 +356,26 @@ class AssociationExpense(Base):
     cycle = relationship("Cycle")
 
 
+# ── Distribution Cheques ─────────────────────────────────────────────────────
+
+class DistributionCheque(Base):
+    """Cheque issued to a member for their end-of-cycle profit distribution share."""
+    __tablename__ = "distribution_cheques"
+    id = Column(Integer, primary_key=True)
+    cycle_id = Column(Integer, ForeignKey("cycles.id"), nullable=False)
+    member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    cheque_number = Column(String, nullable=False)
+    cheque_date = Column(DateTime, nullable=False)
+    status = Column(String, default="issued")   # issued | collected
+    collected_at = Column(DateTime, nullable=True)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=_utcnow)
+
+    cycle = relationship("Cycle")
+    member = relationship("Member")
+
+
 # ── Notifications ─────────────────────────────────────────────────────────────
 
 class NotificationSettings(Base):
@@ -511,6 +531,19 @@ def _migrate(engine):
         # Half-spot disbursement split: allow 2 rows per week (one per half-member)
         "ALTER TABLE pot_disbursements DROP CONSTRAINT IF EXISTS pot_disbursements_week_id_key",
         "ALTER TABLE pot_disbursements ADD COLUMN member_id INTEGER REFERENCES members(id)",
+        # End-of-cycle distribution cheques
+        """CREATE TABLE IF NOT EXISTS distribution_cheques (
+            id SERIAL PRIMARY KEY,
+            cycle_id INTEGER REFERENCES cycles(id) NOT NULL,
+            member_id INTEGER REFERENCES members(id) NOT NULL,
+            amount REAL NOT NULL,
+            cheque_number VARCHAR NOT NULL,
+            cheque_date TIMESTAMP NOT NULL,
+            status VARCHAR DEFAULT 'issued',
+            collected_at TIMESTAMP,
+            notes TEXT,
+            created_at TIMESTAMP
+        )""",
     ]
     with engine.connect() as conn:
         for sql in migrations:

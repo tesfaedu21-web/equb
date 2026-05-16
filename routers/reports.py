@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, cycle_cfg
+from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, DistributionCheque, cycle_cfg
 from routers.deps import _require_admin
 
 
@@ -1122,3 +1122,102 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
             "total_owed_amount":   float(sum(p.amount for p in unpaid)),
         },
     }
+
+
+# ── Distribution Cheques ──────────────────────────────────────────────────────
+
+def _fmt_cheque(c: DistributionCheque) -> dict:
+    return {
+        "id":             c.id,
+        "cycle_id":       c.cycle_id,
+        "member_id":      c.member_id,
+        "member_name":    c.member.name if c.member else None,
+        "amount":         c.amount,
+        "cheque_number":  c.cheque_number,
+        "cheque_date":    c.cheque_date.isoformat(),
+        "status":         c.status,
+        "collected_at":   c.collected_at.isoformat() if c.collected_at else None,
+        "notes":          c.notes,
+    }
+
+
+class ChequeCreate(BaseModel):
+    cycle_id: int
+    member_id: int
+    amount: float
+    cheque_number: str
+    cheque_date: str
+    notes: Optional[str] = None
+
+
+@router.get("/distribution-cheques")
+def list_distribution_cheques(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    if not cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle_id = cycle.id if cycle else None
+    if not cycle_id:
+        return []
+    cheques = (db.query(DistributionCheque)
+               .filter(DistributionCheque.cycle_id == cycle_id)
+               .order_by(DistributionCheque.cheque_date)
+               .all())
+    return [_fmt_cheque(c) for c in cheques]
+
+
+@router.post("/distribution-cheques")
+def create_distribution_cheque(data: ChequeCreate, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
+    existing = db.query(DistributionCheque).filter(
+        DistributionCheque.cycle_id == data.cycle_id,
+        DistributionCheque.member_id == data.member_id,
+    ).first()
+    if existing:
+        raise HTTPException(400, "Cheque already issued for this member in this cycle")
+    c = DistributionCheque(
+        cycle_id=data.cycle_id,
+        member_id=data.member_id,
+        amount=data.amount,
+        cheque_number=data.cheque_number.strip(),
+        cheque_date=datetime.fromisoformat(data.cheque_date),
+        notes=data.notes,
+        created_at=_utcnow(),
+    )
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return _fmt_cheque(c)
+
+
+@router.put("/distribution-cheques/{cheque_id}/collect")
+def collect_distribution_cheque(cheque_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
+    c = db.query(DistributionCheque).filter(DistributionCheque.id == cheque_id).first()
+    if not c:
+        raise HTTPException(404, "Cheque not found")
+    c.status = "collected"
+    c.collected_at = _utcnow()
+    db.commit()
+    return _fmt_cheque(c)
+
+
+@router.put("/distribution-cheques/{cheque_id}/uncollect")
+def uncollect_distribution_cheque(cheque_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
+    c = db.query(DistributionCheque).filter(DistributionCheque.id == cheque_id).first()
+    if not c:
+        raise HTTPException(404, "Cheque not found")
+    c.status = "issued"
+    c.collected_at = None
+    db.commit()
+    return _fmt_cheque(c)
+
+
+@router.delete("/distribution-cheques/{cheque_id}")
+def delete_distribution_cheque(cheque_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
+    c = db.query(DistributionCheque).filter(DistributionCheque.id == cheque_id).first()
+    if not c:
+        raise HTTPException(404, "Cheque not found")
+    db.delete(c)
+    db.commit()
+    return {"ok": True}

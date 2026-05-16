@@ -634,15 +634,15 @@
       </div>
     </div>
 
-    <!-- Total + per-unit -->
+    <!-- Total + per-unit + progress -->
     <div class="card bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200">
-      <div class="flex flex-wrap items-center justify-between gap-4">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
         <div>
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Distributable Pool</div>
           <div class="text-4xl font-extrabold text-equb-green" x-text="fmt(distribution.total_distributable || 0)"></div>
           <div class="text-sm text-gray-500 mt-1">
-            Shared among <span class="font-semibold text-gray-700" x-text="(distribution.members || []).length"></span> members
-            · <span class="font-semibold text-gray-700" x-text="distribution.total_weight || 0"></span> total spot-units
+            <span class="font-semibold text-gray-700" x-text="(distribution.members || []).length"></span> members ·
+            <span class="font-semibold text-gray-700" x-text="distribution.total_weight || 0"></span> total spot-units
           </div>
         </div>
         <div class="text-right">
@@ -651,56 +651,114 @@
           <div class="text-xs text-gray-400 mt-1">Full spot × 1.0 · Half spot × 0.5</div>
         </div>
       </div>
+      <!-- Cheque progress bar -->
+      <div class="border-t pt-3">
+        <div class="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+          <span>Cheques issued: <span class="font-semibold text-gray-700" x-text="distCheques.length"></span> / <span x-text="(distribution.members||[]).length"></span></span>
+          <span>Collected: <span class="font-semibold text-equb-green" x-text="distCheques.filter(c=>c.status==='collected').length"></span></span>
+        </div>
+        <div class="bg-white rounded-full h-2 overflow-hidden">
+          <div class="bg-equb-green h-2 rounded-full transition-all"
+               :style="`width:${(distribution.members||[]).length ? distCheques.filter(c=>c.status==='collected').length/(distribution.members||[]).length*100 : 0}%`"></div>
+        </div>
+      </div>
     </div>
 
-    <!-- Member distribution table -->
+    <!-- Per-member cheque table -->
     <div class="card p-0 overflow-hidden">
       <div class="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
-        <span class="font-semibold text-gray-700">Member Distribution</span>
-        <span class="text-xs text-gray-400" x-text="(distribution.members || []).length + ' members'"></span>
+        <span class="font-semibold text-gray-700">Member Cheques</span>
+        <span class="text-xs text-gray-400"
+              x-text="distCheques.filter(c=>c.status==='collected').length + ' collected · ' + distCheques.filter(c=>c.status==='issued').length + ' pending'"></span>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-white border-b">
             <tr>
-              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Member</th>
-              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Spots</th>
-              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Weight</th>
-              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Distribution (ETB)</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Member</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Spots</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Amount</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Cheque #</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Date</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Status</th>
+              <th class="px-4 py-3 no-print"></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-50">
             <template x-for="m in (distribution.members || [])" :key="m.member_id">
-              <tr class="hover:bg-gray-50/70">
-                <td class="px-5 py-3">
+              <tr :class="distChequeMap[m.member_id]?.status === 'collected' ? 'bg-green-50/40' : ''">
+                <td class="px-4 py-3">
                   <div class="font-medium text-gray-800 amharic" x-text="m.member_name"></div>
                   <div x-show="m.phone" class="text-xs text-gray-400" x-text="m.phone"></div>
                 </td>
-                <td class="px-5 py-3">
+                <td class="px-4 py-3">
                   <div class="flex flex-wrap gap-1">
                     <template x-for="s in m.spots" :key="s.spot_number">
-                      <span class="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 rounded px-2 py-0.5">
-                        <span x-text="'#' + s.spot_number"></span>
-                        <span x-show="s.share === 'half'" class="text-gray-400">½</span>
+                      <span class="text-xs bg-gray-100 text-gray-600 rounded px-2 py-0.5">
+                        #<span x-text="s.spot_number"></span><span x-show="s.share==='half'" class="text-gray-400"> ½</span>
                       </span>
                     </template>
                   </div>
                 </td>
-                <td class="px-5 py-3 text-right text-gray-500 font-mono text-xs" x-text="m.weight"></td>
-                <td class="px-5 py-3 text-right font-bold text-equb-green text-base" x-text="fmt(m.amount)"></td>
+                <td class="px-4 py-3 text-right font-bold text-equb-green" x-text="fmt(m.amount)"></td>
+
+                <!-- No cheque yet — issue form -->
+                <template x-if="!distChequeMap[m.member_id]">
+                  <td colspan="3" class="px-4 py-2 no-print">
+                    <div class="flex items-center gap-2">
+                      <input type="text" placeholder="Cheque #"
+                             x-model="distForm[m.member_id + '_num']"
+                             class="w-28 text-xs border rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-green-500"/>
+                      <input type="date"
+                             x-model="distForm[m.member_id + '_date']"
+                             class="text-xs border rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-green-500"/>
+                      <button @click="issueDistCheque(m)"
+                              :disabled="!distForm[m.member_id+'_num'] || !distForm[m.member_id+'_date'] || distSaving===m.member_id"
+                              class="btn-primary text-xs py-1.5 px-3 whitespace-nowrap"
+                              x-text="distSaving===m.member_id ? '…' : 'Issue Cheque'"></button>
+                    </div>
+                  </td>
+                </template>
+
+                <!-- Cheque exists -->
+                <template x-if="distChequeMap[m.member_id]">
+                  <template x-if="true">
+                    <td class="px-4 py-3 font-mono text-xs text-gray-700" x-text="distChequeMap[m.member_id].cheque_number"></td>
+                    <td class="px-4 py-3 text-xs text-gray-400" x-text="fmtDate(distChequeMap[m.member_id].cheque_date)"></td>
+                    <td class="px-4 py-3">
+                      <span x-show="distChequeMap[m.member_id].status==='collected'" class="badge bg-green-100 text-green-700">Collected</span>
+                      <span x-show="distChequeMap[m.member_id].status==='issued'" class="badge bg-blue-100 text-blue-700">Issued</span>
+                    </td>
+                  </template>
+                </template>
+
+                <!-- Actions -->
+                <td class="px-4 py-3 no-print">
+                  <template x-if="distChequeMap[m.member_id]">
+                    <div class="flex gap-2">
+                      <button x-show="distChequeMap[m.member_id].status==='issued'"
+                              @click="collectDistCheque(m.member_id)"
+                              :disabled="distSaving===m.member_id"
+                              class="btn-primary text-xs py-1 px-2">Mark Collected</button>
+                      <button x-show="distChequeMap[m.member_id].status==='collected'"
+                              @click="uncollectDistCheque(m.member_id)"
+                              class="text-xs text-gray-400 hover:text-orange-500 border border-gray-200 hover:border-orange-200 rounded-lg px-2 py-1">Undo</button>
+                      <button @click="deleteDistCheque(m.member_id)"
+                              class="text-xs text-gray-300 hover:text-red-500 px-1">✕</button>
+                    </div>
+                  </template>
+                </td>
               </tr>
             </template>
             <tr x-show="!(distribution.members || []).length">
-              <td colspan="4" class="px-5 py-10 text-center text-gray-400">No member data for this cycle</td>
+              <td colspan="7" class="px-5 py-10 text-center text-gray-400">No member data for this cycle</td>
             </tr>
           </tbody>
-          <tfoot x-show="(distribution.members || []).length > 0" class="bg-gray-50 border-t-2 border-gray-200">
+          <tfoot x-show="(distribution.members||[]).length > 0" class="bg-gray-50 border-t-2 border-gray-200">
             <tr>
-              <td colspan="2" class="px-5 py-3 font-semibold text-gray-600 text-right">Total</td>
-              <td class="px-5 py-3 text-right font-bold text-gray-700 font-mono text-xs"
-                  x-text="distribution.total_weight"></td>
-              <td class="px-5 py-3 text-right font-bold text-equb-green"
-                  x-text="fmt(distribution.total_distributable)"></td>
+              <td colspan="2" class="px-4 py-3 text-right font-semibold text-gray-600">Total</td>
+              <td class="px-4 py-3 text-right font-bold text-equb-green" x-text="fmt(distribution.total_distributable)"></td>
+              <td colspan="4"></td>
             </tr>
           </tfoot>
         </table>
@@ -708,7 +766,7 @@
     </div>
 
     <p class="text-xs text-gray-400 text-center no-print">
-      Distribution is a projection based on current data. Finalize all expenses and voucher payments before distributing.
+      Finalize all expenses and voucher payments before issuing distribution cheques.
     </p>
   </div>
 
@@ -729,6 +787,9 @@ function reports() {
     generalLedger: [],
     expenses: [],
     distribution: {},
+    distCheques: [],
+    distForm: {},
+    distSaving: null,
     allCycles: [],
     settings: {},
     selectedCycle: '',
@@ -737,6 +798,12 @@ function reports() {
     savingExpense: false,
     loading: true,
     newExpense: { description: '', amount: null, expense_date: '', notes: '' },
+
+    get distChequeMap() {
+      const m = {};
+      for (const c of this.distCheques) m[c.member_id] = c;
+      return m;
+    },
 
     async load() {
       try {
@@ -756,7 +823,7 @@ function reports() {
         const cqs = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
         const cycleId = this.selectedCycle;
 
-        const [s, txs, af, lg, bs, vc, gl, exps, dist] = await Promise.all([
+        const [s, txs, af, lg, bs, vc, gl, exps, dist, distCheques] = await Promise.all([
           this.api('GET', `/api/reports/dashboard${cqs}`),
           this.api('GET', '/api/reports/transactions' + (cycleId ? `?cycle_id=${cycleId}` : '')),
           this.api('GET', `/api/reports/association-fund${cqs}`),
@@ -766,6 +833,7 @@ function reports() {
           this.api('GET', `/api/reports/general-ledger${cqs}`).catch(() => []),
           this.api('GET', `/api/reports/association-expenses${cqs}`).catch(() => []),
           this.api('GET', `/api/reports/cycle-distribution${cqs}`).catch(() => ({})),
+          this.api('GET', `/api/reports/distribution-cheques${cqs}`).catch(() => []),
         ]);
         this.stats = s;
         this.transactions = txs;
@@ -776,6 +844,7 @@ function reports() {
         this.generalLedger = gl;
         this.expenses = exps;
         this.distribution = dist;
+        this.distCheques = distCheques;
 
         if (cycleId) {
           this.paymentSummary = await this.api('GET', `/api/payments/summary/cycle/${cycleId}`).catch(() => ({}));
@@ -868,6 +937,56 @@ function reports() {
         this.balanceSheet = await this.api('GET', `/api/reports/balance-sheet${cqs}`).catch(() => ({}));
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.savingVoucher = null; }
+    },
+
+    async issueDistCheque(m) {
+      const num  = (this.distForm[m.member_id + '_num']  || '').trim();
+      const date = (this.distForm[m.member_id + '_date'] || '').trim();
+      if (!num || !date) return;
+      this.distSaving = m.member_id;
+      try {
+        const c = await this.api('POST', '/api/reports/distribution-cheques', {
+          cycle_id: parseInt(this.selectedCycle),
+          member_id: m.member_id,
+          amount: m.amount,
+          cheque_number: num,
+          cheque_date: date,
+        });
+        this.distCheques = [...this.distCheques.filter(x => x.member_id !== m.member_id), c];
+        this.showToast(`✓ Cheque #${c.cheque_number} issued to ${m.member_name}`);
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.distSaving = null; }
+    },
+
+    async collectDistCheque(member_id) {
+      const cheque = this.distChequeMap[member_id];
+      if (!cheque) return;
+      this.distSaving = member_id;
+      try {
+        const updated = await this.api('PUT', `/api/reports/distribution-cheques/${cheque.id}/collect`);
+        this.distCheques = this.distCheques.map(c => c.id === updated.id ? updated : c);
+        this.showToast('Marked as collected');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.distSaving = null; }
+    },
+
+    async uncollectDistCheque(member_id) {
+      const cheque = this.distChequeMap[member_id];
+      if (!cheque) return;
+      try {
+        const updated = await this.api('PUT', `/api/reports/distribution-cheques/${cheque.id}/uncollect`);
+        this.distCheques = this.distCheques.map(c => c.id === updated.id ? updated : c);
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async deleteDistCheque(member_id) {
+      const cheque = this.distChequeMap[member_id];
+      if (!cheque || !confirm('Delete this cheque record?')) return;
+      try {
+        await this.api('DELETE', `/api/reports/distribution-cheques/${cheque.id}`);
+        this.distCheques = this.distCheques.filter(c => c.id !== cheque.id);
+        this.showToast('Cheque record removed');
+      } catch(e) { this.showToast(e.message, 'error'); }
     },
 
     async addExpense() {
