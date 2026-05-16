@@ -1277,8 +1277,8 @@
       </div>
       <div class="flex gap-3 mt-5">
         <button @click="showChecklist = false" class="btn-secondary flex-1">Close</button>
-        <button x-show="checklist?.all_clear" @click="showChecklist = false; deleteCycle()"
-                class="btn-danger flex-1">Close Cycle</button>
+        <button x-show="checklist?.all_clear" @click="showChecklist = false; closeCycle()"
+                class="btn-primary flex-1">Close Cycle</button>
       </div>
     </div>
   </div>
@@ -1986,6 +1986,23 @@ function draws() {
         this.checklist = await this.api('GET', `/api/draws/cycles/${this.selectedCycle}/closure-checklist`);
       } catch(e) { this.showToast(e.message, 'error'); this.showChecklist = false; }
       finally { this.checklistLoading = false; }
+    },
+
+    async closeCycle() {
+      const cyc = this.cycles.find(c => c.id === parseInt(this.selectedCycle));
+      if (!cyc) return;
+      if (!confirm(`Mark "${cyc.name}" as completed? All data is preserved — this cannot be undone without admin reactivation.`)) return;
+      this.saving = true;
+      try {
+        await this.api('POST', `/api/draws/cycles/${cyc.id}/close`);
+        this.showToast(`✓ Cycle "${cyc.name}" closed and archived`);
+        this.cycles = await this.api('GET', '/api/draws/cycles');
+        const next = this.cycles.find(c => c.status === 'active') || this.cycles[0];
+        this.selectedCycle = next ? next.id : '';
+        if (this.selectedCycle) await this.loadCycleAndWeeks();
+        else { this.activeCycle = null; this.weeks = []; }
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
     },
 
     deleteCycle() {

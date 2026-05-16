@@ -831,6 +831,21 @@ def closure_checklist(cycle_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/cycles/{cycle_id}/close")
+def close_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
+    """Mark a cycle as completed (archive it). Data is preserved. Admin only."""
+    _require_admin(request)
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+    if cycle.status == "completed":
+        raise HTTPException(status_code=400, detail="Cycle is already completed")
+    cycle.status = "completed"
+    cycle.end_date = _utcnow()
+    db.commit()
+    return {"ok": True, "id": cycle.id, "name": cycle.name, "status": cycle.status}
+
+
 @router.post("/cycles/{cycle_id}/reactivate")
 def reactivate_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
     """Restore a completed cycle back to active status. Admin only."""
