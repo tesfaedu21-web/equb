@@ -232,7 +232,7 @@
       <span class="flex items-center gap-1.5">
         <span class="w-3 h-3 rounded inline-block" style="background:rgba(168,85,247,0.75)"></span>Group week
       </span>
-      <span class="ml-auto">Y-axis = collection rate %</span>
+      <span class="ml-auto">Y-axis = ETB collected</span>
     </div>
   </div>
 
@@ -475,13 +475,14 @@ function dashboard() {
       }
       if (window._equbTrendChart) { window._equbTrendChart.destroy(); }
       const data = this.trendData;
+      const fmt = v => v >= 1000 ? (v/1000).toFixed(1).replace(/\.0$/,'') + 'k' : String(v);
       window._equbTrendChart = new Chart(canvas, {
         type: 'bar',
         data: {
           labels: data.map(w => 'W' + w.week_number),
           datasets: [{
-            label: 'Collection Rate',
-            data: data.map(w => w.total > 0 ? Math.round(w.paid / w.total * 100) : 0),
+            label: 'Collected',
+            data: data.map(w => w.paid || 0),
             backgroundColor: data.map(w => w.is_group_week ? 'rgba(168,85,247,0.75)' : 'rgba(7,137,48,0.75)'),
             borderRadius: 5,
             borderSkipped: false,
@@ -502,15 +503,16 @@ function dashboard() {
                 title: items => 'Week ' + (data[items[0].dataIndex]?.week_number || ''),
                 label: item => {
                   const w = data[item.dataIndex];
-                  return ` ${item.raw}% rate  ·  ${w.paid_count ?? 0} paid`;
+                  const rate = w.total > 0 ? Math.round(w.paid / w.total * 100) : 0;
+                  return ` ${item.raw.toLocaleString()} ETB  ·  ${w.paid_count ?? 0} paid  ·  ${rate}% rate`;
                 }
               }
             }
           },
           scales: {
             y: {
-              beginAtZero: true, max: 100,
-              ticks: { callback: v => v + '%', color: '#9ca3af', font: { size: 11 } },
+              beginAtZero: true,
+              ticks: { callback: v => fmt(v), color: '#9ca3af', font: { size: 11 } },
               grid: { color: 'rgba(0,0,0,0.05)' },
               border: { display: false }
             },
