@@ -2,6 +2,92 @@
 {% block title %}Reports — እቁብ Equb{% endblock %}
 {% block nav_reports %}active{% endblock %}
 
+{% block head %}
+<style>
+/* Screen: hide print-only elements */
+.print-header, .print-section-title { display: none; }
+
+@media print {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+
+  /* Hide sidebar, topbar, chrome */
+  body > div > aside,
+  .mobile-topbar,
+  .page-top-accent,
+  .no-print { display: none !important; }
+
+  main { width: 100% !important; overflow: visible !important; padding: 0 !important; }
+  body { background: white !important; font-size: 11px; margin: 0; }
+
+  /* Force all tab sections visible */
+  [data-print-section] { display: block !important; }
+
+  /* Print header */
+  .print-header {
+    display: flex !important;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #078930;
+    margin-bottom: 18px;
+  }
+  .print-header-logo {
+    width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%) !important;
+  }
+  .print-header-org { font-size: 18px; font-weight: 800; color: #111827; }
+  .print-header-cycle { font-size: 12px; color: #374151; font-weight: 600; margin-top: 1px; }
+  .print-header-date { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+
+  /* Section titles & page breaks */
+  .print-section-title {
+    display: block !important;
+    font-size: 12px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #078930;
+    border-bottom: 1px solid #d1fae5;
+    padding-bottom: 4px; margin-bottom: 12px;
+    page-break-before: always;
+  }
+  [data-print-section]:first-of-type .print-section-title { page-break-before: avoid; }
+
+  /* Cards */
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 6px !important;
+    padding: 10px 12px !important;
+    break-inside: avoid;
+    margin-bottom: 10px;
+  }
+
+  /* Tables */
+  table { font-size: 10px; width: 100%; }
+  th, td { padding: 3px 6px !important; }
+  .badge { font-size: 9px; padding: 1px 5px; }
+  h3 { font-size: 12px; font-weight: 700; margin-bottom: 6px !important; }
+
+  /* Remove scroll/height constraints */
+  [class*="max-h-"] { max-height: none !important; }
+  .overflow-y-auto, .overflow-x-auto { overflow: visible !important; }
+
+  /* Grid: single column by default, keep 3-col stat grids */
+  .grid { grid-template-columns: 1fr !important; gap: 8px !important; }
+  .grid.grid-cols-2.lg\:grid-cols-3,
+  .grid.grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; }
+
+  /* Payment rows */
+  .payment-row-date, .payment-row-amount { white-space: nowrap; }
+  .payment-row-bar { display: none !important; }
+  .no-print-cell { display: none !important; }
+
+  /* Hide interactive chrome */
+  #addExpenseForm { display: none !important; }
+  button { display: none !important; }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div x-data="reports()" x-init="load()" class="p-8 space-y-6">
 
@@ -599,84 +685,6 @@
 {% endblock %}
 
 {% block scripts %}
-<style>
-/* Screen: hide print-only elements */
-.print-header, .print-section-title { display: none; }
-
-@media print {
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-
-  /* Hide nav and UI chrome */
-  body > div > aside, .mobile-topbar, .page-top-accent, .no-print { display: none !important; }
-  main { width: 100% !important; overflow: visible !important; padding: 0 !important; }
-  body { background: white !important; font-size: 11px; margin: 0; }
-
-  /* Force ALL sections to show — backup for Alpine x-show */
-  [data-print-section] { display: block !important; }
-
-  /* Print header */
-  .print-header {
-    display: flex !important;
-    align-items: center;
-    gap: 14px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #078930;
-    margin-bottom: 18px;
-  }
-  .print-header-logo {
-    width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
-    background: linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%) !important;
-  }
-  .print-header-org { font-size: 18px; font-weight: 800; color: #111827; }
-  .print-header-cycle { font-size: 12px; color: #374151; font-weight: 600; margin-top: 1px; }
-  .print-header-date { font-size: 10px; color: #9ca3af; margin-top: 2px; }
-
-  /* Section title — page break before each section except first */
-  .print-section-title {
-    display: block !important;
-    font-size: 12px; font-weight: 800; text-transform: uppercase;
-    letter-spacing: 0.05em; color: #078930;
-    border-bottom: 1px solid #d1fae5;
-    padding-bottom: 4px; margin-bottom: 12px;
-    page-break-before: always;
-  }
-  [data-print-section]:first-of-type .print-section-title { page-break-before: avoid; }
-
-  /* Cards */
-  .card {
-    box-shadow: none !important; border: 1px solid #e5e7eb !important;
-    border-radius: 6px !important; padding: 10px 12px !important;
-    break-inside: avoid; margin-bottom: 10px;
-  }
-
-  /* Tables */
-  table { font-size: 10px; width: 100%; }
-  th, td { padding: 3px 6px !important; }
-  .badge { font-size: 9px; padding: 1px 5px; }
-  h3 { font-size: 12px; font-weight: 700; margin-bottom: 6px !important; }
-
-  /* Remove ALL scroll/height limits */
-  [class*="max-h-"] { max-height: none !important; }
-  .overflow-y-auto, .overflow-x-auto { overflow: visible !important; }
-
-  /* Stack all grids to single column in print — prevents tight 2-col wrapping */
-  .grid { grid-template-columns: 1fr !important; gap: 8px !important; }
-  /* KPI row stays 3-col since those cards are small */
-  .grid.grid-cols-2.lg\:grid-cols-3,
-  .grid.grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; }
-
-  /* Payment list rows — prevent date/amount wrapping */
-  .payment-row-date, .payment-row-amount { white-space: nowrap; }
-  /* Hide progress bars in print */
-  .payment-row-bar { display: none !important; }
-
-  /* Hide interactive elements */
-  .no-print-cell { display: none !important; }
-  #addExpenseForm { display: none !important; }
-  button { display: none !important; }
-}
-</style>
 <script>
 function reports() {
   return {
