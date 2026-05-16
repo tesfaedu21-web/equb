@@ -823,7 +823,18 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
                     collected[w.id] = collected.get(w.id, 0) + p.amount
                     break
 
-    # Also compute paid_count per week_id (for tooltip)
+    # Per-week obligation: sum payments by week_id regardless of paid_date
+    all_week_payments = db.query(Payment).filter(Payment.week_id.in_(week_ids)).all()
+    obligation_paid: dict = {}
+    obligation_counts: dict = {}
+    obligation_total: dict = {}
+    for p in all_week_payments:
+        obligation_total[p.week_id] = obligation_total.get(p.week_id, 0) + p.amount
+        if p.status == "paid":
+            obligation_paid[p.week_id] = obligation_paid.get(p.week_id, 0) + p.amount
+            obligation_counts[p.week_id] = obligation_counts.get(p.week_id, 0) + 1
+
+    # paid_count per week_id for cash-flow tooltip
     paid_counts: dict = {}
     for p in all_paid:
         paid_counts[p.week_id] = paid_counts.get(p.week_id, 0) + 1
@@ -832,23 +843,29 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
     for w in sorted_weeks:
         if w.draw_date.date() > today:
             result.append({
-                "week_number":   w.week_number,
-                "draw_date":     w.draw_date.isoformat(),
-                "is_group_week": w.is_group_week,
-                "week_status":   w.status,
-                "paid":          0.0,
-                "paid_count":    0,
-                "total":         0.0,
+                "week_number":    w.week_number,
+                "draw_date":      w.draw_date.isoformat(),
+                "is_group_week":  w.is_group_week,
+                "week_status":    w.status,
+                "paid":           0.0,
+                "paid_count":     0,
+                "total":          0.0,
+                "cash_collected": 0.0,
+                "obligation_paid": 0.0,
+                "obligation_total": float(obligation_total.get(w.id, 0)),
             })
             continue
         result.append({
-            "week_number":   w.week_number,
-            "draw_date":     w.draw_date.isoformat(),
-            "is_group_week": w.is_group_week,
-            "week_status":   w.status,
-            "paid":          float(collected.get(w.id, 0)),
-            "paid_count":    paid_counts.get(w.id, 0),
-            "total":         float(collected.get(w.id, 0)),
+            "week_number":    w.week_number,
+            "draw_date":      w.draw_date.isoformat(),
+            "is_group_week":  w.is_group_week,
+            "week_status":    w.status,
+            "paid":           float(collected.get(w.id, 0)),
+            "paid_count":     paid_counts.get(w.id, 0),
+            "total":          float(collected.get(w.id, 0)),
+            "cash_collected": float(collected.get(w.id, 0)),
+            "obligation_paid": float(obligation_paid.get(w.id, 0)),
+            "obligation_total": float(obligation_total.get(w.id, 0)),
         })
     return result
 
