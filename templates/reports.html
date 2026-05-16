@@ -505,12 +505,11 @@
               <th class="px-4 py-3 no-print-cell"></th>
             </tr>
           </thead>
-          <tbody>
             <template x-for="v in vouchers" :key="v.id">
               <tbody>
                 <!-- Main row -->
                 <tr class="border-b transition-colors"
-                    :class="v.voucher_paid ? 'bg-green-50/40' : 'hover:bg-gray-50/60'">
+                    :class="v.voucher_paid ? 'bg-green-50' : 'hover:bg-gray-50'">
                   <td class="px-4 py-3 font-semibold text-gray-600" x-text="'#' + v.week_number"></td>
                   <td class="px-4 py-3 text-gray-400 text-xs" x-text="fmtDate(v.cheque_date)"></td>
 
@@ -636,7 +635,6 @@
                 <td colspan="10" class="px-5 py-10 text-center text-gray-400">No disbursements recorded yet</td>
               </tr>
             </tbody>
-          </tbody>
         </table>
       </div>
     </div>
