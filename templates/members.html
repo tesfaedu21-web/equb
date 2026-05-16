@@ -843,33 +843,33 @@ function members() {
 
         // ── Payment history rows (one row per collection event / batch) ───────
         const batchRows = d.batches.map((b,i) => `
-          <tr style="border-bottom:1px solid #f0f0f0">
-            <td style="padding:7px 10px;color:#999;font-size:12px">${i+1}</td>
-            <td style="padding:7px 10px">
-              <div style="font-weight:700;color:#078930;font-size:13px">${gregToEth(b.payment_date)}</div>
-              <div style="font-size:11px;color:#aaa;margin-top:1px">${fmtDt(b.payment_date)}</div>
+          <tr>
+            <td style="color:#999">${i+1}</td>
+            <td>
+              <div style="font-weight:700;color:#078930">${gregToEth(b.payment_date)}</div>
+              <div style="font-size:10px;color:#aaa;margin-top:1px">${fmtDt(b.payment_date)}</div>
             </td>
-            <td style="padding:7px 10px">
-              <div style="font-weight:600;font-size:13px">Week ${b.weeks_covered.join(', ')}</div>
-              <div style="font-size:11px;color:#888">${b.weeks_count} week${b.weeks_count>1?'s':''}</div>
+            <td>
+              <div style="font-weight:600">Week ${b.weeks_covered.join(', ')}</div>
+              <div style="font-size:10px;color:#888">${b.weeks_count} week${b.weeks_count>1?'s':''}</div>
             </td>
-            <td style="padding:7px 10px;font-size:12px;color:#555">${methodLabel(b.payment_method)}</td>
-            <td style="padding:7px 10px;font-size:11px;color:#999;font-family:monospace">${b.reference||'—'}</td>
-            <td style="padding:7px 10px;font-size:12px;color:#555">${b.collected_by_name||'—'}</td>
-            <td style="padding:7px 10px;text-align:right;font-weight:700;color:#15803d;font-size:13px">${fmtNum(b.total_amount)}</td>
+            <td style="color:#555">${methodLabel(b.payment_method)}</td>
+            <td style="font-family:monospace;color:#999">${b.reference||'—'}</td>
+            <td style="color:#555">${b.collected_by_name||'—'}</td>
+            <td style="text-align:right;font-weight:700;color:#15803d">${fmtNum(b.total_amount)}</td>
           </tr>`).join('');
 
         // ── Outstanding / unpaid weeks rows ───────────────────────────────────
         const unpaidRows = d.unpaid.map((p,i) => `
-          <tr style="border-bottom:1px solid #f0f0f0">
-            <td style="padding:6px 10px;color:#999;font-size:12px">${i+1}</td>
-            <td style="padding:6px 10px;font-weight:600">Week ${p.week_number}</td>
-            <td style="padding:6px 10px;color:#666;font-size:12px">${fmtDt(p.draw_date)}</td>
-            <td style="padding:6px 10px">${
-              p.status==='missed' ? '<span style="color:#991b1b;font-weight:600">✗ Missed</span>' :
-              p.status==='late'   ? '<span style="color:#9a3412;font-weight:600">⚠ Late</span>' :
+          <tr>
+            <td style="color:#999">${i+1}</td>
+            <td style="font-weight:600">Week ${p.week_number}</td>
+            <td style="color:#666">${fmtDt(p.draw_date)}</td>
+            <td>${
+              p.status==='missed' ? '<span style="color:#991b1b;font-weight:600">Missed</span>' :
+              p.status==='late'   ? '<span style="color:#9a3412;font-weight:600">Late</span>' :
                                     '<span style="color:#854d0e">Pending</span>'}</td>
-            <td style="padding:6px 10px;text-align:right;font-weight:600;color:#991b1b">${fmtNum(p.amount)}</td>
+            <td style="text-align:right;font-weight:600;color:#991b1b">${fmtNum(p.amount)}</td>
           </tr>`).join('');
 
         const orgName = this.settings?.group_name || 'እቁብ';

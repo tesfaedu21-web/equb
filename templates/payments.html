@@ -1207,7 +1207,7 @@ function payments() {
         return `${months[+m-1]} ${+day}, ${y}`;
       };
 
-      const methodLabel = m => ({ cash: '💵 Cash', bank_transfer: '🏦 Bank Transfer', cheque: '📋 Cheque' }[m] || m);
+      const methodLabel = m => ({ cash: 'Cash', bank_transfer: 'Bank Transfer', cheque: 'Cheque' }[m] || m);
       const methodColor = m => ({ cash: '#16a34a', bank_transfer: '#2563eb', cheque: '#7c3aed' }[m] || '#111');
       const methodBg    = m => ({ cash: '#f0fdf4', bank_transfer: '#eff6ff', cheque: '#faf5ff' }[m] || '#f9fafb');
 
@@ -1215,14 +1215,14 @@ function payments() {
         const rows = d.groups[method];
         if (!rows || rows.length === 0) return '';
         const rowHtml = rows.map((row, i) => `
-          <tr style="border-bottom:1px solid #f0f0f0">
-            <td style="padding:6px 10px;color:#999;font-size:12px">${i+1}</td>
-            <td style="padding:6px 10px;font-weight:500">${row.member_name}</td>
-            <td style="padding:6px 10px;color:#666;font-size:12px">${row.spot_numbers.join(', ') || '—'}</td>
-            <td style="padding:6px 10px;font-size:12px;color:#555">${row.week_numbers.length > 0 ? 'Wk ' + row.week_numbers.join(', ') : row.weeks_paid + ' wk(s)'}</td>
-            <td style="padding:6px 10px;font-size:11px;color:#999;font-family:monospace">${row.reference || '—'}</td>
-            <td style="padding:6px 10px;font-size:12px;color:#555">${row.collected_by_name || '—'}</td>
-            <td style="padding:6px 10px;text-align:right;font-weight:600">${fmtNum(row.total_amount)}</td>
+          <tr>
+            <td style="color:#999">${i+1}</td>
+            <td style="font-weight:500">${row.member_name}</td>
+            <td style="color:#666">${row.spot_numbers.join(', ') || '—'}</td>
+            <td>${row.week_numbers.length > 0 ? 'Wk ' + row.week_numbers.join(', ') : row.weeks_paid + ' wk(s)'}</td>
+            <td style="font-family:monospace;color:#999">${row.reference || '—'}</td>
+            <td style="color:#555">${row.collected_by_name || '—'}</td>
+            <td style="text-align:right;font-weight:600">${fmtNum(row.total_amount)}</td>
           </tr>`).join('');
         return `
           <div style="margin-bottom:22px;break-inside:avoid">
@@ -1373,13 +1373,13 @@ ${groupSections}
       }[m] || `<span>${m}</span>`);
 
       const rows = d.payments.map((p, i) => `
-        <tr style="border-bottom:1px solid #f0f0f0">
-          <td style="padding:7px 10px;color:#666">${i + 1}</td>
-          <td style="padding:7px 10px;font-weight:500">${p.member_name}</td>
-          <td style="padding:7px 10px">${methodBadge(p.method)}</td>
-          <td style="padding:7px 10px;color:#888;font-size:12px;font-family:monospace">${p.reference || '—'}</td>
-          <td style="padding:7px 10px;color:#888;font-size:12px">${fmtDt(p.paid_date)}</td>
-          <td style="padding:7px 10px;text-align:right;font-weight:600">${fmtNum(p.amount)}</td>
+        <tr>
+          <td style="color:#666">${i + 1}</td>
+          <td style="font-weight:500">${p.member_name}</td>
+          <td>${methodBadge(p.method)}</td>
+          <td style="font-family:monospace;color:#888">${p.reference || '—'}</td>
+          <td style="color:#888">${fmtDt(p.paid_date)}</td>
+          <td style="text-align:right;font-weight:600">${fmtNum(p.amount)}</td>
         </tr>`).join('');
 
       const typeLabel = d.is_group_week ? ' — Group Week' : '';
