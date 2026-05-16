@@ -15,35 +15,70 @@ router = APIRouter()
 
 def _calc_issued_counts(db, week_ids, cycle_id):
     """
-    For each week, count how many full/half vouchers were issued (= paid members × their spot type).
-    Returns dict: {week_id: {"full_issued": int, "half_issued": int}}
+    For each disbursement week, count full/half vouchers issued.
+
+    Vouchers are issued per payment record, not per unique member: a member
+    who pays the current week + 2 missed weeks in one session earns 3 vouchers.
+
+    Each Payment is assigned to the disbursement week whose collection window
+    (prev_week.draw_date, this_week.draw_date] contains Payment.paid_date.
+    If paid_date is NULL the Payment's own week_id is used as a fallback.
     """
     if not week_ids:
         return {}
-    paid_pmts = db.query(Payment).filter(
-        Payment.week_id.in_(week_ids), Payment.status == "paid"
-    ).all()
-    members_by_week: dict = {}
-    for p in paid_pmts:
-        members_by_week.setdefault(p.week_id, set()).add(p.member_id)
-    all_member_ids = {mid for mids in members_by_week.values() for mid in mids}
+
+    # All weeks in this cycle ordered — needed to build collection windows
+    all_weeks = (
+        db.query(Week)
+        .filter(Week.cycle_id == cycle_id)
+        .order_by(Week.week_number)
+        .all()
+    )
+    epoch = datetime(2000, 1, 1)
+    windows: dict = {}
+    for i, w in enumerate(all_weeks):
+        ws = all_weeks[i - 1].draw_date if i > 0 else epoch
+        windows[w.id] = (ws, w.draw_date)
+
+    # MemberSpot for full / half spot-type lookup
+    all_ms = (
+        db.query(MemberSpot)
+        .filter(MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True)
+        .all()
+    )
     ms_by_member: dict = {}
-    if all_member_ids:
-        for ms in db.query(MemberSpot).filter(
-            MemberSpot.member_id.in_(all_member_ids),
-            MemberSpot.cycle_id == cycle_id,
-            MemberSpot.is_active == True,
-        ).all():
-            ms_by_member.setdefault(ms.member_id, []).append(ms)
+    for ms in all_ms:
+        ms_by_member.setdefault(ms.member_id, []).append(ms)
+
+    # All paid payments for the cycle — catch-up payments have a different
+    # week_id from the disbursement week but their paid_date falls in its window
+    cycle_wids = [w.id for w in all_weeks]
+    all_paid = (
+        db.query(Payment)
+        .filter(Payment.week_id.in_(cycle_wids), Payment.status == "paid")
+        .all()
+    )
+
     result = {}
     for wid in week_ids:
+        if wid not in windows:
+            result[wid] = {"full_issued": 0, "half_issued": 0}
+            continue
+
+        ws, we = windows[wid]
         full_c = half_c = 0
-        for mid in members_by_week.get(wid, set()):
-            for ms in ms_by_member.get(mid, []):
+
+        for p in all_paid:
+            in_window = p.paid_date is not None and ws < p.paid_date <= we
+            fallback  = p.paid_date is None and p.week_id == wid
+            if not (in_window or fallback):
+                continue
+            for ms in ms_by_member.get(p.member_id, []):
                 if ms.share == "full":
                     full_c += 1
                 else:
                     half_c += 1
+
         result[wid] = {"full_issued": full_c, "half_issued": half_c}
     return result
 
