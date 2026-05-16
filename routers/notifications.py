@@ -307,7 +307,8 @@ def update_template(template_id: int, data: TemplateUpdate, db: Session = Depend
 
 
 @router.post("/send")
-def send_to_members(data: SendRequest, db: Session = Depends(get_db)):
+def send_to_members(data: SendRequest, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     tmpl = db.query(NotificationTemplate).filter_by(key=data.template_key).first()
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")

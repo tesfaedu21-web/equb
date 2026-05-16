@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func as sqla_func
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
@@ -83,7 +83,14 @@ def list_disbursements(cycle_id: Optional[int] = None, db: Session = Depends(get
     if not cycle_id:
         active = db.query(Cycle).filter(Cycle.status == "active").first()
         cycle_id = active.id if active else None
-    q = db.query(PotDisbursement).join(Week)
+    q = db.query(PotDisbursement).join(Week).options(
+        joinedload(PotDisbursement.winner_spot).joinedload("spot_assignments").joinedload("member"),
+        joinedload(PotDisbursement.week).joinedload("transactions").joinedload("buyer"),
+        joinedload(PotDisbursement.member),
+        joinedload(PotDisbursement.guarantor_1),
+        joinedload(PotDisbursement.guarantor_2),
+        joinedload(PotDisbursement.guarantor_3),
+    )
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)
     rows = q.order_by(PotDisbursement.id.desc()).all()
@@ -92,7 +99,14 @@ def list_disbursements(cycle_id: Optional[int] = None, db: Session = Depends(get
 
 @router.get("/week/{week_id}")
 def get_disbursement_for_week(week_id: int, db: Session = Depends(get_db)):
-    rows = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).all()
+    rows = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).options(
+        joinedload(PotDisbursement.winner_spot).joinedload("spot_assignments").joinedload("member"),
+        joinedload(PotDisbursement.week).joinedload("transactions").joinedload("buyer"),
+        joinedload(PotDisbursement.member),
+        joinedload(PotDisbursement.guarantor_1),
+        joinedload(PotDisbursement.guarantor_2),
+        joinedload(PotDisbursement.guarantor_3),
+    ).all()
     return [_to_dict(d) for d in rows]
 
 
@@ -298,7 +312,7 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
         PotDisbursement.week_id.in_(cycle_week_ids)
     ).scalar() or 0.0
     available = total_collected - already_disbursed
-    if data.gross_amount > available + 1:
+    if round(data.gross_amount, 2) > round(available + 0.005, 2):
         raise HTTPException(
             status_code=400,
             detail=f"Insufficient funds: {available:,.0f} ETB available, "
