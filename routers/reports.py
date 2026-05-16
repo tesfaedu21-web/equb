@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, DistributionCheque, cycle_cfg
+from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, DistributionCheque, VoucherReturn, cycle_cfg
 from routers.deps import _require_admin
 
 
@@ -13,19 +13,52 @@ def _utcnow():
 router = APIRouter()
 
 
+def _calc_issued_counts(db, week_ids, cycle_id):
+    """
+    For each week, count how many full/half vouchers were issued (= paid members × their spot type).
+    Returns dict: {week_id: {"full_issued": int, "half_issued": int}}
+    """
+    if not week_ids:
+        return {}
+    paid_pmts = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids), Payment.status == "paid"
+    ).all()
+    members_by_week: dict = {}
+    for p in paid_pmts:
+        members_by_week.setdefault(p.week_id, set()).add(p.member_id)
+    all_member_ids = {mid for mids in members_by_week.values() for mid in mids}
+    ms_by_member: dict = {}
+    if all_member_ids:
+        for ms in db.query(MemberSpot).filter(
+            MemberSpot.member_id.in_(all_member_ids),
+            MemberSpot.cycle_id == cycle_id,
+            MemberSpot.is_active == True,
+        ).all():
+            ms_by_member.setdefault(ms.member_id, []).append(ms)
+    result = {}
+    for wid in week_ids:
+        full_c = half_c = 0
+        for mid in members_by_week.get(wid, set()):
+            for ms in ms_by_member.get(mid, []):
+                if ms.share == "full":
+                    full_c += 1
+                else:
+                    half_c += 1
+        result[wid] = {"full_issued": full_c, "half_issued": half_c}
+    return result
+
+
 def _calc_vendor_payments(db, disbs, cycle_id):
     """
-    For each disbursement, calculate how much the vendor actually receives
-    (only paid spots for that week, not all spots).
+    For each disbursement, calculate vendor payment from VoucherReturn records when available,
+    falling back to paid-member counts. Used by balance sheet and general ledger.
     Returns dict: {disbursement_id: {"vendor_payment": float, "vendor_paid_spots": int}}
     """
     if not disbs:
         return {}
 
-    from sqlalchemy import func as _func
     from database import cycle_cfg as _ccfg
 
-    # Get cycle config once
     cycle_obj = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     gs = db.query(Settings).first()
     cfg = _ccfg(cycle_obj, gs) if cycle_obj else None
@@ -33,45 +66,27 @@ def _calc_vendor_payments(db, disbs, cycle_id):
         return {d.id: {"vendor_payment": 0, "vendor_paid_spots": 0} for d in disbs}
 
     week_ids = [d.week_id for d in disbs]
+    issued = _calc_issued_counts(db, week_ids, cycle_id)
 
-    # Single query: all paid payments for those weeks
-    paid_pmts = db.query(Payment).filter(
-        Payment.week_id.in_(week_ids), Payment.status == "paid"
-    ).all()
-
-    # Group member_ids by week_id
-    members_by_week: dict = {}
-    for p in paid_pmts:
-        members_by_week.setdefault(p.week_id, set()).add(p.member_id)
-
-    # Single query: all active MemberSpots for relevant members in this cycle
-    all_member_ids = {mid for mids in members_by_week.values() for mid in mids}
-    if not all_member_ids:
-        return {d.id: {"vendor_payment": 0, "vendor_paid_spots": 0} for d in disbs}
-
-    ms_rows = db.query(MemberSpot).filter(
-        MemberSpot.member_id.in_(all_member_ids),
-        MemberSpot.cycle_id == cycle_id,
-        MemberSpot.is_active == True,
-    ).all()
-
-    # Index MemberSpots by member_id
-    ms_by_member: dict = {}
-    for ms in ms_rows:
-        ms_by_member.setdefault(ms.member_id, []).append(ms)
+    # Load VoucherReturn records for these weeks
+    vr_rows = db.query(VoucherReturn).filter(VoucherReturn.week_id.in_(week_ids)).all()
+    returns_by_week = {vr.week_id: vr for vr in vr_rows}
 
     result = {}
     for d in disbs:
-        paid_members = members_by_week.get(d.week_id, set())
-        vendor_payment = 0.0
-        vendor_paid_spots = 0
-        for mid in paid_members:
-            for ms in ms_by_member.get(mid, []):
-                vendor_paid_spots += 1
-                vendor_payment += (cfg.full_spot_voucher if ms.share == "full"
-                                   else cfg.half_spot_voucher)
-        result[d.id] = {"vendor_payment": round(vendor_payment, 2),
-                         "vendor_paid_spots": vendor_paid_spots}
+        vr = returns_by_week.get(d.week_id)
+        if vr is not None:
+            full_c = vr.full_count
+            half_c = vr.half_count
+        else:
+            iss = issued.get(d.week_id, {"full_issued": 0, "half_issued": 0})
+            full_c = iss["full_issued"]
+            half_c = iss["half_issued"]
+        vendor_payment = full_c * cfg.full_spot_voucher + half_c * cfg.half_spot_voucher
+        result[d.id] = {
+            "vendor_payment": round(vendor_payment, 2),
+            "vendor_paid_spots": full_c + half_c,
+        }
     return result
 
 
@@ -522,7 +537,7 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
 
 @router.get("/vouchers")
 def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """List of all disbursements with voucher tracking status."""
+    """List disbursements with physical voucher issued/returned counts."""
     if not cycle_id:
         cycle = db.query(Cycle).filter(Cycle.status == "active").first()
         if not cycle:
@@ -536,10 +551,15 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
     disbs = (db.query(PotDisbursement)
              .filter(PotDisbursement.week_id.in_(week_ids))
              .order_by(PotDisbursement.cheque_date).all())
-    # Pre-fetch cycle config once
+
     cycle_obj = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     gs = db.query(Settings).first()
     cfg = cycle_cfg(cycle_obj, gs) if cycle_obj else None
+
+    disb_week_ids = [d.week_id for d in disbs]
+    issued = _calc_issued_counts(db, disb_week_ids, cycle_id) if cfg else {}
+    vr_rows = db.query(VoucherReturn).filter(VoucherReturn.week_id.in_(disb_week_ids)).all()
+    returns_by_week = {vr.week_id: vr for vr in vr_rows}
 
     rows = []
     for d in disbs:
@@ -548,33 +568,36 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
             if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
         ) if d.winner_spot else "—"
 
-        # Vendor payment = only members who actually PAID that week
-        vendor_payment = 0
-        vendor_paid_spots = 0
-        if cfg and d.week_id:
-            paid_pmts = db.query(Payment).filter(
-                Payment.week_id == d.week_id,
-                Payment.status == "paid"
-            ).all()
-            for pmt in paid_pmts:
-                for ms in db.query(MemberSpot).filter(
-                    MemberSpot.member_id == pmt.member_id,
-                    MemberSpot.cycle_id == cycle_id,
-                    MemberSpot.is_active == True
-                ).all():
-                    vendor_paid_spots += 1
-                    vendor_payment += (cfg.full_spot_voucher if ms.share == "full"
-                                       else cfg.half_spot_voucher)
+        wid = d.week_id
+        iss = issued.get(wid, {"full_issued": 0, "half_issued": 0})
+        vr = returns_by_week.get(wid)
+
+        full_returned = vr.full_count if vr is not None else None
+        half_returned = vr.half_count if vr is not None else None
+
+        if cfg and vr is not None:
+            vendor_payment = (vr.full_count * cfg.full_spot_voucher
+                              + vr.half_count * cfg.half_spot_voucher)
+        elif cfg:
+            vendor_payment = (iss["full_issued"] * cfg.full_spot_voucher
+                              + iss["half_issued"] * cfg.half_spot_voucher)
+        else:
+            vendor_payment = 0
 
         voucher_deduction = d.voucher_deduction or 0
         rows.append({
             "id":                d.id,
+            "week_id":           wid,
             "week_number":       d.week.week_number if d.week else None,
             "cheque_date":       d.cheque_date.isoformat(),
             "winner":            winner,
             "voucher_deduction": voucher_deduction,
+            "full_issued":       iss["full_issued"],
+            "half_issued":       iss["half_issued"],
+            "full_returned":     full_returned,
+            "half_returned":     half_returned,
+            "return_recorded":   vr is not None,
             "vendor_payment":    round(vendor_payment, 2),
-            "vendor_paid_spots": vendor_paid_spots,
             "assoc_retains":     round(voucher_deduction - vendor_payment, 2),
             "voucher_paid":      bool(d.voucher_paid),
             "voucher_paid_date": d.voucher_paid_date.isoformat() if d.voucher_paid_date else None,
@@ -584,7 +607,6 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
 
 @router.put("/vouchers/{disbursement_id}/mark-paid")
 def mark_voucher_paid(disbursement_id: int, db: Session = Depends(get_db)):
-    """Mark a week's voucher amount as paid to the vendor."""
     d = db.query(PotDisbursement).filter(PotDisbursement.id == disbursement_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Disbursement not found")
@@ -601,6 +623,51 @@ def unmark_voucher_paid(disbursement_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Disbursement not found")
     d.voucher_paid = False
     d.voucher_paid_date = None
+    db.commit()
+    return {"ok": True}
+
+
+class VoucherReturnIn(BaseModel):
+    full_count: int = Field(..., ge=0)
+    half_count: int = Field(..., ge=0)
+    notes: Optional[str] = None
+
+
+@router.post("/voucher-returns/{week_id}")
+def record_voucher_return(week_id: int, data: VoucherReturnIn,
+                          request: Request, db: Session = Depends(get_db)):
+    """Record (or update) how many full/half voucher cards the vendor returned for a week."""
+    _require_admin(request)
+    w = db.query(Week).filter(Week.id == week_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="Week not found")
+    vr = db.query(VoucherReturn).filter(VoucherReturn.week_id == week_id).first()
+    if vr:
+        vr.full_count = data.full_count
+        vr.half_count = data.half_count
+        vr.notes = data.notes
+        vr.recorded_at = _utcnow()
+    else:
+        vr = VoucherReturn(
+            week_id=week_id,
+            full_count=data.full_count,
+            half_count=data.half_count,
+            notes=data.notes,
+        )
+        db.add(vr)
+    db.commit()
+    return {"ok": True, "week_id": week_id,
+            "full_count": vr.full_count, "half_count": vr.half_count}
+
+
+@router.delete("/voucher-returns/{week_id}")
+def delete_voucher_return(week_id: int, request: Request, db: Session = Depends(get_db)):
+    """Remove a voucher return record for a week."""
+    _require_admin(request)
+    vr = db.query(VoucherReturn).filter(VoucherReturn.week_id == week_id).first()
+    if not vr:
+        raise HTTPException(status_code=404, detail="No return recorded for this week")
+    db.delete(vr)
     db.commit()
     return {"ok": True}
 

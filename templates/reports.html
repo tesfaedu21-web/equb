@@ -58,9 +58,14 @@
             :class="activeTab==='vouchers' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'"
             class="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5">
       Vouchers
-      <span x-show="vouchers.filter(v=>!v.voucher_paid && v.voucher_deduction>0).length > 0"
+      <span x-show="vouchers.filter(v=>!v.return_recorded && v.voucher_deduction>0).length > 0"
+            class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-xs font-bold"
+            x-text="vouchers.filter(v=>!v.return_recorded && v.voucher_deduction>0).length"
+            title="Weeks with no voucher return recorded"></span>
+      <span x-show="vouchers.filter(v=>v.return_recorded && !v.voucher_paid).length > 0"
             class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-xs font-bold"
-            x-text="vouchers.filter(v=>!v.voucher_paid && v.voucher_deduction>0).length"></span>
+            x-text="vouchers.filter(v=>v.return_recorded && !v.voucher_paid).length"
+            title="Returns recorded but not yet paid to vendor"></span>
     </button>
     <button @click="activeTab='ledger'"
             :class="activeTab==='ledger' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'"
@@ -476,62 +481,163 @@
     <div class="card p-0 overflow-hidden">
       <div class="px-5 py-3 bg-gray-50 border-b">
         <p class="text-sm text-gray-600">
-          The association deducts the <strong>full voucher</strong> from the winner's pot (all spots).
-          The vendor is paid only for members who <strong>actually paid</strong> that week — missing members' vouchers stay with the association.
+          Members receive physical voucher cards (full / half) each week they pay.
+          The vendor collects used cards and returns them to the association.
+          Record the returned card counts below — vendor is paid based on cards actually returned.
         </p>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-white border-b">
             <tr>
-              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Week</th>
-              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Date</th>
-              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Winner / Buyer</th>
-              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Collected from Pot</th>
-              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Vendor Gets</th>
-              <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Assoc Retains</th>
-              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Status</th>
-              <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase">Paid Date</th>
-              <th class="px-5 py-3 no-print-cell"></th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Week</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Date</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Winner / Buyer</th>
+              <!-- Full vouchers -->
+              <th class="text-center px-3 py-3 text-xs font-semibold text-blue-400 uppercase border-l border-blue-100">Full — Issued</th>
+              <th class="text-center px-3 py-3 text-xs font-semibold text-blue-600 uppercase">Full — Returned</th>
+              <!-- Half vouchers -->
+              <th class="text-center px-3 py-3 text-xs font-semibold text-purple-400 uppercase border-l border-purple-100">Half — Issued</th>
+              <th class="text-center px-3 py-3 text-xs font-semibold text-purple-600 uppercase">Half — Returned</th>
+              <!-- Financial -->
+              <th class="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase border-l">Vendor Gets</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Assoc Retains</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Status</th>
+              <th class="px-4 py-3 no-print-cell"></th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-50">
+          <tbody>
             <template x-for="v in vouchers" :key="v.id">
-              <tr class="transition-colors" :class="v.voucher_paid ? 'bg-green-50/40' : ''">
-                <td class="px-5 py-3 font-semibold text-gray-600" x-text="'#' + v.week_number"></td>
-                <td class="px-5 py-3 text-gray-400 text-xs" x-text="fmtDate(v.cheque_date)"></td>
-                <td class="px-5 py-3 text-gray-800 amharic" x-text="v.winner"></td>
-                <td class="px-5 py-3 text-right font-bold text-orange-500" x-text="fmt(v.voucher_deduction)"></td>
-                <td class="px-5 py-3 text-right">
-                  <div class="font-bold text-green-600" x-text="fmt(v.vendor_payment || 0)"></div>
-                  <div class="text-xs text-gray-400" x-text="(v.vendor_paid_spots || 0) + ' paid spots'"></div>
-                </td>
-                <td class="px-5 py-3 text-right">
-                  <span x-show="(v.assoc_retains || 0) > 0" class="font-semibold text-yellow-600" x-text="fmt(v.assoc_retains || 0)"></span>
-                  <span x-show="!(v.assoc_retains > 0)" class="text-gray-300 text-xs">—</span>
-                </td>
-                <td class="px-5 py-3">
-                  <span x-show="v.voucher_paid" class="badge bg-green-100 text-green-700">Paid to Vendor</span>
-                  <span x-show="!v.voucher_paid && v.voucher_deduction > 0" class="badge bg-orange-100 text-orange-700">Outstanding</span>
-                  <span x-show="!v.voucher_deduction" class="text-gray-300 text-xs">—</span>
-                </td>
-                <td class="px-5 py-3 text-gray-400 text-xs" x-text="v.voucher_paid_date ? fmtDate(v.voucher_paid_date) : '—'"></td>
-                <td class="px-5 py-3 no-print-cell">
-                  <template x-if="v.voucher_deduction > 0">
-                    <button @click="toggleVoucher(v)"
-                            :disabled="savingVoucher === v.id"
-                            :class="v.voucher_paid
-                              ? 'text-xs text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 hover:bg-red-50 rounded-lg px-2 py-1'
-                              : 'text-xs btn-primary py-1 px-3'"
-                            x-text="savingVoucher === v.id ? '…' : (v.voucher_paid ? 'Undo' : 'Mark Paid')">
-                    </button>
-                  </template>
-                </td>
-              </tr>
+              <tbody>
+                <!-- Main row -->
+                <tr class="border-b transition-colors"
+                    :class="v.voucher_paid ? 'bg-green-50/40' : 'hover:bg-gray-50/60'">
+                  <td class="px-4 py-3 font-semibold text-gray-600" x-text="'#' + v.week_number"></td>
+                  <td class="px-4 py-3 text-gray-400 text-xs" x-text="fmtDate(v.cheque_date)"></td>
+                  <td class="px-4 py-3 text-gray-800 amharic" x-text="v.winner"></td>
+
+                  <!-- Full: Issued -->
+                  <td class="px-3 py-3 text-center border-l border-blue-50">
+                    <span class="font-mono text-blue-500" x-text="v.full_issued"></span>
+                  </td>
+                  <!-- Full: Returned -->
+                  <td class="px-3 py-3 text-center">
+                    <template x-if="v.return_recorded">
+                      <span class="font-mono font-bold text-blue-700" x-text="v.full_returned"></span>
+                    </template>
+                    <template x-if="!v.return_recorded">
+                      <span class="text-gray-300 text-xs">—</span>
+                    </template>
+                  </td>
+
+                  <!-- Half: Issued -->
+                  <td class="px-3 py-3 text-center border-l border-purple-50">
+                    <span class="font-mono text-purple-400" x-text="v.half_issued"></span>
+                  </td>
+                  <!-- Half: Returned -->
+                  <td class="px-3 py-3 text-center">
+                    <template x-if="v.return_recorded">
+                      <span class="font-mono font-bold text-purple-700" x-text="v.half_returned"></span>
+                    </template>
+                    <template x-if="!v.return_recorded">
+                      <span class="text-gray-300 text-xs">—</span>
+                    </template>
+                  </td>
+
+                  <!-- Vendor payment -->
+                  <td class="px-4 py-3 text-right border-l">
+                    <div class="font-bold text-green-600" x-text="fmt(v.vendor_payment || 0)"></div>
+                    <div x-show="!v.return_recorded" class="text-xs text-orange-400">estimated</div>
+                  </td>
+                  <!-- Assoc retains -->
+                  <td class="px-4 py-3 text-right">
+                    <span x-show="(v.assoc_retains || 0) > 0" class="font-semibold text-yellow-600" x-text="fmt(v.assoc_retains || 0)"></span>
+                    <span x-show="!(v.assoc_retains > 0)" class="text-gray-300 text-xs">—</span>
+                  </td>
+                  <!-- Status -->
+                  <td class="px-4 py-3">
+                    <span x-show="v.voucher_paid" class="badge bg-green-100 text-green-700">Paid</span>
+                    <span x-show="!v.voucher_paid && v.voucher_deduction > 0" class="badge bg-orange-100 text-orange-700">Outstanding</span>
+                    <span x-show="!v.voucher_deduction" class="text-gray-300 text-xs">—</span>
+                  </td>
+                  <!-- Actions -->
+                  <td class="px-4 py-3 no-print-cell">
+                    <div class="flex items-center gap-2">
+                      <!-- Record return button -->
+                      <button @click="openReturnFormFor(v)"
+                              :class="openReturnForm === v.week_id
+                                ? 'text-xs border border-gray-300 text-gray-500 rounded-lg px-2 py-1'
+                                : 'text-xs border border-blue-200 text-blue-600 hover:bg-blue-50 rounded-lg px-2 py-1'"
+                              x-text="openReturnForm === v.week_id ? 'Cancel' : (v.return_recorded ? 'Edit Return' : 'Record Return')">
+                      </button>
+                      <!-- Mark Paid button -->
+                      <template x-if="v.voucher_deduction > 0">
+                        <button @click="toggleVoucher(v)"
+                                :disabled="savingVoucher === v.id"
+                                :class="v.voucher_paid
+                                  ? 'text-xs text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 hover:bg-red-50 rounded-lg px-2 py-1'
+                                  : 'text-xs btn-primary py-1 px-3'"
+                                x-text="savingVoucher === v.id ? '…' : (v.voucher_paid ? 'Undo' : 'Mark Paid')">
+                        </button>
+                      </template>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Expandable return-entry form -->
+                <tr x-show="openReturnForm === v.week_id"
+                    x-transition:enter="transition ease-out duration-150"
+                    x-transition:enter-start="opacity-0"
+                    x-transition:enter-end="opacity-100"
+                    class="bg-blue-50/60 border-b border-blue-100">
+                  <td colspan="11" class="px-5 py-4">
+                    <div class="flex items-end gap-4 flex-wrap">
+                      <div>
+                        <label class="block text-xs font-semibold text-blue-600 mb-1">Full Vouchers Returned</label>
+                        <input type="number" min="0" :max="v.full_issued"
+                               x-model="returnForm.full_count"
+                               class="w-28 border border-blue-200 rounded-lg px-3 py-1.5 text-sm text-center font-mono focus:ring-2 focus:ring-blue-300 focus:outline-none"
+                               placeholder="0">
+                        <div class="text-xs text-blue-400 mt-0.5" x-text="'of ' + v.full_issued + ' issued'"></div>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-semibold text-purple-600 mb-1">Half Vouchers Returned</label>
+                        <input type="number" min="0" :max="v.half_issued"
+                               x-model="returnForm.half_count"
+                               class="w-28 border border-purple-200 rounded-lg px-3 py-1.5 text-sm text-center font-mono focus:ring-2 focus:ring-purple-300 focus:outline-none"
+                               placeholder="0">
+                        <div class="text-xs text-purple-400 mt-0.5" x-text="'of ' + v.half_issued + ' issued'"></div>
+                      </div>
+                      <div class="flex-1 min-w-40">
+                        <label class="block text-xs font-semibold text-gray-500 mb-1">Notes (optional)</label>
+                        <input type="text" x-model="returnForm.notes"
+                               class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-gray-300 focus:outline-none"
+                               placeholder="e.g. 3 cards lost by members">
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button @click="saveVoucherReturn(v)"
+                                :disabled="savingReturn === v.week_id"
+                                class="btn-primary py-1.5 px-4 text-sm"
+                                x-text="savingReturn === v.week_id ? 'Saving…' : 'Save'">
+                        </button>
+                        <template x-if="v.return_recorded">
+                          <button @click="deleteVoucherReturn(v)"
+                                  :disabled="savingReturn === v.week_id"
+                                  class="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 hover:bg-red-50 rounded-lg px-2 py-1.5">
+                            Remove
+                          </button>
+                        </template>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
             </template>
-            <tr x-show="vouchers.length === 0">
-              <td colspan="9" class="px-5 py-10 text-center text-gray-400">No disbursements recorded yet</td>
-            </tr>
+            <tbody x-show="vouchers.length === 0">
+              <tr>
+                <td colspan="11" class="px-5 py-10 text-center text-gray-400">No disbursements recorded yet</td>
+              </tr>
+            </tbody>
           </tbody>
         </table>
       </div>
@@ -795,6 +901,9 @@ function reports() {
     selectedCycle: '',
     activeTab: 'summary',
     savingVoucher: null,
+    openReturnForm: null,
+    returnForm: { full_count: '', half_count: '', notes: '' },
+    savingReturn: null,
     savingExpense: false,
     loading: true,
     newExpense: { description: '', amount: null, expense_date: '', notes: '' },
@@ -924,6 +1033,45 @@ function reports() {
           }
         }
       });
+    },
+
+    openReturnFormFor(v) {
+      this.openReturnForm = this.openReturnForm === v.week_id ? null : v.week_id;
+      this.returnForm = {
+        full_count: v.full_returned !== null ? v.full_returned : v.full_issued,
+        half_count: v.half_returned !== null ? v.half_returned : v.half_issued,
+        notes: '',
+      };
+    },
+
+    async saveVoucherReturn(v) {
+      this.savingReturn = v.week_id;
+      try {
+        await this.api('POST', `/api/reports/voucher-returns/${v.week_id}`, {
+          full_count: parseInt(this.returnForm.full_count) || 0,
+          half_count: parseInt(this.returnForm.half_count) || 0,
+          notes: this.returnForm.notes || null,
+        });
+        this.openReturnForm = null;
+        const cqs = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
+        this.vouchers = await this.api('GET', `/api/reports/vouchers${cqs}`).catch(() => []);
+        this.balanceSheet = await this.api('GET', `/api/reports/balance-sheet${cqs}`).catch(() => ({}));
+        this.showToast('Voucher return recorded');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.savingReturn = null; }
+    },
+
+    async deleteVoucherReturn(v) {
+      if (!confirm('Remove voucher return record for Week #' + v.week_number + '?')) return;
+      this.savingReturn = v.week_id;
+      try {
+        await this.api('DELETE', `/api/reports/voucher-returns/${v.week_id}`);
+        const cqs = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
+        this.vouchers = await this.api('GET', `/api/reports/vouchers${cqs}`).catch(() => []);
+        this.balanceSheet = await this.api('GET', `/api/reports/balance-sheet${cqs}`).catch(() => ({}));
+        this.showToast('Return record removed');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.savingReturn = null; }
     },
 
     async toggleVoucher(v) {

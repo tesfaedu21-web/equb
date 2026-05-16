@@ -376,6 +376,21 @@ class DistributionCheque(Base):
     member = relationship("Member")
 
 
+# ── Voucher Returns ───────────────────────────────────────────────────────────
+
+class VoucherReturn(Base):
+    """Physical voucher cards returned by vendor per week, recorded manually by admin."""
+    __tablename__ = "voucher_returns"
+    id = Column(Integer, primary_key=True)
+    week_id = Column(Integer, ForeignKey("weeks.id"), unique=True, nullable=False)
+    full_count = Column(Integer, default=0, nullable=False)
+    half_count = Column(Integer, default=0, nullable=False)
+    notes = Column(Text)
+    recorded_at = Column(DateTime, default=_utcnow)
+
+    week = relationship("Week")
+
+
 # ── Notifications ─────────────────────────────────────────────────────────────
 
 class NotificationSettings(Base):
@@ -545,6 +560,15 @@ def _migrate(engine):
             collected_at TIMESTAMP,
             notes TEXT,
             created_at TIMESTAMP
+        )""",
+        # Physical voucher cards returned by vendor — manually recorded per week
+        """CREATE TABLE IF NOT EXISTS voucher_returns (
+            id SERIAL PRIMARY KEY,
+            week_id INTEGER REFERENCES weeks(id) UNIQUE NOT NULL,
+            full_count INTEGER NOT NULL DEFAULT 0,
+            half_count INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            recorded_at TIMESTAMP
         )""",
     ]
     with engine.connect() as conn:
