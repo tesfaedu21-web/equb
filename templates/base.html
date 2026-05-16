@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- Anti-flash: apply dark class before any CSS loads -->
+  <script>
+  (function(){
+    var m = localStorage.getItem('themeMode') || 'system';
+    var dark = m === 'dark' || (m === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (dark) document.documentElement.classList.add('dark');
+  })();
+  </script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{% block title %}{{ group_name }} — Equb{% endblock %}</title>
@@ -10,13 +18,58 @@
   <link rel="stylesheet" href="/static/css/tailwind.css"/>
   <style>
     [x-cloak] { display: none !important; }
+
+    /* ── Theme tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg-page:     #eef2f6;
+      --bg-card:     rgba(255,255,255,0.94);
+      --bg-input:    rgba(255,255,255,0.8);
+      --bg-input-f:  #fff;
+      --bg-secondary:rgba(255,255,255,0.9);
+      --bg-modal:    #fff;
+      --bg-topbar:   rgba(255,255,255,0.92);
+      --bg-row-h:    rgba(7,137,48,0.035);
+      --bg-skel-a:   #eef0f4;
+      --bg-skel-b:   #e4e7ec;
+      --c-text1:     #111827;
+      --c-text2:     #374151;
+      --c-muted:     #9ca3af;
+      --c-border:    #e2e8f0;
+      --c-border-c:  rgba(0,0,0,0.045);
+      --c-scroll:    #ced4da;
+      --c-scroll-h:  #adb5bd;
+      --topbar-b:    rgba(0,0,0,0.07);
+    }
+    html.dark {
+      --bg-page:     #0d1117;
+      --bg-card:     rgba(22,27,42,0.98);
+      --bg-input:    rgba(18,23,36,0.9);
+      --bg-input-f:  #161c2e;
+      --bg-secondary:rgba(22,27,42,0.9);
+      --bg-modal:    #161c2e;
+      --bg-topbar:   rgba(10,12,20,0.97);
+      --bg-row-h:    rgba(7,137,48,0.08);
+      --bg-skel-a:   #1a2035;
+      --bg-skel-b:   #202840;
+      --c-text1:     #f0f4f9;
+      --c-text2:     #c9d1e0;
+      --c-muted:     #64748b;
+      --c-border:    rgba(255,255,255,0.09);
+      --c-border-c:  rgba(255,255,255,0.04);
+      --c-scroll:    #374151;
+      --c-scroll-h:  #4b5563;
+      --topbar-b:    rgba(255,255,255,0.05);
+      color-scheme:  dark;
+    }
+
     body {
       font-family: 'Inter', system-ui, sans-serif;
-      background: #eef2f6;
+      background: var(--bg-page);
       background-image:
         radial-gradient(ellipse at 80% 0%, rgba(7,137,48,0.06) 0%, transparent 55%),
         radial-gradient(ellipse at 20% 100%, rgba(7,137,48,0.04) 0%, transparent 45%);
       background-attachment: fixed;
+      transition: background-color 0.3s ease;
     }
     @media (max-width: 767px) {
       body { background-attachment: scroll; }
@@ -102,18 +155,18 @@
 
     /* ── Cards ───────────────────────────────────────────────────────────── */
     .card {
-      background: rgba(255,255,255,0.94);
+      background: var(--bg-card);
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border-radius: 22px;
       box-shadow:
         0 1px 2px rgba(0,0,0,0.03),
         0 4px 16px rgba(0,0,0,0.06),
         0 16px 40px rgba(0,0,0,0.05),
-        inset 0 1px 0 rgba(255,255,255,1);
-      border: 1px solid rgba(255,255,255,0.95);
-      outline: 1px solid rgba(0,0,0,0.045);
+        inset 0 1px 0 rgba(255,255,255,0.06);
+      border: 1px solid var(--c-border);
+      outline: 1px solid var(--c-border-c);
       padding: 1.5rem;
-      transition: box-shadow 0.25s, transform 0.25s, outline-color 0.25s;
+      transition: box-shadow 0.25s, transform 0.25s, outline-color 0.25s, background-color 0.3s, border-color 0.3s;
     }
     .card:hover {
       box-shadow:
@@ -143,12 +196,12 @@
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
     .btn-secondary {
-      background: rgba(255,255,255,0.9); color: #374151; font-weight: 600;
+      background: var(--bg-secondary); color: var(--c-text2); font-weight: 600;
       padding: 8px 20px; border-radius: 12px; font-size: 0.8125rem;
-      transition: all .2s; border: 1.5px solid rgba(0,0,0,0.08); cursor: pointer;
+      transition: all .2s; border: 1.5px solid var(--c-border); cursor: pointer;
     }
     .btn-secondary:hover {
-      background: #fff; border-color: #d1d5db;
+      background: var(--bg-input-f); border-color: var(--c-border);
       box-shadow: 0 2px 12px rgba(0,0,0,0.09);
       transform: translateY(-1px);
     }
@@ -164,18 +217,18 @@
 
     /* ── Inputs ──────────────────────────────────────────────────────────── */
     input:not([type=checkbox]):not([type=radio]), select, textarea {
-      border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 9px 14px;
+      border: 1.5px solid var(--c-border); border-radius: 12px; padding: 9px 14px;
       font-size: 0.8125rem; width: 100%;
-      background: rgba(255,255,255,0.8); color: #111827;
-      transition: border-color .15s, box-shadow .15s, background .15s;
+      background: var(--bg-input); color: var(--c-text1);
+      transition: border-color .15s, box-shadow .15s, background .15s, color .15s;
       font-family: inherit;
     }
     input:not([type=checkbox]):not([type=radio]):focus, select:focus, textarea:focus {
       outline: none; border-color: #078930;
       box-shadow: 0 0 0 4px rgba(7,137,48,0.12);
-      background: #fff;
+      background: var(--bg-input-f);
     }
-    input::placeholder { color: #adb5bd; }
+    input::placeholder { color: var(--c-muted); }
 
     /* ── Badges ──────────────────────────────────────────────────────────── */
     .badge {
@@ -203,10 +256,11 @@
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     }
     .modal-box {
-      background: #fff; border-radius: 26px;
+      background: var(--bg-modal); border-radius: 26px;
       box-shadow: 0 4px 16px rgba(0,0,0,.1), 0 40px 100px rgba(0,0,0,.30), 0 0 0 1px rgba(0,0,0,.05);
       width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
       animation: modal-in 0.3s cubic-bezier(.175,.885,.32,1.275);
+      transition: background-color 0.3s;
     }
     @keyframes modal-in {
       from { opacity: 0; transform: scale(0.88) translateY(20px); }
@@ -230,21 +284,22 @@
     /* ── Tables ──────────────────────────────────────────────────────────── */
     th {
       font-size: 0.67rem; font-weight: 800;
-      text-transform: uppercase; letter-spacing: 0.08em; color: #9ca3af;
+      text-transform: uppercase; letter-spacing: 0.08em; color: var(--c-muted);
     }
     tbody tr { border-bottom: 1px solid rgba(0,0,0,0.04); transition: background 0.15s; }
-    tbody tr:hover { background: rgba(7,137,48,0.035); }
+    html.dark tbody tr { border-bottom-color: rgba(255,255,255,0.04); }
+    tbody tr:hover { background: var(--bg-row-h); }
     tbody tr:last-child { border-bottom: none; }
 
     /* ── Scrollbar ───────────────────────────────────────────────────────── */
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #ced4da; border-radius: 99px; }
-    ::-webkit-scrollbar-thumb:hover { background: #adb5bd; }
+    ::-webkit-scrollbar-thumb { background: var(--c-scroll); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--c-scroll-h); }
 
     /* ── Skeleton ────────────────────────────────────────────────────────── */
     .skeleton {
-      background: linear-gradient(90deg, #eef0f4 25%, #e4e7ec 50%, #eef0f4 75%);
+      background: linear-gradient(90deg, var(--bg-skel-a) 25%, var(--bg-skel-b) 50%, var(--bg-skel-a) 75%);
       background-size: 200% 100%;
       animation: skeleton-shimmer 1.5s infinite;
       border-radius: 8px;
@@ -275,7 +330,8 @@
     .sidebar.collapsed .nav-label { display: none; }
     .sidebar.collapsed .nav-section { display: none; }
     .sidebar.collapsed .brand-text { display: none; }
-    .sidebar.collapsed .cal-toggle { display: none; }
+    .sidebar.collapsed .cal-toggle   { display: none; }
+    .sidebar.collapsed .theme-toggle { display: none; }
     .sidebar.collapsed .user-detail { display: none; }
     .sidebar.collapsed .nav-link { justify-content: center; padding: 9px 0; }
     .sidebar.collapsed .nav-link .icon { width: 22px; height: 22px; margin: 0; }
@@ -321,10 +377,11 @@
 
     /* ── Mobile top bar ─────────────────────────────────────────────────── */
     .mobile-topbar {
-      background: rgba(255,255,255,0.92);
+      background: var(--bg-topbar);
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid rgba(0,0,0,0.07);
+      border-bottom: 1px solid var(--topbar-b);
       box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+      transition: background-color 0.3s, border-color 0.3s;
     }
 
     /* ── Tablet: tighten grids at 768-1023px ────────────────────────────── */
@@ -386,6 +443,74 @@
       0%   { background-position: 200% 0; }
       100% { background-position: -200% 0; }
     }
+
+    /* ── Dark mode: global Tailwind class overrides ─────────────────────── */
+    html.dark .text-gray-900  { color: var(--c-text1)  !important; }
+    html.dark .text-gray-800  { color: var(--c-text2)  !important; }
+    html.dark .text-gray-700  { color: #94a3b8          !important; }
+    html.dark .text-gray-600  { color: #94a3b8          !important; }
+    html.dark .text-gray-500  { color: var(--c-muted)  !important; }
+    html.dark .text-gray-400  { color: #475569          !important; }
+    html.dark .text-gray-300  { color: #374151          !important; }
+
+    html.dark .bg-white        { background-color: var(--bg-card)          !important; }
+    html.dark .bg-gray-50      { background-color: rgba(22,27,42,0.6)      !important; }
+    html.dark .bg-gray-100     { background-color: rgba(30,37,55,0.8)      !important; }
+    html.dark .bg-gray-900     { background-color: #0a0e1a                 !important; }
+
+    html.dark .border-gray-50  { border-color: var(--c-border) !important; }
+    html.dark .border-gray-100 { border-color: var(--c-border) !important; }
+    html.dark .border-gray-200 { border-color: var(--c-border) !important; }
+    html.dark .border-t        { border-color: var(--c-border) !important; }
+    html.dark .border-b        { border-color: var(--c-border) !important; }
+    html.dark .divide-gray-100 > * + * { border-color: var(--c-border) !important; }
+
+    html.dark .hover\:bg-gray-50:hover  { background-color: rgba(22,27,42,0.7)   !important; }
+    html.dark .hover\:bg-gray-100:hover { background-color: rgba(30,37,55,0.9)   !important; }
+    html.dark .hover\:text-gray-900:hover { color: var(--c-text1)               !important; }
+    html.dark .hover\:text-gray-600:hover { color: #94a3b8                      !important; }
+
+    /* Light pastel backgrounds → dark equivalents */
+    html.dark .bg-red-50     { background-color: rgba(127,29,29,0.2)  !important; }
+    html.dark .bg-green-50   { background-color: rgba(5,46,22,0.25)   !important; }
+    html.dark .bg-blue-50    { background-color: rgba(23,37,84,0.25)  !important; }
+    html.dark .bg-amber-50   { background-color: rgba(69,26,3,0.25)   !important; }
+    html.dark .bg-yellow-50  { background-color: rgba(66,32,6,0.25)   !important; }
+    html.dark .bg-purple-50  { background-color: rgba(59,7,100,0.22)  !important; }
+    html.dark .bg-orange-50  { background-color: rgba(67,20,7,0.25)   !important; }
+
+    html.dark .hover\:bg-red-50:hover   { background-color: rgba(127,29,29,0.25) !important; }
+    html.dark .hover\:bg-green-50:hover { background-color: rgba(5,46,22,0.35)   !important; }
+    html.dark .hover\:bg-equb-pale:hover { background-color: rgba(7,137,48,0.12) !important; }
+
+    /* Pastel text in dark mode */
+    html.dark .text-red-600    { color: #fca5a5 !important; }
+    html.dark .text-green-600  { color: #86efac !important; }
+    html.dark .text-blue-700   { color: #93c5fd !important; }
+    html.dark .text-amber-700  { color: #fcd34d !important; }
+    html.dark .text-purple-700 { color: #d8b4fe !important; }
+    html.dark .text-yellow-500 { color: #fde68a !important; }
+
+    /* Badges in dark mode */
+    html.dark .badge-active  { background:rgba(5,46,22,0.35)  !important; color:#86efac !important; border-color:rgba(134,239,172,0.2) !important; }
+    html.dark .badge-received{ background:rgba(23,37,84,0.35) !important; color:#93c5fd !important; border-color:rgba(147,197,253,0.2) !important; }
+    html.dark .badge-left    { background:rgba(30,37,55,0.5)  !important; color:#94a3b8 !important; border-color:rgba(148,163,184,0.15) !important; }
+    html.dark .badge-pending { background:rgba(66,32,6,0.35)  !important; color:#fcd34d !important; border-color:rgba(252,211,77,0.2)  !important; }
+    html.dark .badge-paid    { background:rgba(5,46,22,0.35)  !important; color:#86efac !important; border-color:rgba(134,239,172,0.2) !important; }
+    html.dark .badge-missed  { background:rgba(127,29,29,0.3) !important; color:#fca5a5 !important; border-color:rgba(252,165,165,0.2) !important; }
+    html.dark .badge-late    { background:rgba(67,20,7,0.3)   !important; color:#fdba74 !important; border-color:rgba(253,186,116,0.2) !important; }
+    html.dark .badge-drawn   { background:rgba(23,37,84,0.35) !important; color:#93c5fd !important; border-color:rgba(147,197,253,0.2) !important; }
+    html.dark .badge-sold    { background:rgba(59,7,100,0.3)  !important; color:#d8b4fe !important; border-color:rgba(216,180,254,0.2) !important; }
+    html.dark .badge-group   { background:rgba(69,26,3,0.3)   !important; color:#fde68a !important; border-color:rgba(253,230,138,0.2) !important; }
+    html.dark .badge-admin   { background:rgba(69,26,3,0.3)   !important; color:#fde68a !important; border-color:rgba(253,230,138,0.2) !important; }
+    html.dark .badge-cashier { background:rgba(5,46,22,0.3)   !important; color:#86efac !important; border-color:rgba(134,239,172,0.2) !important; }
+
+    /* Date input dark mode */
+    html.dark input[type="date"] { color-scheme: dark; }
+
+    /* Optimistic rows need dark equivalents */
+    html.dark .optimistic-paid   { background: rgba(5,46,22,0.3)   !important; }
+    html.dark .optimistic-missed { background: rgba(127,29,29,0.25) !important; }
 
     /* ── Print ───────────────────────────────────────────────────────────── */
     @media print {
@@ -489,6 +614,31 @@
         <button @click="useEthCal=false; localStorage.setItem('useEthCal','false')"
           :class="!useEthCal ? 'bg-equb-green text-white shadow' : 'text-green-400/60 hover:text-green-300'"
           class="flex-1 py-1.5 rounded-[9px] font-bold transition-all text-center text-xs">G.C.</button>
+      </div>
+
+      <!-- Theme toggle -->
+      <div class="theme-toggle mt-1.5 flex items-center rounded-xl p-0.5" style="background:rgba(255,255,255,0.07);">
+        <button @click="setTheme('system')"
+          :class="themeMode==='system' ? 'bg-equb-green text-white shadow' : 'text-green-400/60 hover:text-green-300'"
+          class="flex-1 py-1.5 rounded-[9px] transition-all text-center" title="Follow system theme">
+          <svg class="w-3.5 h-3.5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+        </button>
+        <button @click="setTheme('light')"
+          :class="themeMode==='light' ? 'bg-equb-green text-white shadow' : 'text-green-400/60 hover:text-green-300'"
+          class="flex-1 py-1.5 rounded-[9px] transition-all text-center" title="Light mode">
+          <svg class="w-3.5 h-3.5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 6.343l-.707-.707m12.728 12.728l-.707-.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+          </svg>
+        </button>
+        <button @click="setTheme('dark')"
+          :class="themeMode==='dark' ? 'bg-equb-green text-white shadow' : 'text-green-400/60 hover:text-green-300'"
+          class="flex-1 py-1.5 rounded-[9px] transition-all text-center" title="Dark mode">
+          <svg class="w-3.5 h-3.5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -677,6 +827,7 @@ function app() {
     sidebarOpen: false,
     sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true',
     useEthCal: localStorage.getItem('useEthCal') !== 'false',
+    themeMode: localStorage.getItem('themeMode') || 'system',
     userName:    ctx.userName    || 'User',
     userRole:    ctx.userRole    || 'cashier',
     groupName:   ctx.groupName   || 'እቁብ',
@@ -691,7 +842,23 @@ function app() {
       localStorage.setItem('sidebarCollapsed', this.sidebarCollapsed);
     },
 
+    setTheme(mode) {
+      this.themeMode = mode;
+      localStorage.setItem('themeMode', mode);
+      this.applyTheme();
+    },
+
+    applyTheme() {
+      const dark = this.themeMode === 'dark' ||
+        (this.themeMode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.classList.toggle('dark', dark);
+    },
+
     initApp() {
+      this.applyTheme();
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (this.themeMode === 'system') this.applyTheme();
+      });
       // Warn at 50 min, expire at 60 min (server session = 3600s)
       setTimeout(() => { this.sessionWarning = true; }, 50 * 60 * 1000);
       setTimeout(() => { window.location.href = '/login'; }, 60 * 60 * 1000);
