@@ -777,6 +777,112 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
     return entries
 
 
+@router.get("/cycle-distribution")
+def cycle_distribution(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """
+    Calculate end-of-cycle profit distribution to members.
+    Pool = Association Fund Net + Assoc Spot Sale Profits + Voucher Retained by Association.
+    Split by spot weight: full spot = 1.0, half spot = 0.5.
+    """
+    if not cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        if not cycle:
+            return {"total_distributable": 0, "breakdown": {}, "per_unit_amount": 0, "members": []}
+        cycle_id = cycle.id
+
+    week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
+
+    # ── Association Fund Net ──────────────────────────────────────────────────
+    completed_weeks = db.query(Week).filter(
+        Week.cycle_id == cycle_id, Week.status.in_(["drawn", "sold"])
+    ).all()
+    from routers.draws import _actual_assoc_collected
+    association_fund = _actual_assoc_collected(db, [w.id for w in completed_weeks], cycle_id)
+    expenses = db.query(AssociationExpense).filter(AssociationExpense.cycle_id == cycle_id).all()
+    association_expenses = sum(e.amount for e in expenses)
+    association_balance = association_fund - association_expenses
+
+    # ── Association Spot Sale Profits ─────────────────────────────────────────
+    assoc_spot_profit = 0.0
+    if week_ids:
+        assoc_txs = db.query(PotTransaction).filter(
+            PotTransaction.week_id.in_(week_ids),
+            PotTransaction.transaction_type == "assoc_spot_sale",
+        ).all()
+        assoc_spot_profit = sum(t.seller_fee or 0 for t in assoc_txs)
+
+    # ── Voucher Retained by Association ──────────────────────────────────────
+    disbs = db.query(PotDisbursement).filter(
+        PotDisbursement.week_id.in_(week_ids)
+    ).all() if week_ids else []
+    total_voucher = sum(d.voucher_deduction or 0 for d in disbs)
+    vendor_data = _calc_vendor_payments(db, disbs, cycle_id)
+    total_vendor_payment = sum(v["vendor_payment"] for v in vendor_data.values())
+    voucher_retained = total_voucher - total_vendor_payment
+
+    total_distributable = association_balance + assoc_spot_profit + voucher_retained
+
+    # ── Member weights ────────────────────────────────────────────────────────
+    memberships = db.query(MemberSpot).filter(
+        MemberSpot.cycle_id == cycle_id,
+        MemberSpot.is_active == True,
+    ).all()
+    # Only member spots (not association spots)
+    member_spot_ids = {
+        ms.spot_id for ms in memberships
+        if ms.spot and ms.spot.spot_type == "member"
+    }
+    member_ms = [ms for ms in memberships if ms.spot_id in member_spot_ids]
+
+    # Group by member
+    from collections import defaultdict
+    weight_by_member: dict = defaultdict(float)
+    spots_by_member: dict = defaultdict(list)
+    for ms in member_ms:
+        w = 1.0 if ms.share == "full" else 0.5
+        weight_by_member[ms.member_id] += w
+        spots_by_member[ms.member_id].append({
+            "spot_number": ms.spot.number if ms.spot else None,
+            "share": ms.share,
+            "weight": w,
+        })
+
+    total_weight = sum(weight_by_member.values())
+    per_unit = (total_distributable / total_weight) if total_weight else 0.0
+
+    # Fetch member details
+    member_ids = list(weight_by_member.keys())
+    members = {m.id: m for m in db.query(Member).filter(Member.id.in_(member_ids)).all()}
+
+    rows = []
+    for mid, weight in sorted(weight_by_member.items(), key=lambda x: -x[1]):
+        m = members.get(mid)
+        if not m:
+            continue
+        rows.append({
+            "member_id":   mid,
+            "member_name": m.name,
+            "phone":       m.phone,
+            "spots":       sorted(spots_by_member[mid], key=lambda s: s["spot_number"] or 0),
+            "weight":      weight,
+            "amount":      round(per_unit * weight, 2),
+        })
+
+    return {
+        "total_distributable": round(total_distributable, 2),
+        "breakdown": {
+            "association_fund":     round(association_fund, 2),
+            "association_expenses": round(association_expenses, 2),
+            "association_balance":  round(association_balance, 2),
+            "assoc_spot_profit":    round(assoc_spot_profit, 2),
+            "voucher_retained":     round(voucher_retained, 2),
+        },
+        "total_weight":   total_weight,
+        "per_unit_amount": round(per_unit, 2),
+        "members":        rows,
+    }
+
+
 @router.get("/collection-trend")
 def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Week-by-week actual cash collected, using the same paid_date windowing as the General Ledger."""
