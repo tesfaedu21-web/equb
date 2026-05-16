@@ -154,7 +154,7 @@
             <tbody class="divide-y divide-gray-50">
               <template x-for="w in filteredWeeks" :key="w.id">
                 <tr class="hover:bg-gray-50/70 transition-colors"
-                    :class="w.is_group_week ? 'bg-amber-50/40' : ''">
+                    :class="[w.is_group_week ? 'bg-amber-50/40' : '', w.status === 'pending' && !weekArrived(w) ? 'opacity-50' : '']">
                   <td class="px-4 py-3">
                     <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-bold"
                           :class="w.is_group_week ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'"
@@ -183,7 +183,7 @@
                     <span x-show="w.status === 'pending'" class="text-gray-300">—</span>
                   </td>
                   <td class="px-4 py-3 text-right whitespace-nowrap">
-                    <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'active'">
+                    <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'active' && weekArrived(w)">
                       <div class="flex items-center justify-end gap-2">
                         <button x-show="!w.is_group_week"
                                 @click="openDraw(w)"
@@ -192,6 +192,9 @@
                                 class="text-xs btn-secondary py-1 px-3"
                                 x-text="w.is_group_week ? 'Record Sale' : 'Sell Pot'"></button>
                       </div>
+                    </template>
+                    <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'active' && !weekArrived(w)">
+                      <span class="text-xs text-gray-300 font-medium">Upcoming</span>
                     </template>
                     <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'collection'">
                       <span class="text-xs text-amber-500 font-medium">Collection</span>
@@ -1516,6 +1519,14 @@ function draws() {
       amount -= this.saleVoucherDeduction;
       amount -= this.saleServiceFee;
       return amount;
+    },
+
+    // ── Date helpers ──────────────────────────────────────────────────────────
+    weekArrived(w) {
+      if (!w.draw_date) return false;
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      return new Date(w.draw_date) <= today;
     },
 
     // ── Member search helper: matches by name OR spot number ─────────────────
