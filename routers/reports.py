@@ -779,8 +779,8 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
 
 @router.get("/collection-trend")
 def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """Week-by-week collection totals for the trend chart."""
-    from collections import defaultdict
+    """Week-by-week actual cash collected, using the same paid_date windowing as the General Ledger."""
+    from datetime import datetime as _dt, timedelta as _td
     if not cycle_id:
         c = db.query(Cycle).filter(Cycle.status == "active").first()
         if not c:
@@ -790,25 +790,65 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
     if not weeks:
         return []
     week_ids = [w.id for w in weeks]
-    # Single query for all payments in the cycle
-    all_payments = db.query(Payment).filter(Payment.week_id.in_(week_ids)).all()
-    by_week: dict = defaultdict(list)
-    for p in all_payments:
-        by_week[p.week_id].append(p)
+    today = _dt.utcnow().date()
+
+    # Build per-week date windows: prev_draw_date+1 → this_draw_date
+    sorted_weeks = sorted(weeks, key=lambda w: w.draw_date)
+    windows = []
+    for i, w in enumerate(sorted_weeks):
+        start = (sorted_weeks[i - 1].draw_date.date() + _td(days=1)) if i > 0 else w.draw_date.date() - _td(days=365)
+        windows.append((w, start, w.draw_date.date()))
+
+    # Fetch all paid payments once
+    all_paid = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids), Payment.status == "paid"
+    ).all()
+    week_map = {w.id: w for w in weeks}
+
+    # Bucket each payment into a collection window by paid_date
+    collected: dict = {}
+    for p in all_paid:
+        if p.paid_date:
+            pd = p.paid_date.date() if hasattr(p.paid_date, "date") else p.paid_date
+        else:
+            wk = week_map.get(p.week_id)
+            pd = wk.draw_date.date() if wk else today
+        for w, ws, we in windows:
+            if ws <= pd <= we:
+                collected[w.id] = collected.get(w.id, 0) + p.amount
+                break
+        else:
+            for w, ws, we in reversed(windows):
+                if we <= today:
+                    collected[w.id] = collected.get(w.id, 0) + p.amount
+                    break
+
+    # Also compute paid_count per week_id (for tooltip)
+    paid_counts: dict = {}
+    for p in all_paid:
+        paid_counts[p.week_id] = paid_counts.get(p.week_id, 0) + 1
+
     result = []
-    for w in weeks:
-        ps = by_week[w.id]
+    for w in sorted_weeks:
+        if w.draw_date.date() > today:
+            result.append({
+                "week_number":   w.week_number,
+                "draw_date":     w.draw_date.isoformat(),
+                "is_group_week": w.is_group_week,
+                "week_status":   w.status,
+                "paid":          0.0,
+                "paid_count":    0,
+                "total":         0.0,
+            })
+            continue
         result.append({
-            "week_number":  w.week_number,
-            "draw_date":    w.draw_date.isoformat(),
-            "is_group_week":w.is_group_week,
-            "week_status":  w.status,
-            "paid":         float(sum(p.amount for p in ps if p.status == "paid")),
-            "missed":       float(sum(p.amount for p in ps if p.status == "missed")),
-            "paid_count":   sum(1 for p in ps if p.status == "paid"),
-            "missed_count": sum(1 for p in ps if p.status == "missed"),
-            "pending_count":sum(1 for p in ps if p.status == "pending"),
-            "total":        float(sum(p.amount for p in ps)),
+            "week_number":   w.week_number,
+            "draw_date":     w.draw_date.isoformat(),
+            "is_group_week": w.is_group_week,
+            "week_status":   w.status,
+            "paid":          float(collected.get(w.id, 0)),
+            "paid_count":    paid_counts.get(w.id, 0),
+            "total":         float(collected.get(w.id, 0)),
         })
     return result
 
