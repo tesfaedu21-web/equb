@@ -492,7 +492,6 @@
             <tr>
               <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Week</th>
               <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Date</th>
-              <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Winner / Buyer</th>
               <!-- Full vouchers -->
               <th class="text-center px-3 py-3 text-xs font-semibold text-blue-400 uppercase border-l border-blue-100">Full — Issued</th>
               <th class="text-center px-3 py-3 text-xs font-semibold text-blue-600 uppercase">Full — Returned</th>
@@ -514,7 +513,6 @@
                     :class="v.voucher_paid ? 'bg-green-50/40' : 'hover:bg-gray-50/60'">
                   <td class="px-4 py-3 font-semibold text-gray-600" x-text="'#' + v.week_number"></td>
                   <td class="px-4 py-3 text-gray-400 text-xs" x-text="fmtDate(v.cheque_date)"></td>
-                  <td class="px-4 py-3 text-gray-800 amharic" x-text="v.winner"></td>
 
                   <!-- Full: Issued -->
                   <td class="px-3 py-3 text-center border-l border-blue-50">
@@ -589,8 +587,8 @@
                     x-transition:enter="transition ease-out duration-150"
                     x-transition:enter-start="opacity-0"
                     x-transition:enter-end="opacity-100"
-                    class="bg-blue-50/60 border-b border-blue-100">
-                  <td colspan="11" class="px-5 py-4">
+                    class="bg-blue-50 border-b border-blue-100">
+                  <td colspan="10" class="px-5 py-4">
                     <div class="flex items-end gap-4 flex-wrap">
                       <div>
                         <label class="block text-xs font-semibold text-blue-600 mb-1">Full Vouchers Returned</label>
@@ -635,7 +633,7 @@
             </template>
             <tbody x-show="vouchers.length === 0">
               <tr>
-                <td colspan="11" class="px-5 py-10 text-center text-gray-400">No disbursements recorded yet</td>
+                <td colspan="10" class="px-5 py-10 text-center text-gray-400">No disbursements recorded yet</td>
               </tr>
             </tbody>
           </tbody>
