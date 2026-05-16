@@ -782,11 +782,10 @@ function reports() {
       const orgName   = this.settings?.group_name || 'እቁብ';
       const cycle     = this.allCycles.find(c => c.id == this.selectedCycle);
       const cycleName = cycle?.name || 'Active Cycle';
-      const cycleRange = cycle ? [cycle.start_date ? fmtD(cycle.start_date) : null, cycle.end_date ? fmtD(cycle.end_date) : 'ongoing'].filter(Boolean).join(' — ') : '';
-      const printedAt = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-
       const fmtN = n => (n === null || n === undefined) ? '—' : new Intl.NumberFormat('en-ET').format(Math.round(n)) + ' ETB';
       const fmtD = iso => this.fmtDate(iso);
+      const cycleRange = cycle ? [cycle.start_date ? fmtD(cycle.start_date) : null, cycle.end_date ? fmtD(cycle.end_date) : 'ongoing'].filter(Boolean).join(' — ') : '';
+      const printedAt = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
       // ── Row builders ─────────────────────────────────────────────────────────
       const weeks = this.paymentSummary.weeks || [];
