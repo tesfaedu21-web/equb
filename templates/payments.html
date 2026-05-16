@@ -1229,27 +1229,25 @@ function payments() {
         if (!rows || rows.length === 0) return '';
         const rowHtml = rows.map((row, i) => `
           <tr>
-            <td style="color:#999">${i+1}</td>
+            <td style="color:#aaa">${i+1}</td>
             <td style="font-weight:500">${row.member_name}</td>
-            <td style="color:#666">${row.spot_numbers.join(', ') || '—'}</td>
-            <td>${row.week_numbers.length > 0 ? 'Wk ' + row.week_numbers.join(', ') : row.weeks_paid + ' wk(s)'}</td>
-            <td style="font-family:monospace;color:#999">${row.reference || '—'}</td>
-            <td style="color:#555">${row.collected_by_name || '—'}</td>
+            <td style="color:#555">${row.spot_numbers.join(', ') || '—'}</td>
+            <td style="color:#555">${row.week_numbers.length > 0 ? 'Wk ' + row.week_numbers.join(', ') : row.weeks_paid + ' wk(s)'}</td>
+            <td style="font-family:monospace;color:#999;font-size:9px">${row.reference || '—'}</td>
+            <td style="color:#777">${row.collected_by_name || '—'}</td>
             <td style="text-align:right;font-weight:600">${fmtNum(row.total_amount)}</td>
           </tr>`).join('');
         return `
-          <div style="margin-bottom:22px;break-inside:avoid">
-            <div class="method-header" style="background:${methodBg(method)};border-left:4px solid ${methodColor(method)};color:${methodColor(method)}">
-              <span>${methodLabel(method)}</span>
-              <span>${fmtNum(d.totals[method])}</span>
+          <div style="margin-bottom:14px">
+            <div class="method-header" style="background:${methodBg(method)};border-left:3px solid ${methodColor(method)};color:${methodColor(method)};break-after:avoid">
+              <span style="font-weight:700">${methodLabel(method)}</span>
+              <span>${fmtNum(d.totals[method])} &nbsp;·&nbsp; <span style="font-weight:400;font-size:10px">${rows.length} payment(s)</span></span>
             </div>
             <table>
               <thead>
-                <tr><th>#</th><th>Member Name</th><th>Spot</th><th>Weeks</th><th>Reference</th><th>Cashier</th><th style="text-align:right">Amount</th></tr>
+                <tr><th style="width:28px">#</th><th>Member Name</th><th>Spot</th><th>Weeks</th><th>Reference</th><th>Cashier</th><th style="text-align:right">Amount</th></tr>
               </thead>
-              <tbody>
-                ${rowHtml}
-              </tbody>
+              <tbody>${rowHtml}</tbody>
               <tfoot>
                 <tr>
                   <td colspan="6" style="text-align:right;color:#555">Subtotal</td>
@@ -1270,49 +1268,58 @@ function payments() {
 <html><head><meta charset="UTF-8">
 <title>Daily Collection Report — ${d.date}</title>
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 28px 32px; color: #111; font-size: 13px; }
-  @page { margin: 12mm 14mm; }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+         padding: 20px 24px; color: #111; font-size: 11px; line-height: 1.35; }
+  @page { margin: 10mm 12mm; size: A4; }
   @media print { body { padding: 0; } }
 
   /* Org header */
-  .org-header { display:flex; align-items:center; gap:14px; padding-bottom:12px; border-bottom:3px solid #078930; margin-bottom:20px; }
-  .org-logo { width:40px; height:40px; border-radius:10px; flex-shrink:0; background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%); }
-  .org-name { font-size:20px; font-weight:800; color:#111; }
-  .org-tagline { font-size:12px; color:#078930; font-weight:600; margin-top:1px; }
-  .print-date { margin-left:auto; font-size:10px; color:#9ca3af; text-align:right; line-height:1.5; }
+  .org-header { display:flex; align-items:center; gap:10px; padding-bottom:8px;
+                border-bottom:2.5px solid #078930; margin-bottom:10px; }
+  .org-logo   { width:32px; height:32px; border-radius:8px; flex-shrink:0;
+                background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%); }
+  .org-name   { font-size:16px; font-weight:800; color:#111; }
+  .org-tagline{ font-size:10px; color:#078930; font-weight:600; margin-top:1px; }
+  .print-date { margin-left:auto; font-size:9px; color:#9ca3af; text-align:right; line-height:1.5; }
 
   /* Report title block */
-  .report-title { font-size:16px; font-weight:700; color:#111; margin:0 0 2px; }
-  .report-eth { font-size:15px; font-weight:700; color:#078930; margin:0 0 2px; }
-  .report-sub { color:#666; font-size:12px; margin-bottom:18px; }
+  .report-title { font-size:13px; font-weight:700; color:#111; margin-bottom:1px; }
+  .report-eth   { font-size:12px; font-weight:700; color:#078930; margin-bottom:1px; }
+  .report-sub   { color:#777; font-size:10px; margin-bottom:10px; }
 
-  /* Summary cards */
-  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
-  .card { border:1px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center; }
-  .card .label { font-size:10px; color:#999; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; font-weight:600; }
-  .card .amount { font-size:18px; font-weight:700; }
-  .card .count { font-size:11px; color:#999; margin-top:3px; }
+  /* Summary strip — compact single row */
+  .summary-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:12px; }
+  .sum-card { border:1px solid #e5e7eb; border-radius:6px; padding:6px 8px; text-align:center; }
+  .sum-card .lbl { font-size:9px; color:#999; text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px; font-weight:700; }
+  .sum-card .amt { font-size:14px; font-weight:800; line-height:1.1; }
+  .sum-card .cnt { font-size:9px; color:#aaa; margin-top:2px; }
 
   /* Method section header */
-  .method-header { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; font-weight:700; font-size:13px; margin-bottom:0; }
+  .method-header { display:flex; justify-content:space-between; align-items:center;
+                   padding:5px 8px; font-size:11px; margin-bottom:0; }
 
   /* Tables */
-  table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:4px; }
-  thead th { background:#f9fafb; padding:6px 10px; text-align:left; font-size:10px; color:#888; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #e5e7eb; font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:2px; }
+  thead th { background:#f9fafb; padding:4px 7px; text-align:left;
+             font-size:9px; color:#888; text-transform:uppercase;
+             letter-spacing:.04em; border-bottom:1.5px solid #e5e7eb; font-weight:700; }
   tbody tr { border-bottom:1px solid #f3f4f6; }
   tbody tr:last-child { border-bottom:none; }
-  td { padding:6px 10px; }
-  tfoot td { padding:7px 10px; border-top:2px solid #e5e7eb; background:#f9fafb; font-weight:700; }
+  td { padding:3.5px 7px; }
+  tfoot td { padding:4px 7px; border-top:1.5px solid #e5e7eb; background:#f9fafb; font-weight:700; font-size:10px; }
 
   /* Grand total */
-  .grand { display:flex; justify-content:space-between; align-items:center; border:2px solid #16a34a; border-radius:8px; padding:14px 18px; margin-top:20px; background:#f0fdf4; }
-  .grand-label { font-size:13px; font-weight:600; color:#333; }
-  .grand-sublabel { font-size:12px; color:#16a34a; font-weight:600; margin-top:2px; }
-  .grand-amount { font-size:26px; font-weight:800; color:#15803d; }
+  .grand { display:flex; justify-content:space-between; align-items:center;
+           border:1.5px solid #16a34a; border-radius:6px; padding:8px 12px;
+           margin-top:10px; background:#f0fdf4; break-inside:avoid; }
+  .grand-lbl { font-size:11px; font-weight:600; color:#333; }
+  .grand-sub { font-size:9px; color:#16a34a; font-weight:600; margin-top:1px; }
+  .grand-amt { font-size:20px; font-weight:800; color:#15803d; }
 
   /* Footer */
-  .print-footer { margin-top:24px; padding-top:10px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; font-size:10px; color:#9ca3af; }
+  .print-footer { margin-top:10px; padding-top:6px; border-top:1px solid #e5e7eb;
+                  display:flex; justify-content:space-between; font-size:9px; color:#9ca3af; }
 </style></head><body>
 
 <div class="org-header">
@@ -1328,26 +1335,26 @@ function payments() {
 <div class="report-eth">${ethDate}</div>
 <div class="report-sub">${fmtDateStr(d.date)} &nbsp;·&nbsp; ${d.total_batches} payment(s) recorded</div>
 
-<div class="cards">
-  <div class="card">
-    <div class="label">Cash</div>
-    <div class="amount" style="color:#16a34a">${fmtNum(d.totals.cash)}</div>
-    <div class="count">${d.groups.cash.length} payment(s)</div>
+<div class="summary-strip">
+  <div class="sum-card">
+    <div class="lbl">Cash</div>
+    <div class="amt" style="color:#16a34a">${fmtNum(d.totals.cash)}</div>
+    <div class="cnt">${d.groups.cash.length} payment(s)</div>
   </div>
-  <div class="card">
-    <div class="label">Bank Transfer</div>
-    <div class="amount" style="color:#2563eb">${fmtNum(d.totals.bank_transfer)}</div>
-    <div class="count">${d.groups.bank_transfer.length} payment(s)</div>
+  <div class="sum-card">
+    <div class="lbl">Bank Transfer</div>
+    <div class="amt" style="color:#2563eb">${fmtNum(d.totals.bank_transfer)}</div>
+    <div class="cnt">${d.groups.bank_transfer.length} payment(s)</div>
   </div>
-  <div class="card">
-    <div class="label">Cheque</div>
-    <div class="amount" style="color:#7c3aed">${fmtNum(d.totals.cheque)}</div>
-    <div class="count">${d.groups.cheque.length} payment(s)</div>
+  <div class="sum-card">
+    <div class="lbl">Cheque</div>
+    <div class="amt" style="color:#7c3aed">${fmtNum(d.totals.cheque)}</div>
+    <div class="cnt">${d.groups.cheque.length} payment(s)</div>
   </div>
-  <div class="card" style="background:#f0fdf4;border-color:#86efac">
-    <div class="label">Grand Total</div>
-    <div class="amount" style="color:#15803d">${fmtNum(d.grand_total)}</div>
-    <div class="count">${d.total_batches} payment(s)</div>
+  <div class="sum-card" style="background:#f0fdf4;border-color:#86efac">
+    <div class="lbl">Grand Total</div>
+    <div class="amt" style="color:#15803d">${fmtNum(d.grand_total)}</div>
+    <div class="cnt">${d.total_batches} payment(s)</div>
   </div>
 </div>
 
@@ -1355,10 +1362,10 @@ ${groupSections}
 
 <div class="grand">
   <div>
-    <div class="grand-label">Grand Total Collected${weekLabel ? ' · ' + weekLabel : ''}</div>
-    <div class="grand-sublabel">${fmtDateStr(d.date)} · ${ethDate}</div>
+    <div class="grand-lbl">Grand Total Collected${weekLabel ? ' · ' + weekLabel : ''}</div>
+    <div class="grand-sub">${fmtDateStr(d.date)} · ${ethDate}</div>
   </div>
-  <div class="grand-amount">${fmtNum(d.grand_total)}</div>
+  <div class="grand-amt">${fmtNum(d.grand_total)}</div>
 </div>
 
 <div class="print-footer">
