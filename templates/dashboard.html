@@ -513,7 +513,9 @@ function dashboard() {
                 label: item => {
                   const w = data[item.dataIndex];
                   if (mode === 'cashflow') {
-                    return ` ${item.raw.toLocaleString()} ETB collected`;
+                    const total = w.obligation_total || 0;
+                    const rate = total > 0 ? Math.round((w.obligation_paid || 0) / total * 100) : 0;
+                    return ` ${item.raw.toLocaleString()} ETB  ·  ${rate}% rate`;
                   }
                   const total = w.obligation_total || w.total || 0;
                   const rate = total > 0 ? Math.round((w.obligation_paid || w.paid || 0) / total * 100) : 0;
