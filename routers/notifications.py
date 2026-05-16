@@ -433,10 +433,18 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/logs")
 def notification_logs(db: Session = Depends(get_db)):
-    """Return broadcast batches (grouped) and individual notifications separately."""
+    """Return broadcast batches (grouped) and individual notifications separately.
+
+    High-volume types (payment_confirmed, payment_reminder, missed_payment) are
+    grouped by day even when they have no batch_id, so the list never gets long.
+    True one-offs (draw_winner, disbursement_ready) stay as individual rows.
+    """
     all_logs = (db.query(NotificationLog)
                 .order_by(NotificationLog.sent_at.desc())
-                .limit(1000).all())
+                .limit(2000).all())
+
+    # These fire per-member automatically — group by day to avoid flooding the list
+    GROUP_BY_DAY = {"payment_confirmed", "payment_reminder", "missed_payment"}
 
     def _entry(l):
         return {
@@ -448,11 +456,19 @@ def notification_logs(db: Session = Depends(get_db)):
             "error": l.provider_response if l.status == "failed" else None,
         }
 
-    batch_map: dict = {}
+    def _tally(b, status):
+        b["total"] += 1
+        if status == "sent":    b["sent"]   += 1
+        elif status == "failed": b["failed"] += 1
+        elif status == "mock":   b["mock"]   += 1
+
+    batch_map: dict = {}   # keyed by real batch_id
+    day_map: dict = {}     # keyed by (template_key, "YYYY-MM-DD")
     individuals = []
 
     for l in all_logs:
         if l.batch_id:
+            # Real broadcast batch
             if l.batch_id not in batch_map:
                 batch_map[l.batch_id] = {
                     "batch_id": l.batch_id,
@@ -462,16 +478,27 @@ def notification_logs(db: Session = Depends(get_db)):
                     "logs": [],
                 }
             b = batch_map[l.batch_id]
-            b["total"] += 1
-            if l.status == "sent":
-                b["sent"] += 1
-            elif l.status == "failed":
-                b["failed"] += 1
-            elif l.status == "mock":
-                b["mock"] += 1
+            _tally(b, l.status)
+            b["logs"].append(_entry(l))
+        elif l.template_key in GROUP_BY_DAY:
+            # Group high-volume individual logs by (type, day)
+            day = l.sent_at.strftime("%Y-%m-%d") if l.sent_at else "unknown"
+            key = (l.template_key, day)
+            if key not in day_map:
+                day_map[key] = {
+                    "batch_id": f"day_{l.template_key}_{day}",
+                    "template_key": l.template_key,
+                    "sent_at": l.sent_at.isoformat(),
+                    "total": 0, "sent": 0, "failed": 0, "mock": 0,
+                    "logs": [],
+                }
+            b = day_map[key]
+            _tally(b, l.status)
             b["logs"].append(_entry(l))
         else:
+            # True one-off (draw_winner, disbursement_ready, etc.)
             individuals.append({**_entry(l), "template_key": l.template_key})
 
-    batches = sorted(batch_map.values(), key=lambda b: b["sent_at"], reverse=True)
-    return {"batches": batches, "individuals": individuals[:100]}
+    all_batches = list(batch_map.values()) + list(day_map.values())
+    batches = sorted(all_batches, key=lambda b: b["sent_at"], reverse=True)
+    return {"batches": batches, "individuals": individuals[:50]}
