@@ -315,7 +315,7 @@ class PotDisbursement(Base):
     __tablename__ = "pot_disbursements"
     id = Column(Integer, primary_key=True)
     week_id = Column(Integer, ForeignKey("weeks.id"), nullable=False)
-    winner_spot_id = Column(Integer, ForeignKey("spots.id"), nullable=False)
+    winner_spot_id = Column(Integer, ForeignKey("spots.id"), nullable=True)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=True)   # set for half-spot split cheques
     gross_amount = Column(Float, nullable=False)
     voucher_deduction = Column(Float, default=0)
@@ -531,6 +531,8 @@ def _migrate(engine):
         # Half-spot disbursement split: allow 2 rows per week (one per half-member)
         "ALTER TABLE pot_disbursements DROP CONSTRAINT IF EXISTS pot_disbursements_week_id_key",
         "ALTER TABLE pot_disbursements ADD COLUMN member_id INTEGER REFERENCES members(id)",
+        # Allow sold-without-draw weeks (group week / assoc spot sale) to have no winner_spot_id
+        "ALTER TABLE pot_disbursements ALTER COLUMN winner_spot_id DROP NOT NULL",
         # End-of-cycle distribution cheques
         """CREATE TABLE IF NOT EXISTS distribution_cheques (
             id SERIAL PRIMARY KEY,

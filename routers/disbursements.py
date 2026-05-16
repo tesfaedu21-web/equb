@@ -52,11 +52,15 @@ def _to_dict(d: PotDisbursement) -> dict:
         "draw_date": d.week.draw_date.isoformat() if d.week else None,
         "winner_spot_id": d.winner_spot_id,
         "winner_spot_number": d.winner_spot.number if d.winner_spot else None,
-        "winner_members": [
-            {"id": sa.member.id, "name": sa.member.name}
-            for sa in d.winner_spot.spot_assignments
-            if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
-        ] if d.winner_spot else [],
+        "winner_members": (
+            [{"id": sa.member.id, "name": sa.member.name}
+             for sa in d.winner_spot.spot_assignments
+             if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)]
+            if d.winner_spot else
+            # Sold without a drawn spot — show the transaction buyer
+            ([{"id": d.week.transactions[0].buyer.id, "name": d.week.transactions[0].buyer.name}]
+             if d.week and d.week.transactions and d.week.transactions[0].buyer else [])
+        ),
         "member_id": d.member_id,
         "member_name": d.member.name if d.member else None,
         "gross_amount": d.gross_amount,
@@ -313,10 +317,11 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
             n_recipients = 1
         seller_fee_deduction = total_seller_fee / n_recipients
     net_amount = data.gross_amount - service_fee - (data.voucher_deduction or 0) - seller_fee_deduction
+    # For sold-without-draw weeks winner_spot_id may be null — that is valid
     d = PotDisbursement(
         week_id=data.week_id,
         member_id=data.member_id,
-        winner_spot_id=w.winner_spot_id,
+        winner_spot_id=w.winner_spot_id,  # None for group/assoc-sale weeks
         gross_amount=data.gross_amount,
         service_fee=service_fee,
         voucher_deduction=data.voucher_deduction or 0,
