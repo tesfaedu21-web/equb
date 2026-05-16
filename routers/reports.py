@@ -635,9 +635,8 @@ class VoucherReturnIn(BaseModel):
 
 @router.post("/voucher-returns/{week_id}")
 def record_voucher_return(week_id: int, data: VoucherReturnIn,
-                          request: Request, db: Session = Depends(get_db)):
+                          db: Session = Depends(get_db)):
     """Record (or update) how many full/half voucher cards the vendor returned for a week."""
-    _require_admin(request)
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -661,9 +660,8 @@ def record_voucher_return(week_id: int, data: VoucherReturnIn,
 
 
 @router.delete("/voucher-returns/{week_id}")
-def delete_voucher_return(week_id: int, request: Request, db: Session = Depends(get_db)):
+def delete_voucher_return(week_id: int, db: Session = Depends(get_db)):
     """Remove a voucher return record for a week."""
-    _require_admin(request)
     vr = db.query(VoucherReturn).filter(VoucherReturn.week_id == week_id).first()
     if not vr:
         raise HTTPException(status_code=404, detail="No return recorded for this week")
