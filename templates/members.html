@@ -872,29 +872,58 @@ function members() {
             <td style="padding:6px 10px;text-align:right;font-weight:600;color:#991b1b">${fmtNum(p.amount)}</td>
           </tr>`).join('');
 
+        const orgName = this.settings?.group_name || 'እቁብ';
+        const printedAt = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+
         const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Payment Statement — ${d.member_name}</title>
 <style>
-  body{font-family:Arial,sans-serif;padding:28px;color:#111}
-  h1{font-size:19px;margin:0 0 3px}
-  h2{font-size:13px;font-weight:700;color:#444;margin:20px 0 6px;padding-bottom:4px;border-bottom:2px solid #e5e7eb;text-transform:uppercase;letter-spacing:.05em}
-  .sub{color:#666;font-size:12px;margin-bottom:14px}
-  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
-  .card{border:1px solid #e5e7eb;border-radius:8px;padding:10px;text-align:center}
-  .card .label{font-size:10px;color:#999;text-transform:uppercase;margin-bottom:4px}
-  .card .val{font-size:18px;font-weight:700}
-  table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:4px}
-  thead th{background:#f9fafb;padding:7px 10px;text-align:left;font-size:10px;color:#888;text-transform:uppercase;border-bottom:2px solid #e5e7eb}
-  tfoot td{padding:8px 10px;border-top:2px solid #e5e7eb;background:#f9fafb;font-weight:700}
-  .empty{text-align:center;padding:14px;color:#aaa;font-size:12px;border:1px dashed #e5e7eb;border-radius:6px;margin-top:4px}
-  @media print{body{padding:0}}
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 28px 32px; color: #111; font-size: 13px; }
+  @page { margin: 12mm 14mm; }
+  @media print { body { padding: 0; } }
+
+  .org-header { display:flex; align-items:center; gap:14px; padding-bottom:12px; border-bottom:3px solid #078930; margin-bottom:20px; }
+  .org-logo { width:40px; height:40px; border-radius:10px; flex-shrink:0; background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%); }
+  .org-name { font-size:20px; font-weight:800; color:#111; }
+  .org-tagline { font-size:12px; color:#078930; font-weight:600; margin-top:1px; }
+  .print-date { margin-left:auto; font-size:10px; color:#9ca3af; text-align:right; line-height:1.5; }
+
+  .member-name { font-size:17px; font-weight:700; color:#111; margin:0 0 3px; }
+  .member-sub { color:#666; font-size:12px; margin-bottom:18px; }
+
+  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
+  .card { border:1px solid #e5e7eb; border-radius:8px; padding:10px; text-align:center; }
+  .card .label { font-size:10px; color:#999; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; font-weight:600; }
+  .card .val { font-size:18px; font-weight:700; }
+
+  h2 { font-size:12px; font-weight:700; color:#444; margin:20px 0 6px; padding-bottom:4px; border-bottom:2px solid #e5e7eb; text-transform:uppercase; letter-spacing:.05em; }
+  table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:4px; }
+  thead th { background:#f9fafb; padding:6px 10px; text-align:left; font-size:10px; color:#888; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #e5e7eb; font-weight:600; }
+  tbody tr { border-bottom:1px solid #f3f4f6; }
+  td { padding:6px 10px; }
+  tfoot td { padding:7px 10px; border-top:2px solid #e5e7eb; background:#f9fafb; font-weight:700; }
+  .empty { text-align:center; padding:14px; color:#aaa; font-size:12px; border:1px dashed #e5e7eb; border-radius:6px; margin-top:4px; }
+
+  .print-footer { margin-top:24px; padding-top:10px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; font-size:10px; color:#9ca3af; }
 </style></head><body>
-<h1>${d.member_name}</h1>
-<div class="sub">Spot(s): ${d.spot_numbers.join(', ')||'—'} &nbsp;·&nbsp; ${d.phone||'No phone'} &nbsp;·&nbsp; ${cycleName}</div>
+
+<div class="org-header">
+  <div class="org-logo"></div>
+  <div>
+    <div class="org-name">${orgName}</div>
+    <div class="org-tagline">Member Payment Statement</div>
+  </div>
+  <div class="print-date">Cycle: ${cycleName}<br>Printed: ${printedAt}</div>
+</div>
+
+<div class="member-name">${d.member_name}</div>
+<div class="member-sub">Spot(s): ${d.spot_numbers.join(', ')||'—'} &nbsp;·&nbsp; ${d.phone||'No phone'}</div>
+
 <div class="cards">
   <div class="card"><div class="label">Paid Weeks</div><div class="val" style="color:#15803d">${d.summary.paid}</div></div>
   <div class="card"><div class="label">Missed</div><div class="val" style="color:#991b1b">${d.summary.missed}</div></div>
-  <div class="card"><div class="label">Pending/Late</div><div class="val" style="color:#854d0e">${d.summary.pending + d.summary.late}</div></div>
+  <div class="card"><div class="label">Pending / Late</div><div class="val" style="color:#854d0e">${d.summary.pending + d.summary.late}</div></div>
   <div class="card" style="background:#f0fdf4;border-color:#86efac"><div class="label">Total Paid</div><div class="val" style="color:#15803d;font-size:15px">${fmtNum(d.summary.total_paid_amount)}</div></div>
 </div>
 
@@ -902,7 +931,7 @@ function members() {
 ${d.batches.length > 0 ? `
 <table>
 <thead><tr>
-  <th>#</th><th>Payment Date</th><th>Weeks Paid</th><th>Method</th><th>Ref</th><th>Cashier</th><th style="text-align:right">Amount</th>
+  <th>#</th><th>Payment Date</th><th>Weeks Paid</th><th>Method</th><th>Reference</th><th>Cashier</th><th style="text-align:right">Amount</th>
 </tr></thead>
 <tbody>${batchRows}</tbody>
 <tfoot><tr>
@@ -912,7 +941,7 @@ ${d.batches.length > 0 ? `
 </table>` : '<div class="empty">No payments recorded yet</div>'}
 
 ${d.unpaid.length > 0 ? `
-<h2 style="color:#991b1b">Outstanding Weeks (${d.unpaid.length})</h2>
+<h2 style="color:#991b1b;border-bottom-color:#fecaca">Outstanding Weeks (${d.unpaid.length})</h2>
 <table>
 <thead><tr><th>#</th><th>Week</th><th>Draw Date</th><th>Status</th><th style="text-align:right">Amount Owed</th></tr></thead>
 <tbody>${unpaidRows}</tbody>
@@ -920,9 +949,12 @@ ${d.unpaid.length > 0 ? `
   <td colspan="4" style="text-align:right;color:#555">Total Outstanding</td>
   <td style="text-align:right;color:#991b1b">${fmtNum(d.summary.total_owed_amount)}</td>
 </tr></tfoot>
-</table>` : '<div style="margin-top:10px;color:#15803d;font-size:13px;font-weight:600">✓ No outstanding weeks</div>'}
+</table>` : '<div style="margin-top:10px;color:#15803d;font-size:13px;font-weight:600">No outstanding weeks</div>'}
 
-<div style="margin-top:24px;font-size:11px;color:#bbb;text-align:right">Printed: ${new Date().toLocaleString()}</div>
+<div class="print-footer">
+  <span>${orgName} — ${d.member_name} · ${cycleName}</span>
+  <span>Printed: ${printedAt}</span>
+</div>
 </body></html>`;
         const win = window.open('','_blank','width=950,height=700');
         win.document.write(html);

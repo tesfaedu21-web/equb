@@ -2,6 +2,30 @@
 {% block title %}Payments — እቁብ Equb{% endblock %}
 {% block nav_payments %}active{% endblock %}
 
+{% block head %}
+<style>
+/* Screen: hide print-only elements */
+.print-only { display: none; }
+
+@media print {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  body > div > aside, .mobile-topbar, .page-top-accent, .no-print { display: none !important; }
+  main { width: 100% !important; overflow: visible !important; padding: 0 !important; }
+  body { background: white !important; font-size: 11px; margin: 0; }
+
+  /* Show the summary print area only */
+  body * { visibility: hidden; }
+  #summary-print-area, #summary-print-area * { visibility: visible; }
+  #summary-print-area { position: absolute; top: 0; left: 0; width: 100%; padding: 24px; }
+
+  .print-only { display: block !important; visibility: visible; }
+  .card { box-shadow: none !important; border: 1px solid #e5e7eb !important; }
+  button { display: none !important; }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div x-data="payments()" x-init="load()">
 <div class="p-8 space-y-6">
@@ -282,11 +306,17 @@
     <template x-if="summaryData">
       <div class="space-y-5">
 
-        <!-- Print header (hidden on screen) -->
-        <div class="print-only text-center mb-4">
-          <h1 class="text-xl font-bold">Weekly Payment Summary</h1>
-          <p class="text-gray-600">Week <span x-text="summaryData.week_number"></span> —
-             <span x-text="fmtDate(summaryData.draw_date)"></span></p>
+        <!-- Print header (hidden on screen, shown when printing) -->
+        <div class="print-only" style="display:flex;align-items:center;gap:14px;padding-bottom:12px;border-bottom:3px solid #078930;margin-bottom:20px">
+          <div style="width:40px;height:40px;border-radius:10px;flex-shrink:0;background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%)"></div>
+          <div>
+            <div style="font-size:18px;font-weight:800;color:#111" x-text="appSettings?.group_name || 'እቁብ'"></div>
+            <div style="font-size:12px;color:#078930;font-weight:600">Weekly Collection Summary</div>
+          </div>
+          <div style="margin-left:auto;font-size:10px;color:#9ca3af;text-align:right">
+            Week <span x-text="summaryData.week_number"></span> ·
+            <span x-text="fmtDate(summaryData.draw_date)"></span>
+          </div>
         </div>
 
         <!-- Method breakdown cards -->
@@ -813,19 +843,6 @@
 {% endblock %}
 
 {% block scripts %}
-<style>
-@media print {
-  body * { visibility: hidden; }
-  #summary-print-area, #summary-print-area * { visibility: visible; }
-  #summary-print-area {
-    position: absolute; top: 0; left: 0; width: 100%; padding: 24px;
-  }
-  .no-print { display: none !important; }
-  .print-only { display: block !important; visibility: visible; }
-  .card { box-shadow: none !important; border: 1px solid #e5e7eb !important; }
-}
-.print-only { display: none; }
-</style>
 <script>
 function payments() {
   return {
@@ -1208,30 +1225,24 @@ function payments() {
             <td style="padding:6px 10px;text-align:right;font-weight:600">${fmtNum(row.total_amount)}</td>
           </tr>`).join('');
         return `
-          <div style="margin-bottom:20px">
-            <div style="background:${methodBg(method)};padding:8px 12px;border-left:4px solid ${methodColor(method)};margin-bottom:0;font-weight:600;color:${methodColor(method)};font-size:13px;display:flex;justify-content:space-between;align-items:center">
+          <div style="margin-bottom:22px;break-inside:avoid">
+            <div class="method-header" style="background:${methodBg(method)};border-left:4px solid ${methodColor(method)};color:${methodColor(method)}">
               <span>${methodLabel(method)}</span>
               <span>${fmtNum(d.totals[method])}</span>
             </div>
-            <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <table>
               <thead>
-                <tr style="background:#fafafa;border-bottom:1px solid #e5e7eb">
-                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">#</th>
-                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">Member Name</th>
-                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">Spot</th>
-                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">Weeks</th>
-                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">Ref</th>
-                  <th style="padding:7px 10px;text-align:left;font-size:11px;color:#888;text-transform:uppercase">Cashier</th>
-                  <th style="padding:7px 10px;text-align:right;font-size:11px;color:#888;text-transform:uppercase">Amount</th>
-                </tr>
+                <tr><th>#</th><th>Member Name</th><th>Spot</th><th>Weeks</th><th>Reference</th><th>Cashier</th><th style="text-align:right">Amount</th></tr>
               </thead>
               <tbody>
                 ${rowHtml}
-                <tr style="border-top:2px solid #e5e7eb;background:#fafafa">
-                  <td colspan="6" style="padding:7px 10px;text-align:right;font-weight:700;color:#555;font-size:12px">Subtotal</td>
-                  <td style="padding:7px 10px;text-align:right;font-weight:700;color:${methodColor(method)}">${fmtNum(d.totals[method])}</td>
-                </tr>
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="6" style="text-align:right;color:#555">Subtotal</td>
+                  <td style="text-align:right;color:${methodColor(method)}">${fmtNum(d.totals[method])}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>`;
       }).join('');
@@ -1239,37 +1250,108 @@ function payments() {
       const ethDate = this.gregToEth(d.date);
       const weekLabel = d.week_number ? 'Week ' + d.week_number : '';
 
+      const orgName = (this.appSettings && this.appSettings.group_name) || 'እቁብ';
+      const printedAt = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+
       const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <title>Daily Collection Report — ${d.date}</title>
 <style>
-  body { font-family: Arial, sans-serif; padding: 28px; color: #111; }
-  h1   { font-size: 20px; margin: 0 0 2px 0; }
-  .week-label { font-size:28px; font-weight:900; color:#078930; margin:0 0 2px 0; }
-  .eth { font-size:17px; font-weight:700; color:#078930; margin-bottom:2px; }
-  .sub { color: #666; font-size: 12px; margin-bottom: 16px; }
-  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
-  .card  { border:1px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center; }
-  .card .label { font-size:11px; color:#999; text-transform:uppercase; margin-bottom:6px; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 28px 32px; color: #111; font-size: 13px; }
+  @page { margin: 12mm 14mm; }
+  @media print { body { padding: 0; } }
+
+  /* Org header */
+  .org-header { display:flex; align-items:center; gap:14px; padding-bottom:12px; border-bottom:3px solid #078930; margin-bottom:20px; }
+  .org-logo { width:40px; height:40px; border-radius:10px; flex-shrink:0; background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%); }
+  .org-name { font-size:20px; font-weight:800; color:#111; }
+  .org-tagline { font-size:12px; color:#078930; font-weight:600; margin-top:1px; }
+  .print-date { margin-left:auto; font-size:10px; color:#9ca3af; text-align:right; line-height:1.5; }
+
+  /* Report title block */
+  .report-title { font-size:16px; font-weight:700; color:#111; margin:0 0 2px; }
+  .report-eth { font-size:15px; font-weight:700; color:#078930; margin:0 0 2px; }
+  .report-sub { color:#666; font-size:12px; margin-bottom:18px; }
+
+  /* Summary cards */
+  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
+  .card { border:1px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center; }
+  .card .label { font-size:10px; color:#999; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; font-weight:600; }
   .card .amount { font-size:18px; font-weight:700; }
-  .grand { display:flex; justify-content:space-between; align-items:center;
-           border:2px solid #16a34a; border-radius:8px; padding:14px 18px; margin-top:24px; background:#f0fdf4; }
-  .grand .label { font-size:14px; font-weight:600; color:#333; }
-  .grand .amount { font-size:28px; font-weight:800; color:#15803d; }
-  @media print { body { padding:0; } }
+  .card .count { font-size:11px; color:#999; margin-top:3px; }
+
+  /* Method section header */
+  .method-header { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; font-weight:700; font-size:13px; margin-bottom:0; }
+
+  /* Tables */
+  table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:4px; }
+  thead th { background:#f9fafb; padding:6px 10px; text-align:left; font-size:10px; color:#888; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #e5e7eb; font-weight:600; }
+  tbody tr { border-bottom:1px solid #f3f4f6; }
+  tbody tr:last-child { border-bottom:none; }
+  td { padding:6px 10px; }
+  tfoot td { padding:7px 10px; border-top:2px solid #e5e7eb; background:#f9fafb; font-weight:700; }
+
+  /* Grand total */
+  .grand { display:flex; justify-content:space-between; align-items:center; border:2px solid #16a34a; border-radius:8px; padding:14px 18px; margin-top:20px; background:#f0fdf4; }
+  .grand-label { font-size:13px; font-weight:600; color:#333; }
+  .grand-sublabel { font-size:12px; color:#16a34a; font-weight:600; margin-top:2px; }
+  .grand-amount { font-size:26px; font-weight:800; color:#15803d; }
+
+  /* Footer */
+  .print-footer { margin-top:24px; padding-top:10px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; font-size:10px; color:#9ca3af; }
 </style></head><body>
-<h1>Daily Collection Report${weekLabel ? ' — ' + weekLabel : ''}</h1>
-<div class="eth">${ethDate}</div>
-<div class="sub">${fmtDateStr(d.date)} &nbsp;·&nbsp; ${d.total_batches} payment(s)</div>
-<div class="cards">
-  <div class="card"><div class="label">💵 Cash</div><div class="amount" style="color:#16a34a">${fmtNum(d.totals.cash)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.groups.cash.length} payment(s)</div></div>
-  <div class="card"><div class="label">🏦 Bank Transfer</div><div class="amount" style="color:#2563eb">${fmtNum(d.totals.bank_transfer)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.groups.bank_transfer.length} payment(s)</div></div>
-  <div class="card"><div class="label">📋 Cheque</div><div class="amount" style="color:#7c3aed">${fmtNum(d.totals.cheque)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.groups.cheque.length} payment(s)</div></div>
-  <div class="card" style="background:#f0fdf4;border-color:#86efac"><div class="label">Grand Total</div><div class="amount" style="color:#15803d">${fmtNum(d.grand_total)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.total_batches} payment(s)</div></div>
+
+<div class="org-header">
+  <div class="org-logo"></div>
+  <div>
+    <div class="org-name">${orgName}</div>
+    <div class="org-tagline">Daily Collection Report</div>
+  </div>
+  <div class="print-date">Printed: ${printedAt}</div>
 </div>
+
+<div class="report-title">Daily Collection${weekLabel ? ' — ' + weekLabel : ''}</div>
+<div class="report-eth">${ethDate}</div>
+<div class="report-sub">${fmtDateStr(d.date)} &nbsp;·&nbsp; ${d.total_batches} payment(s) recorded</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="label">Cash</div>
+    <div class="amount" style="color:#16a34a">${fmtNum(d.totals.cash)}</div>
+    <div class="count">${d.groups.cash.length} payment(s)</div>
+  </div>
+  <div class="card">
+    <div class="label">Bank Transfer</div>
+    <div class="amount" style="color:#2563eb">${fmtNum(d.totals.bank_transfer)}</div>
+    <div class="count">${d.groups.bank_transfer.length} payment(s)</div>
+  </div>
+  <div class="card">
+    <div class="label">Cheque</div>
+    <div class="amount" style="color:#7c3aed">${fmtNum(d.totals.cheque)}</div>
+    <div class="count">${d.groups.cheque.length} payment(s)</div>
+  </div>
+  <div class="card" style="background:#f0fdf4;border-color:#86efac">
+    <div class="label">Grand Total</div>
+    <div class="amount" style="color:#15803d">${fmtNum(d.grand_total)}</div>
+    <div class="count">${d.total_batches} payment(s)</div>
+  </div>
+</div>
+
 ${groupSections}
-<div class="grand"><div class="label">Grand Total Collected — ${fmtDateStr(d.date)}${weekLabel ? ' · ' + weekLabel : ''}<br><span style="font-size:13px;color:#16a34a;font-weight:600">${ethDate}</span></div><div class="amount">${fmtNum(d.grand_total)}</div></div>
-<div style="margin-top:20px;font-size:11px;color:#bbb;text-align:right">Printed: ${new Date().toLocaleString()}</div>
+
+<div class="grand">
+  <div>
+    <div class="grand-label">Grand Total Collected${weekLabel ? ' · ' + weekLabel : ''}</div>
+    <div class="grand-sublabel">${fmtDateStr(d.date)} · ${ethDate}</div>
+  </div>
+  <div class="grand-amount">${fmtNum(d.grand_total)}</div>
+</div>
+
+<div class="print-footer">
+  <span>${orgName} — Daily Collection Report</span>
+  <span>Printed: ${printedAt}</span>
+</div>
 </body></html>`;
 
       const win = window.open('', '_blank', 'width=900,height=700');
@@ -1301,41 +1383,76 @@ ${groupSections}
         </tr>`).join('');
 
       const typeLabel = d.is_group_week ? ' — Group Week' : '';
+      const orgName2 = (this.appSettings && this.appSettings.group_name) || 'እቁብ';
+      const printedAt2 = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+
       const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <title>Weekly Collection Summary — Week ${d.week_number}</title>
 <style>
-  body { font-family: Arial, sans-serif; padding: 28px; color: #111; }
-  h1   { font-size: 18px; margin: 0 0 4px 0; }
-  .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
-  .cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
-  .card  { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; text-align: center; }
-  .card .label { font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 6px; }
-  .card .amount { font-size: 20px; font-weight: 700; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  thead th { background: #f9fafb; padding: 8px 10px; text-align: left; font-size: 11px; color: #888; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; }
-  tfoot td { padding: 10px; font-weight: 700; border-top: 2px solid #e5e7eb; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 28px 32px; color: #111; font-size: 13px; }
+  @page { margin: 12mm 14mm; }
   @media print { body { padding: 0; } }
+
+  .org-header { display:flex; align-items:center; gap:14px; padding-bottom:12px; border-bottom:3px solid #078930; margin-bottom:20px; }
+  .org-logo { width:40px; height:40px; border-radius:10px; flex-shrink:0; background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%); }
+  .org-name { font-size:20px; font-weight:800; color:#111; }
+  .org-tagline { font-size:12px; color:#078930; font-weight:600; margin-top:1px; }
+  .print-date { margin-left:auto; font-size:10px; color:#9ca3af; text-align:right; line-height:1.5; }
+
+  .report-title { font-size:16px; font-weight:700; color:#111; margin:0 0 2px; }
+  .report-sub { color:#666; font-size:12px; margin-bottom:18px; }
+
+  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
+  .card { border:1px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center; }
+  .card .label { font-size:10px; color:#999; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; font-weight:600; }
+  .card .amount { font-size:18px; font-weight:700; }
+  .card .count { font-size:11px; color:#999; margin-top:3px; }
+
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  thead th { background:#f9fafb; padding:7px 10px; text-align:left; font-size:10px; color:#888; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #e5e7eb; font-weight:600; }
+  tbody tr { border-bottom:1px solid #f3f4f6; }
+  td { padding:7px 10px; }
+  tfoot td { padding:8px 10px; font-weight:700; border-top:2px solid #e5e7eb; background:#f9fafb; }
+
+  .print-footer { margin-top:24px; padding-top:10px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; font-size:10px; color:#9ca3af; }
 </style></head><body>
-<h1>Weekly Payment Collection Summary</h1>
-<div class="sub">Week ${d.week_number}${typeLabel} &nbsp;·&nbsp; ${fmtDt(d.draw_date)} &nbsp;·&nbsp; ${d.payments.length} paid members</div>
-<div class="cards">
-  <div class="card"><div class="label">Cash</div><div class="amount" style="color:#16a34a">${fmtNum(d.totals.cash)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.count.cash} payment(s)</div></div>
-  <div class="card"><div class="label">Bank Transfer</div><div class="amount" style="color:#2563eb">${fmtNum(d.totals.bank_transfer)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.count.bank_transfer} payment(s)</div></div>
-  <div class="card"><div class="label">Cheque</div><div class="amount" style="color:#7c3aed">${fmtNum(d.totals.cheque)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.count.cheque} payment(s)</div></div>
-  <div class="card" style="background:#f0fdf4;border-color:#86efac"><div class="label">Total Collected</div><div class="amount" style="color:#15803d">${fmtNum(d.total_paid)}</div><div style="font-size:11px;color:#999;margin-top:4px">${d.payments.length} payments</div></div>
+
+<div class="org-header">
+  <div class="org-logo"></div>
+  <div>
+    <div class="org-name">${orgName2}</div>
+    <div class="org-tagline">Weekly Collection Summary</div>
+  </div>
+  <div class="print-date">Printed: ${printedAt2}</div>
 </div>
+
+<div class="report-title">Week ${d.week_number}${typeLabel}</div>
+<div class="report-sub">${fmtDt(d.draw_date)} &nbsp;·&nbsp; ${d.payments.length} paid members</div>
+
+<div class="cards">
+  <div class="card"><div class="label">Cash</div><div class="amount" style="color:#16a34a">${fmtNum(d.totals.cash)}</div><div class="count">${d.count.cash} payment(s)</div></div>
+  <div class="card"><div class="label">Bank Transfer</div><div class="amount" style="color:#2563eb">${fmtNum(d.totals.bank_transfer)}</div><div class="count">${d.count.bank_transfer} payment(s)</div></div>
+  <div class="card"><div class="label">Cheque</div><div class="amount" style="color:#7c3aed">${fmtNum(d.totals.cheque)}</div><div class="count">${d.count.cheque} payment(s)</div></div>
+  <div class="card" style="background:#f0fdf4;border-color:#86efac"><div class="label">Total Collected</div><div class="amount" style="color:#15803d">${fmtNum(d.total_paid)}</div><div class="count">${d.payments.length} payments</div></div>
+</div>
+
 <table>
   <thead><tr>
     <th>#</th><th>Member Name</th><th>Method</th><th>Reference</th><th>Paid Date</th><th style="text-align:right">Amount</th>
   </tr></thead>
   <tbody>${rows}</tbody>
   <tfoot><tr>
-    <td colspan="5" style="text-align:right;padding:10px">Total</td>
-    <td style="text-align:right;padding:10px;color:#15803d">${fmtNum(d.total_paid)}</td>
+    <td colspan="5" style="text-align:right;color:#555">Total Collected</td>
+    <td style="text-align:right;color:#15803d">${fmtNum(d.total_paid)}</td>
   </tr></tfoot>
 </table>
-<div style="margin-top:24px;font-size:11px;color:#bbb;text-align:right">Printed: ${new Date().toLocaleString()}</div>
+
+<div class="print-footer">
+  <span>${orgName2} — Week ${d.week_number} Collection Summary</span>
+  <span>Printed: ${printedAt2}</span>
+</div>
 </body></html>`;
 
       const win = window.open('', '_blank', 'width=900,height=700');

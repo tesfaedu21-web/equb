@@ -2,6 +2,16 @@
 {% block title %}Draws — እቁብ Equb{% endblock %}
 {% block nav_draws %}active{% endblock %}
 
+{% block head %}
+<style>
+@media print {
+  body > div > aside, .mobile-topbar, .no-print { display: none !important; }
+  main { width: 100% !important; padding: 0 !important; }
+  body { background: white !important; }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div x-data="draws()" x-init="load()">
 <div class="p-8 space-y-6">
@@ -1382,15 +1392,6 @@
 {% endblock %}
 
 {% block scripts %}
-<style>
-@media print {
-  body > *:not(#weekly-summary-print) { display: none !important; }
-  #weekly-summary-print { display: block !important; box-shadow: none; border-radius: 0; }
-  .no-print { display: none !important; }
-  .modal-backdrop { position: static; background: none; padding: 0; }
-  .modal-box { max-width: 100%; box-shadow: none; }
-}
-</style>
 <script>
 function draws() {
   return {
