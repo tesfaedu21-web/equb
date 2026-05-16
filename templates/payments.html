@@ -396,6 +396,18 @@
             </table>
           </div>
         </div>
+        <!-- Unpaid members summary -->
+        <div x-show="summaryData.unpaid_count > 0 || summaryData.pending_count > 0"
+             class="card bg-amber-50 border border-amber-200 flex items-center gap-3 py-4">
+          <svg class="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <div class="text-sm text-amber-800">
+            <span class="font-semibold" x-text="(summaryData.unpaid_count || summaryData.pending_count || 0)"></span>
+            member(s) have not yet paid for this week.
+            <a @click.prevent="activeTab='debtors'; loadDebtors()" href="#" class="underline font-medium ml-1">View Debtors →</a>
+          </div>
+        </div>
       </div>
     </template>
   </div>
@@ -1011,7 +1023,8 @@ function payments() {
       this.loadingDebtors = true;
       try {
         const cqs = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
-        this.debtors = await this.api('GET', `/api/payments/outstanding-members${cqs}`);
+        const raw = await this.api('GET', `/api/payments/outstanding-members${cqs}`);
+        this.debtors = raw.sort((a, b) => (b.unpaid_amount || 0) - (a.unpaid_amount || 0));
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.loadingDebtors = false; }
     },

@@ -181,14 +181,17 @@
 
   <!-- ── SPOT GRID VIEW ──────────────────────────────────────────────────── -->
   <div x-show="viewMode==='grid'" x-cloak class="card">
-    <div class="mb-3 flex items-center gap-4 flex-wrap text-xs text-gray-500">
+    <div class="mb-2 flex items-center gap-4 flex-wrap text-xs text-gray-500">
       <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-green-100 border border-green-300 inline-block"></span> Active</span>
       <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-blue-100 border border-blue-300 inline-block"></span> Received</span>
       <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-gray-100 border border-gray-200 inline-block"></span> Left / Empty</span>
-      <span class="ml-auto text-gray-400" x-text="members.length + ' members shown'"></span>
+      <span class="ml-auto text-gray-400" x-text="filteredGridMembers.length + ' shown'"></span>
+    </div>
+    <div class="mb-3">
+      <input x-model="gridSearch" type="text" placeholder="Filter grid by name or spot#…" class="w-full text-xs py-1.5"/>
     </div>
     <div class="grid gap-2" style="grid-template-columns: repeat(auto-fill, minmax(80px, 1fr))">
-      <template x-for="m in members" :key="m.id">
+      <template x-for="m in filteredGridMembers" :key="m.id">
         <template x-for="sn in (m.spot_numbers.length ? m.spot_numbers : [-m.id])" :key="sn">
           <div @click="openEdit(m)"
                :title="`Spot ${sn > 0 ? sn : '?'} — ${m.name}`"
@@ -273,7 +276,7 @@
                     </svg>
                   </button>
                   <button @click="markLeft(m)" x-show="m.status !== 'left'"
-                          class="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Mark Left">
+                          class="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Remove from Group (marks member as left — preserves all payment records)">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
@@ -643,6 +646,7 @@ function members() {
     importResults: null,
     addForm: { name: '', phone: '', spot_id: null, share: 'full', weekly_contribution: 21000, notes: '' },
     editForm: { name: '', phone: '', status: 'active', notes: '' },
+    gridSearch: '',
     editMember: null,
     newSpotForm: { spot_id: null, share: 'full', weekly_contribution: 21000 },
 
@@ -663,6 +667,18 @@ function members() {
         return this.availableSpots.filter(s => s.occupants === 0);
       }
       return this.availableSpots.filter(s => s.occupants < 2);
+    },
+
+    // Computed: client-side filter for spot grid view
+    get filteredGridMembers() {
+      if (!this.gridSearch) return this.members;
+      const q = this.gridSearch.trim().toLowerCase();
+      const isNum = /^\d+$/.test(q);
+      return this.members.filter(m =>
+        isNum
+          ? m.spot_numbers.some(sn => String(sn).includes(q))
+          : m.name.toLowerCase().includes(q)
+      );
     },
 
     // Computed: filter spots by share type for Edit modal
@@ -747,6 +763,7 @@ function members() {
     },
 
     async saveAdd() {
+      if (!this.addForm.spot_id && !confirm('No spot assigned. The member will need a spot assigned later before draws start. Continue anyway?')) return;
       this.saving = true;
       try {
         const spots = [];

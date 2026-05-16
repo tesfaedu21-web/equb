@@ -372,7 +372,10 @@
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
               {% endif %}
             </svg>
-            <span>{{ error }}</span>
+            <div>
+              <span>{{ error }}</span>
+              {% if locked %}<div class="mt-1.5 text-xs opacity-75">Contact an administrator to reset your password.</div>{% endif %}
+            </div>
           </div>
           {% endif %}
 

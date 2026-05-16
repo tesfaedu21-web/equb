@@ -103,6 +103,13 @@
         <div class="text-green-400 text-xs" x-text="form.group_tagline || 'Equb Manager'"></div>
       </div>
     </div>
+    <div class="flex items-center justify-between pt-1">
+      <p class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+        Page reload required for branding changes to appear in the sidebar.
+      </p>
+      <button @click="saveSettings()" :disabled="saving" class="btn-primary text-sm"
+              x-text="saving ? 'Saving…' : 'Save Branding'"></button>
+    </div>
   </div>
 
   <!-- User accounts -->
@@ -168,11 +175,64 @@
         <div class="flex-1">
           <label class="block text-xs text-gray-500 mb-1">New Password</label>
           <input x-model="pwd.new" type="password"/>
+          <div x-show="pwd.new.length > 0" class="mt-1.5 flex items-center gap-2">
+            <div class="flex gap-1 flex-1">
+              <div class="h-1.5 flex-1 rounded-full transition-colors"
+                   :class="pwd.new.length >= 1 ? (pwd.new.length < 6 ? 'bg-red-400' : pwd.new.length < 10 ? 'bg-yellow-400' : 'bg-green-500') : 'bg-gray-200'"></div>
+              <div class="h-1.5 flex-1 rounded-full transition-colors"
+                   :class="pwd.new.length >= 6 ? (pwd.new.length < 10 ? 'bg-yellow-400' : 'bg-green-500') : 'bg-gray-200'"></div>
+              <div class="h-1.5 flex-1 rounded-full transition-colors"
+                   :class="pwd.new.length >= 10 && /[^a-zA-Z0-9]/.test(pwd.new) ? 'bg-green-500' : 'bg-gray-200'"></div>
+            </div>
+            <span class="text-xs font-medium"
+                  :class="pwd.new.length < 6 ? 'text-red-500' : pwd.new.length < 10 ? 'text-yellow-600' : 'text-green-600'"
+                  x-text="pwd.new.length < 6 ? 'Weak' : pwd.new.length < 10 ? 'Fair' : 'Strong'"></span>
+          </div>
         </div>
         <button @click="changePassword()" class="btn-secondary sm:flex-shrink-0">Update Password</button>
       </div>
     </div>
   </div>
+  <!-- Role Permissions Reference -->
+  <div class="card space-y-4">
+    <h2 class="text-base font-semibold text-gray-800 flex items-center gap-2">
+      <svg class="w-4 h-4 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+      </svg>
+      Role Permissions
+    </h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="border-b border-gray-100">
+            <th class="text-left px-3 py-2 text-xs text-gray-400 font-semibold uppercase">Feature</th>
+            <th class="text-center px-3 py-2 text-xs font-semibold uppercase">
+              <span class="badge badge-cashier">Cashier</span>
+            </th>
+            <th class="text-center px-3 py-2 text-xs font-semibold uppercase">
+              <span class="badge badge-admin">Admin</span>
+            </th>
+            <th class="text-center px-3 py-2 text-xs font-semibold uppercase">
+              <span class="badge badge-drawn">Owner</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50 text-xs">
+          <tr><td class="px-3 py-2 text-gray-600">View Dashboard & Reports</td><td class="text-center">✓</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+          <tr><td class="px-3 py-2 text-gray-600">Record Payments</td><td class="text-center">✓</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+          <tr><td class="px-3 py-2 text-gray-600">View Members</td><td class="text-center">✓</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+          <tr><td class="px-3 py-2 text-gray-600">Add / Edit Members</td><td class="text-center text-gray-300">—</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+          <tr><td class="px-3 py-2 text-gray-600">Record Draws & Disbursements</td><td class="text-center text-gray-300">—</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+          <tr><td class="px-3 py-2 text-gray-600">Send Notifications</td><td class="text-center text-gray-300">—</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+          <tr><td class="px-3 py-2 text-gray-600">Manage Settings & Branding</td><td class="text-center text-gray-300">—</td><td class="text-center text-gray-300">—</td><td class="text-center">✓</td></tr>
+          <tr><td class="px-3 py-2 text-gray-600">Add / Remove Users</td><td class="text-center text-gray-300">—</td><td class="text-center text-gray-300">—</td><td class="text-center">✓</td></tr>
+          <tr><td class="px-3 py-2 text-gray-600">Delete Members Permanently</td><td class="text-center text-gray-300">—</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+          <tr><td class="px-3 py-2 text-gray-600">Record Expenses</td><td class="text-center text-gray-300">—</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div><!-- end inner p-8 -->
 
 <!-- Add/Edit User Modal -->
