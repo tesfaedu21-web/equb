@@ -944,12 +944,12 @@ def cycle_distribution(cycle_id: Optional[int] = None, db: Session = Depends(get
     association_expenses = sum(e.amount for e in expenses)
     association_balance = association_fund - association_expenses
 
-    # ── Association Spot Sale Profits ─────────────────────────────────────────
+    # ── Association Spot Sale + Group Week Sale Profits ───────────────────────
     assoc_spot_profit = 0.0
     if week_ids:
         assoc_txs = db.query(PotTransaction).filter(
             PotTransaction.week_id.in_(week_ids),
-            PotTransaction.transaction_type == "assoc_spot_sale",
+            PotTransaction.transaction_type.in_(["assoc_spot_sale", "group_week_sale"]),
         ).all()
         assoc_spot_profit = sum(t.seller_fee or 0 for t in assoc_txs)
 
