@@ -1074,7 +1074,7 @@ function reports() {
       this.savingVoucher = v.id;
       try {
         const action = v.voucher_paid ? 'unmark-paid' : 'mark-paid';
-        const res = await this.api('PUT', `/api/reports/vouchers/${v.id}/${action}`);
+        const res = await this.api('PUT', `/api/reports/vouchers/week/${v.week_id}/${action}`);
         v.voucher_paid = !v.voucher_paid;
         v.voucher_paid_date = res.voucher_paid_date || null;
         const cqs = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';

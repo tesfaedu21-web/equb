@@ -599,14 +599,24 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
     vr_rows = db.query(VoucherReturn).filter(VoucherReturn.week_id.in_(disb_week_ids)).all()
     returns_by_week = {vr.week_id: vr for vr in vr_rows}
 
-    rows = []
+    # Group disbursements by week — half-spot winners produce two disbursements
+    # for the same week; show one row per week, not one per disbursement
+    from collections import defaultdict
+    week_disbs: dict = defaultdict(list)
     for d in disbs:
-        winner = ", ".join(
-            sa.member.name for sa in d.winner_spot.spot_assignments
-            if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
-        ) if d.winner_spot else "—"
+        week_disbs[d.week_id].append(d)
 
-        wid = d.week_id
+    # Preserve cheque_date ordering
+    seen = []
+    for d in disbs:
+        if d.week_id not in seen:
+            seen.append(d.week_id)
+
+    rows = []
+    for wid in seen:
+        group = week_disbs[wid]
+        d = group[0]
+
         iss = issued.get(wid, {"full_issued": 0, "half_issued": 0})
         vr = returns_by_week.get(wid)
 
@@ -622,13 +632,20 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
         else:
             vendor_payment = 0
 
-        voucher_deduction = d.voucher_deduction or 0
+        # Sum voucher_deduction across all disbursements for the week
+        voucher_deduction = sum(x.voucher_deduction or 0 for x in group)
+        all_paid = all(bool(x.voucher_paid) for x in group)
+        paid_date = max(
+            (x.voucher_paid_date for x in group if x.voucher_paid_date),
+            default=None
+        )
+
         rows.append({
             "id":                d.id,
+            "disbursement_ids":  [x.id for x in group],
             "week_id":           wid,
             "week_number":       d.week.week_number if d.week else None,
             "cheque_date":       d.cheque_date.isoformat(),
-            "winner":            winner,
             "voucher_deduction": voucher_deduction,
             "full_issued":       iss["full_issued"],
             "half_issued":       iss["half_issued"],
@@ -637,30 +654,33 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
             "return_recorded":   vr is not None,
             "vendor_payment":    round(vendor_payment, 2),
             "assoc_retains":     round(voucher_deduction - vendor_payment, 2),
-            "voucher_paid":      bool(d.voucher_paid),
-            "voucher_paid_date": d.voucher_paid_date.isoformat() if d.voucher_paid_date else None,
+            "voucher_paid":      all_paid,
+            "voucher_paid_date": paid_date.isoformat() if paid_date else None,
         })
     return rows
 
 
-@router.put("/vouchers/{disbursement_id}/mark-paid")
-def mark_voucher_paid(disbursement_id: int, db: Session = Depends(get_db)):
-    d = db.query(PotDisbursement).filter(PotDisbursement.id == disbursement_id).first()
-    if not d:
-        raise HTTPException(status_code=404, detail="Disbursement not found")
-    d.voucher_paid = True
-    d.voucher_paid_date = _utcnow()
+@router.put("/vouchers/week/{week_id}/mark-paid")
+def mark_voucher_paid(week_id: int, db: Session = Depends(get_db)):
+    rows = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No disbursements for this week")
+    now = _utcnow()
+    for d in rows:
+        d.voucher_paid = True
+        d.voucher_paid_date = now
     db.commit()
-    return {"ok": True, "voucher_paid_date": d.voucher_paid_date.isoformat()}
+    return {"ok": True, "voucher_paid_date": now.isoformat()}
 
 
-@router.put("/vouchers/{disbursement_id}/unmark-paid")
-def unmark_voucher_paid(disbursement_id: int, db: Session = Depends(get_db)):
-    d = db.query(PotDisbursement).filter(PotDisbursement.id == disbursement_id).first()
-    if not d:
-        raise HTTPException(status_code=404, detail="Disbursement not found")
-    d.voucher_paid = False
-    d.voucher_paid_date = None
+@router.put("/vouchers/week/{week_id}/unmark-paid")
+def unmark_voucher_paid(week_id: int, db: Session = Depends(get_db)):
+    rows = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No disbursements for this week")
+    for d in rows:
+        d.voucher_paid = False
+        d.voucher_paid_date = None
     db.commit()
     return {"ok": True}
 
