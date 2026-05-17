@@ -1266,7 +1266,7 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
             "late":                sum(1 for p in ps if p.status == "late"),
             "pending":             sum(1 for p in ps if p.status == "pending"),
             "total_paid_amount":   float(sum(p.amount for p in ps if p.status == "paid")),
-            "total_owed_amount":   float(sum(p.amount for p in unpaid)),
+            "total_owed_amount":   float(sum(p["amount"] for p in unpaid)),
         },
     }
 
