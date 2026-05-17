@@ -505,7 +505,7 @@
               <th class="px-4 py-3 no-print-cell"></th>
             </tr>
           </thead>
-            <template x-for="v in vouchers" :key="v.id">
+            <template x-for="v in vouchers" :key="v.week_id">
               <tbody>
                 <!-- Main row -->
                 <tr class="border-b transition-colors"
@@ -573,11 +573,11 @@
                       <!-- Mark Paid button — only when a disbursement exists for this week -->
                       <template x-if="v.disbursement_ids && v.disbursement_ids.length > 0">
                         <button @click="toggleVoucher(v)"
-                                :disabled="savingVoucher === v.id"
+                                :disabled="savingVoucher === v.week_id"
                                 :class="v.voucher_paid
                                   ? 'text-xs text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 hover:bg-red-50 rounded-lg px-2 py-1'
                                   : 'text-xs btn-primary py-1 px-3'"
-                                x-text="savingVoucher === v.id ? '…' : (v.voucher_paid ? 'Undo' : 'Mark Paid')">
+                                x-text="savingVoucher === v.week_id ? '…' : (v.voucher_paid ? 'Undo' : 'Mark Paid')">
                         </button>
                       </template>
                     </div>
@@ -1074,7 +1074,7 @@ function reports() {
     },
 
     async toggleVoucher(v) {
-      this.savingVoucher = v.id;
+      this.savingVoucher = v.week_id;
       try {
         const action = v.voucher_paid ? 'unmark-paid' : 'mark-paid';
         const res = await this.api('PUT', `/api/reports/vouchers/week/${v.week_id}/${action}`);
