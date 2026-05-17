@@ -810,7 +810,8 @@ def delete_expense(expense_id: int, request: Request, db: Session = Depends(get_
 
 
 @router.get("/general-ledger")
-def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    _require_admin(request)
     """Chronological ledger of every financial event for a cycle."""
     if not cycle_id:
         cycle = db.query(Cycle).filter(Cycle.status == "active").first()

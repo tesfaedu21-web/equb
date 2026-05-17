@@ -4,7 +4,7 @@ from sqlalchemy import func as sqla_func
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime, timezone
-from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot, Cycle, cycle_cfg
+from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot, Cycle, PotTransaction, cycle_cfg
 from routers.deps import _require_admin
 
 
@@ -84,8 +84,8 @@ def list_disbursements(cycle_id: Optional[int] = None, db: Session = Depends(get
         active = db.query(Cycle).filter(Cycle.status == "active").first()
         cycle_id = active.id if active else None
     q = db.query(PotDisbursement).join(Week).options(
-        joinedload(PotDisbursement.winner_spot).joinedload("spot_assignments").joinedload("member"),
-        joinedload(PotDisbursement.week).joinedload("transactions").joinedload("buyer"),
+        joinedload(PotDisbursement.winner_spot).joinedload(Spot.spot_assignments).joinedload(MemberSpot.member),
+        joinedload(PotDisbursement.week).joinedload(Week.transactions).joinedload(PotTransaction.buyer),
         joinedload(PotDisbursement.member),
         joinedload(PotDisbursement.guarantor_1),
         joinedload(PotDisbursement.guarantor_2),
@@ -100,8 +100,8 @@ def list_disbursements(cycle_id: Optional[int] = None, db: Session = Depends(get
 @router.get("/week/{week_id}")
 def get_disbursement_for_week(week_id: int, db: Session = Depends(get_db)):
     rows = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).options(
-        joinedload(PotDisbursement.winner_spot).joinedload("spot_assignments").joinedload("member"),
-        joinedload(PotDisbursement.week).joinedload("transactions").joinedload("buyer"),
+        joinedload(PotDisbursement.winner_spot).joinedload(Spot.spot_assignments).joinedload(MemberSpot.member),
+        joinedload(PotDisbursement.week).joinedload(Week.transactions).joinedload(PotTransaction.buyer),
         joinedload(PotDisbursement.member),
         joinedload(PotDisbursement.guarantor_1),
         joinedload(PotDisbursement.guarantor_2),

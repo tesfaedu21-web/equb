@@ -584,6 +584,10 @@ def _migrate(engine):
         "ALTER TABLE voucher_returns ADD COLUMN IF NOT EXISTS vendor_paid_date TIMESTAMP",
         # Prevent duplicate week numbers within the same cycle
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_week_cycle_number ON weeks(cycle_id, week_number)",
+        # Fix voucher_paid column type: INTEGER→BOOLEAN (must drop default first, then cast, then reset)
+        "ALTER TABLE pot_disbursements ALTER COLUMN voucher_paid DROP DEFAULT",
+        "ALTER TABLE pot_disbursements ALTER COLUMN voucher_paid TYPE boolean USING CASE WHEN voucher_paid = 0 THEN FALSE ELSE TRUE END",
+        "ALTER TABLE pot_disbursements ALTER COLUMN voucher_paid SET DEFAULT FALSE",
     ]
     with engine.connect() as conn:
         for sql in migrations:

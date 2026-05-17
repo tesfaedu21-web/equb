@@ -5,7 +5,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 from database import (get_db, Week, Cycle, Spot, Member, MemberSpot,
                       PotTransaction, Settings, Payment, PaymentBatch,
-                      PotDisbursement, AssociationExpense, cycle_cfg)
+                      PotDisbursement, AssociationExpense, VoucherReturn, cycle_cfg)
 from routers.deps import _require_admin
 
 
@@ -627,6 +627,8 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
         raise HTTPException(status_code=404, detail="Week not found")
     if w.status not in ("pending", "drawn"):
         raise HTTPException(status_code=400, detail="Week already processed")
+    if db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).first():
+        raise HTTPException(status_code=400, detail="Week already disbursed — cannot record a sale")
     if w.cycle.draw_phase != "active" and data.transaction_type != "assoc_spot_sale":
         raise HTTPException(status_code=400, detail="Draws have not been started yet by admin")
 
@@ -891,6 +893,9 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
             db.query(PaymentBatch).filter(
                 PaymentBatch.id.in_(batch_ids)
             ).delete(synchronize_session=False)
+        db.query(VoucherReturn).filter(
+            VoucherReturn.week_id.in_(week_ids)
+        ).delete(synchronize_session=False)
         db.query(Week).filter(Week.cycle_id == cycle_id).delete(synchronize_session=False)
 
     # Delete association expenses for this cycle
@@ -905,11 +910,13 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
 
     db.flush()  # flush so the MemberSpot deletions are visible for the next query
 
-    # Delete ALL members that now have no spot assignment in any remaining cycle
-    # (covers cycle members, never-assigned members, and NULL-cycle legacy members)
+    # Delete members that have no remaining spot assignment AND no payment records in any cycle.
+    # Members with payments in other cycles cannot be hard-deleted (FK constraint on payments.member_id).
     remaining_assigned = {r[0] for r in db.query(MemberSpot.member_id).all()}
+    has_payments = {r[0] for r in db.query(Payment.member_id).distinct().all()}
     all_member_ids = [r[0] for r in db.query(Member.id).all()]
-    orphan_ids = [mid for mid in all_member_ids if mid not in remaining_assigned]
+    orphan_ids = [mid for mid in all_member_ids
+                  if mid not in remaining_assigned and mid not in has_payments]
     if orphan_ids:
         from database import NotificationLog as _NLog
         db.query(_NLog).filter(_NLog.member_id.in_(orphan_ids)).delete(synchronize_session=False)
