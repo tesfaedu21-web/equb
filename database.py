@@ -387,6 +387,8 @@ class VoucherReturn(Base):
     half_count = Column(Integer, default=0, nullable=False)
     notes = Column(Text)
     recorded_at = Column(DateTime, default=_utcnow)
+    vendor_paid = Column(Boolean, default=False)
+    vendor_paid_date = Column(DateTime, nullable=True)
 
     week = relationship("Week")
 
@@ -573,6 +575,8 @@ def _migrate(engine):
             notes TEXT,
             recorded_at TIMESTAMP
         )""",
+        "ALTER TABLE voucher_returns ADD COLUMN IF NOT EXISTS vendor_paid BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE voucher_returns ADD COLUMN IF NOT EXISTS vendor_paid_date TIMESTAMP",
     ]
     with engine.connect() as conn:
         for sql in migrations:
