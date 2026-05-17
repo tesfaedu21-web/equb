@@ -144,9 +144,9 @@ check("Cashier cannot add member (admin-only)", r.status_code == 403, f"got {r.s
 
 check(f"All 8 members created", len(members_created) == 8, f"got {len(members_created)}")
 
-# Duplicate phone rejected
-r = xpost(s_admin, '/api/members', json={'name':'Dup Phone', 'phone': f'09{_RUN}0001', 'share':'full'})
-check("Duplicate phone rejected", r.status_code in (400, 409, 422), f"got {r.status_code}: {r.text[:80]}")
+# Same phone allowed — one person can hold multiple spots (e.g. 4 full spots in same cycle)
+r = xpost(s_admin, '/api/members', json={'name':'Abebe Kebede', 'phone': f'09{_RUN}0001', 'share':'full'})
+check("Same phone allowed (multi-spot member)", r.status_code == 200, f"got {r.status_code}: {r.text[:80]}")
 
 # Empty name rejected
 r = xpost(s_admin, '/api/members', json={'name':'', 'phone':'0911200000', 'share':'full'})

@@ -595,11 +595,6 @@ def create_member(data: MemberCreate, request: Request, db: Session = Depends(ge
             detail="Draws have already started — new members cannot be added mid-cycle.")
     gs    = db.query(Settings).first()
     cfg   = cycle_cfg(cycle, gs)
-    if data.phone:
-        existing = db.query(Member).filter(Member.phone == data.phone).first()
-        if existing:
-            raise HTTPException(status_code=409,
-                detail=f"Phone number {data.phone} is already registered to {existing.name}.")
     try:
         m = Member(name=data.name, phone=data.phone, notes=data.notes)
         db.add(m)
