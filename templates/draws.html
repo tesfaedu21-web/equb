@@ -1083,8 +1083,8 @@
                     <span x-text="voucherInfo ? ('− Voucher pot deduction (' + (voucherInfo.full_spot_voucher_rate||0) + '×' + (voucherInfo.total_spots||0) + ') (−)') : '− Voucher (−)'"></span>
                     <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.voucher_deduction||0) : (disbForm.voucher_deduction||0))"></span>
                   </div>
-                  <!-- Percentage fee always from transaction -->
-                  <div class="flex justify-between text-purple-700">
+                  <!-- Percentage fee — only shown when a non-zero percentage was charged -->
+                  <div x-show="activeWeek.transaction.percentage" class="flex justify-between text-purple-700">
                     <span x-text="'− ' + (activeWeek.is_group_week ? 'Association Fee' : 'Seller Fee') + ' (' + (activeWeek.transaction.percentage||0) + '%) (−)'"></span>
                     <span x-text="'−' + fmt(activeWeek.transaction.seller_fee||0)"></span>
                   </div>
@@ -1819,8 +1819,8 @@ function draws() {
               this.disbForm.gross_amount = this.voucherInfo.net_pot || this.disbForm.gross_amount;
               this.disbForm.service_fee  = this.voucherInfo.service_fee || 0;
               if (w.transaction) {
-                // Sold week: lump voucher + seller fee into voucher_deduction so net_amount = buyer_receives
-                this.disbForm.voucher_deduction = (this.voucherInfo.voucher_deduction || 0) + (w.transaction.seller_fee || 0);
+                // Sold week: backend subtracts seller_fee separately, so only store the voucher here
+                this.disbForm.voucher_deduction = this.voucherInfo.voucher_deduction || 0;
               } else {
                 this.disbForm.voucher_deduction = this.voucherInfo.voucher_deduction || 0;
               }
