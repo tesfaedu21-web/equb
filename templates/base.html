@@ -866,7 +866,7 @@ function app() {
 
     showToast(msg, type='success') {
       this.toast = {show:true, msg, type};
-      setTimeout(()=>{ this.toast.show=false; }, 3500);
+      setTimeout(()=>{ this.toast.show=false; }, type === 'error' ? 6000 : 3500);
     },
 
     fmt(n) {
@@ -900,7 +900,11 @@ function app() {
         if(res.status === 401) { window.location.href = '/login'; return; }
         if(!res.ok) {
           const err = await res.json().catch(()=>({}));
-          throw new Error(err.detail || `Error ${res.status}`);
+          let detail = err.detail;
+          if (Array.isArray(detail)) {
+            detail = detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+          }
+          throw new Error(detail || `Error ${res.status}`);
         }
         return await res.json();
       } finally {

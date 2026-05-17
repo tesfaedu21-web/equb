@@ -257,13 +257,14 @@
                                 @click="openSale(w)"
                                 class="text-xs btn-secondary py-1 px-3"
                                 x-text="w.winner_spot?.spot_type === 'association' ? 'Record Sale' : 'Sell Pot'"></button>
-                        <button x-show="w.winner_spot?.spot_type !== 'association'"
+                        <button x-show="isAdmin && w.winner_spot?.spot_type !== 'association'"
                                 @click="openDisbursement(w)"
                                 class="text-xs text-indigo-500 hover:text-indigo-700 font-medium px-2 py-1 rounded-lg hover:bg-gray-100">Disburse</button>
                       </div>
                     </template>
                     <template x-if="w.status !== 'pending' && w.status !== 'drawn'">
-                      <button @click="openDisbursement(w)"
+                      <button x-show="isAdmin || disbursedWeeks.has(w.id)"
+                              @click="isAdmin && openDisbursement(w)"
                               :class="disbursedWeeks.has(w.id) ? 'text-green-600 hover:text-green-700' : 'text-indigo-500 hover:text-indigo-700'"
                               class="text-xs font-medium px-2 py-1 rounded-lg hover:bg-gray-100"
                               x-text="disbursedWeeks.has(w.id) ? '✓ Disbursed' : 'Disburse'"></button>
@@ -1845,6 +1846,9 @@ function draws() {
     },
 
     async saveDisbursement() {
+      if (!this.disbForm.gross_amount || this.disbForm.gross_amount <= 0) {
+        this.showToast('Gross amount must be greater than 0', 'error'); return;
+      }
       if (!this.disbForm.cheque_number || !this.disbForm.cheque_date) {
         this.showToast('Cheque number and date are required', 'error'); return;
       }
@@ -1917,6 +1921,9 @@ function draws() {
     async saveHalfDisbursements() {
       const toSave = this.halfForms.filter((hf, i) => !this.halfExisting[i]);
       for (const hf of toSave) {
+        if (!hf.gross_amount || hf.gross_amount <= 0) {
+          this.showToast('Gross amount must be greater than 0 for ' + hf.member_name, 'error'); return;
+        }
         if (!hf.cheque_number?.trim()) {
           this.showToast('Cheque number required for ' + hf.member_name, 'error'); return;
         }
