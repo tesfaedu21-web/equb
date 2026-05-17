@@ -510,7 +510,10 @@
                 <!-- Main row -->
                 <tr class="border-b transition-colors"
                     :class="v.voucher_paid ? 'bg-green-50' : 'hover:bg-gray-50'">
-                  <td class="px-4 py-3 font-semibold text-gray-600" x-text="'#' + v.week_number"></td>
+                  <td class="px-4 py-3 font-semibold text-gray-600">
+                    <span x-text="'#' + v.week_number"></span>
+                    <span x-show="v.is_group_week" class="ml-1 text-xs font-normal text-purple-500">(Group)</span>
+                  </td>
                   <td class="px-4 py-3 text-gray-400 text-xs" x-text="fmtDate(v.cheque_date)"></td>
 
                   <!-- Full: Issued -->
@@ -567,8 +570,8 @@
                                 : 'text-xs border border-blue-200 text-blue-600 hover:bg-blue-50 rounded-lg px-2 py-1'"
                               x-text="openReturnForm === v.week_id ? 'Cancel' : (v.return_recorded ? 'Edit Return' : 'Record Return')">
                       </button>
-                      <!-- Mark Paid button -->
-                      <template x-if="v.voucher_deduction > 0">
+                      <!-- Mark Paid button — only when a disbursement exists for this week -->
+                      <template x-if="v.disbursement_ids && v.disbursement_ids.length > 0">
                         <button @click="toggleVoucher(v)"
                                 :disabled="savingVoucher === v.id"
                                 :class="v.voucher_paid

@@ -575,47 +575,47 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
 
 @router.get("/vouchers")
 def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """List disbursements with physical voucher issued/returned counts."""
+    """List all completed weeks (drawn + sold/group) with voucher issued/returned counts."""
     if not cycle_id:
         cycle = db.query(Cycle).filter(Cycle.status == "active").first()
         if not cycle:
             return []
         cycle_id = cycle.id
 
-    week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
-    if not week_ids:
+    # All completed weeks (drawn or sold), including group weeks — ordered by week_number
+    completed_weeks = (db.query(Week)
+                       .filter(Week.cycle_id == cycle_id,
+                               Week.status.in_(["drawn", "sold"]))
+                       .order_by(Week.week_number)
+                       .all())
+    if not completed_weeks:
         return []
+
+    week_ids = [w.id for w in completed_weeks]
+    weeks_by_id = {w.id: w for w in completed_weeks}
 
     disbs = (db.query(PotDisbursement)
              .filter(PotDisbursement.week_id.in_(week_ids))
-             .order_by(PotDisbursement.cheque_date).all())
+             .all())
 
     cycle_obj = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     gs = db.query(Settings).first()
     cfg = cycle_cfg(cycle_obj, gs) if cycle_obj else None
 
-    disb_week_ids = [d.week_id for d in disbs]
-    issued = _calc_issued_counts(db, disb_week_ids, cycle_id) if cfg else {}
-    vr_rows = db.query(VoucherReturn).filter(VoucherReturn.week_id.in_(disb_week_ids)).all()
+    issued = _calc_issued_counts(db, week_ids, cycle_id) if cfg else {}
+    vr_rows = db.query(VoucherReturn).filter(VoucherReturn.week_id.in_(week_ids)).all()
     returns_by_week = {vr.week_id: vr for vr in vr_rows}
 
-    # Group disbursements by week — half-spot winners produce two disbursements
-    # for the same week; show one row per week, not one per disbursement
+    # Group disbursements by week (half-spot wins produce two records per week)
     from collections import defaultdict
     week_disbs: dict = defaultdict(list)
     for d in disbs:
         week_disbs[d.week_id].append(d)
 
-    # Preserve cheque_date ordering
-    seen = []
-    for d in disbs:
-        if d.week_id not in seen:
-            seen.append(d.week_id)
-
     rows = []
-    for wid in seen:
-        group = week_disbs[wid]
-        d = group[0]
+    for w in completed_weeks:
+        wid = w.id
+        group = week_disbs.get(wid, [])
 
         iss = issued.get(wid, {"full_issued": 0, "half_issued": 0})
         vr = returns_by_week.get(wid)
@@ -632,20 +632,22 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
         else:
             vendor_payment = 0
 
-        # Sum voucher_deduction across all disbursements for the week
+        # Sum voucher_deduction across disbursements; 0 if no disbursement yet
         voucher_deduction = sum(x.voucher_deduction or 0 for x in group)
-        all_paid = all(bool(x.voucher_paid) for x in group)
+        all_paid = bool(group) and all(bool(x.voucher_paid) for x in group)
         paid_date = max(
             (x.voucher_paid_date for x in group if x.voucher_paid_date),
             default=None
         )
+        ref_date = group[0].cheque_date if group else w.draw_date
 
         rows.append({
-            "id":                d.id,
+            "id":                group[0].id if group else None,
             "disbursement_ids":  [x.id for x in group],
             "week_id":           wid,
-            "week_number":       d.week.week_number if d.week else None,
-            "cheque_date":       d.cheque_date.isoformat(),
+            "week_number":       w.week_number,
+            "is_group_week":     w.is_group_week,
+            "cheque_date":       ref_date.isoformat(),
             "voucher_deduction": voucher_deduction,
             "full_issued":       iss["full_issued"],
             "half_issued":       iss["half_issued"],
