@@ -210,6 +210,7 @@ class Week(Base):
     __tablename__ = "weeks"
     __table_args__ = (
         Index("ix_weeks_cycle_status", "cycle_id", "status"),
+        UniqueConstraint("cycle_id", "week_number", name="uq_week_cycle_number"),
     )
     id = Column(Integer, primary_key=True)
     cycle_id = Column(Integer, ForeignKey("cycles.id"), nullable=False)
@@ -581,6 +582,8 @@ def _migrate(engine):
         )""",
         "ALTER TABLE voucher_returns ADD COLUMN IF NOT EXISTS vendor_paid BOOLEAN DEFAULT FALSE",
         "ALTER TABLE voucher_returns ADD COLUMN IF NOT EXISTS vendor_paid_date TIMESTAMP",
+        # Prevent duplicate week numbers within the same cycle
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_week_cycle_number ON weeks(cycle_id, week_number)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

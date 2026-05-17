@@ -443,7 +443,8 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/logs")
-def notification_logs(db: Session = Depends(get_db)):
+def notification_logs(request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     """Return broadcast batches (grouped) and individual notifications separately.
 
     High-volume types (payment_confirmed, payment_reminder, missed_payment) are

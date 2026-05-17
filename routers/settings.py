@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from database import get_db, Settings
-from routers.deps import _require_admin
+from routers.deps import _require_superadmin
 
 router = APIRouter()
 
@@ -51,7 +51,7 @@ def get_settings(db: Session = Depends(get_db)):
 
 @router.put("")
 def update_settings(data: SettingsUpdate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_superadmin(request)
     s = db.query(Settings).first()
     if not s:
         raise HTTPException(status_code=404, detail="Settings not found")

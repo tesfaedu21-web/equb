@@ -1615,9 +1615,14 @@ function draws() {
         this.activeCycle = this.cycles.find(c => c.id === parseInt(this.selectedCycle)) || null;
         this.weeks = await this.api('GET', `/api/draws/cycles/${this.selectedCycle}/weeks`);
         // Track which weeks already have disbursements recorded — scoped to this cycle
-        const disbs = await this.api('GET', `/api/disbursements?cycle_id=${this.selectedCycle}`).catch(() => []);
-        this.disbursedWeeks = new Set(disbs.map(d => d.week_id));
-        this.collectedWeeks = new Set(disbs.filter(d => d.status === 'collected').map(d => d.week_id));
+        let disbs = [];
+        try {
+          disbs = await this.api('GET', `/api/disbursements?cycle_id=${this.selectedCycle}`);
+        } catch(e) {
+          console.warn('Could not load disbursement records:', e.message);
+        }
+        this.disbursedWeeks = new Set((disbs || []).map(d => d.week_id));
+        this.collectedWeeks = new Set((disbs || []).filter(d => d.status === 'collected').map(d => d.week_id));
         // Load members for this cycle (guarantor dropdowns + active members)
         const members = await this.api('GET', `/api/members?cycle_id=${this.selectedCycle}`).catch(() => []);
         this.allMembers = members.filter ? members.filter(m => m.status !== 'left') : [];

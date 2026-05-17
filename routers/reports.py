@@ -669,7 +669,8 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
 
 
 @router.put("/vouchers/week/{week_id}/mark-paid")
-def mark_voucher_paid(week_id: int, db: Session = Depends(get_db)):
+def mark_voucher_paid(week_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     now = _utcnow()
     disbs = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).all()
     if disbs:
@@ -689,7 +690,8 @@ def mark_voucher_paid(week_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/vouchers/week/{week_id}/unmark-paid")
-def unmark_voucher_paid(week_id: int, db: Session = Depends(get_db)):
+def unmark_voucher_paid(week_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     disbs = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).all()
     if disbs:
         for d in disbs:
@@ -712,7 +714,8 @@ class VoucherReturnIn(BaseModel):
 
 @router.post("/voucher-returns/{week_id}")
 def record_voucher_return(week_id: int, data: VoucherReturnIn,
-                          db: Session = Depends(get_db)):
+                          request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     """Record (or update) how many full/half voucher cards the vendor returned for a week."""
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
@@ -737,7 +740,8 @@ def record_voucher_return(week_id: int, data: VoucherReturnIn,
 
 
 @router.delete("/voucher-returns/{week_id}")
-def delete_voucher_return(week_id: int, db: Session = Depends(get_db)):
+def delete_voucher_return(week_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     """Remove a voucher return record for a week."""
     vr = db.query(VoucherReturn).filter(VoucherReturn.week_id == week_id).first()
     if not vr:
@@ -821,8 +825,8 @@ def general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
     entries = []
 
     # 1. Member collections — grouped by paid_date into the week window it was received in
-    from datetime import datetime as _dt, timedelta as _td
-    _today = _dt.utcnow().date()
+    from datetime import timedelta as _td
+    _today = _utcnow().date()
     weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
     week_map = {w.id: w for w in weeks}
     sorted_weeks = sorted(weeks, key=lambda w: w.draw_date)
@@ -1028,7 +1032,7 @@ def cycle_distribution(cycle_id: Optional[int] = None, db: Session = Depends(get
 @router.get("/collection-trend")
 def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Week-by-week actual cash collected, using the same paid_date windowing as the General Ledger."""
-    from datetime import datetime as _dt, timedelta as _td
+    from datetime import timedelta as _td
     if not cycle_id:
         c = db.query(Cycle).filter(Cycle.status == "active").first()
         if not c:
@@ -1038,7 +1042,7 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
     if not weeks:
         return []
     week_ids = [w.id for w in weeks]
-    today = _dt.utcnow().date()
+    today = _utcnow().date()
 
     # Build per-week date windows: prev_draw_date+1 → this_draw_date
     sorted_weeks = sorted(weeks, key=lambda w: w.draw_date)
