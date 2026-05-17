@@ -1761,8 +1761,15 @@ function draws() {
         { gross_amount:0, service_fee:0, voucher_deduction:0, cheque_number:'', cheque_date:'', guarantor_1_id:null, guarantor_2_id:null, guarantor_3_id:null, notes:'', member_id:null, member_name:'' },
       ];
 
-      // Load existing disbursements (returns list now)
-      const existingList = await this.api('GET', `/api/disbursements/week/${w.id}`).catch(() => []);
+      // Load existing disbursements — if this fails, abort and show an error rather than
+      // silently showing the new-form (which would let the user hit the backend duplicate guard)
+      let existingList;
+      try {
+        existingList = await this.api('GET', `/api/disbursements/week/${w.id}`);
+      } catch(e) {
+        this.showToast('Could not load disbursement status — please refresh and try again', 'error');
+        return;
+      }
       this.existingDisbursements = existingList || [];
 
       // Always reset disbForm with week-level values as a safe fallback
@@ -1856,7 +1863,21 @@ function draws() {
         this.showToast('Disbursement recorded');
         this.showDisbursementModal = false;
         await this.loadCycleAndWeeks();
-      } catch(e) { this.showToast(e.message, 'error'); }
+      } catch(e) {
+        if (e.message?.includes('already recorded')) {
+          // Race condition: another session already disbursed this week — load and show it
+          const existing = await this.api('GET', `/api/disbursements/week/${this.activeWeek.id}`).catch(() => []);
+          if (existing?.length) {
+            this.existingDisbursements = existing;
+            this.existingDisbursement = existing[0];
+            this.showToast('This week was already disbursed — showing existing record', 'error');
+          } else {
+            this.showToast(e.message, 'error');
+          }
+        } else {
+          this.showToast(e.message, 'error');
+        }
+      }
       finally { this.saving = false; }
     },
 
