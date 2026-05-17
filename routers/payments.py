@@ -6,6 +6,7 @@ from typing import Optional, List, Literal
 from datetime import datetime, date as _date, timezone
 from collections import defaultdict
 from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle
+from routers.deps import _require_admin
 from routers.notifications import send_payment_confirmed
 
 
@@ -313,6 +314,7 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
 
 @router.post("/bulk")
 def bulk_update(data: BulkPayment, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     paid_date = datetime.fromisoformat(data.paid_date) if data.paid_date else _utcnow()
     cashier_id = getattr(request.state, "user_id", None)
     updated = 0

@@ -382,7 +382,8 @@ def import_template(db: Session = Depends(get_db)):
 # ── Import (must be before /{member_id} routes) ───────────────────────────────
 
 @router.post("/import")
-async def import_members(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_members(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    _require_admin(request)
     """Import members from CSV or Excel. Returns per-row results."""
     filename = (file.filename or "").lower()
     content = await file.read()
@@ -535,22 +536,30 @@ def delete_member_permanent(member_id: int, request: Request, db: Session = Depe
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    # 1. Notification logs
-    db.query(NotificationLog).filter(
-        NotificationLog.member_id == member_id
-    ).delete(synchronize_session=False)
-
-    # 2. Disbursements where this member is a guarantor (NOT NULL — must delete row)
+    # Block deletion if member is a guarantor on any cheque — deleting would destroy the audit trail
     from sqlalchemy import or_
-    db.query(PotDisbursement).filter(
+    is_guarantor = db.query(PotDisbursement).filter(
         or_(
             PotDisbursement.guarantor_1_id == member_id,
             PotDisbursement.guarantor_2_id == member_id,
             PotDisbursement.guarantor_3_id == member_id,
         )
+    ).first()
+    if is_guarantor:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{m.name} is listed as a guarantor on one or more cheque records. "
+                "Re-record those disbursements with a different guarantor before deleting this member."
+            ),
+        )
+
+    # 1. Notification logs
+    db.query(NotificationLog).filter(
+        NotificationLog.member_id == member_id
     ).delete(synchronize_session=False)
 
-    # 3. Pot transactions: null out nullable refs; delete rows where buyer (NOT NULL)
+    # 2. Pot transactions: null out nullable refs; delete rows where buyer (NOT NULL)
     db.query(PotTransaction).filter(
         PotTransaction.buyer_id == member_id
     ).delete(synchronize_session=False)
@@ -561,12 +570,12 @@ def delete_member_permanent(member_id: int, request: Request, db: Session = Depe
         PotTransaction.original_winner_id == member_id
     ).update({"original_winner_id": None}, synchronize_session=False)
 
-    # 4. Payments
+    # 3. Payments
     db.query(Payment).filter(
         Payment.member_id == member_id
     ).delete(synchronize_session=False)
 
-    # 5. Spot assignments
+    # 4. Spot assignments
     db.query(MemberSpot).filter(
         MemberSpot.member_id == member_id
     ).delete(synchronize_session=False)
@@ -578,7 +587,8 @@ def delete_member_permanent(member_id: int, request: Request, db: Session = Depe
 
 
 @router.post("")
-def create_member(data: MemberCreate, db: Session = Depends(get_db)):
+def create_member(data: MemberCreate, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     if cycle and cycle.draw_phase == "active":
         raise HTTPException(status_code=400,
@@ -639,7 +649,8 @@ def get_member(member_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{member_id}")
-def update_member(member_id: int, data: MemberUpdate, db: Session = Depends(get_db)):
+def update_member(member_id: int, data: MemberUpdate, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -651,7 +662,8 @@ def update_member(member_id: int, data: MemberUpdate, db: Session = Depends(get_
 
 
 @router.post("/{member_id}/spots")
-def add_spot(member_id: int, data: SpotAdd, db: Session = Depends(get_db)):
+def add_spot(member_id: int, data: SpotAdd, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -706,7 +718,8 @@ def add_spot(member_id: int, data: SpotAdd, db: Session = Depends(get_db)):
 
 
 @router.delete("/{member_id}/spots/{spot_id}")
-def remove_spot(member_id: int, spot_id: int, db: Session = Depends(get_db)):
+def remove_spot(member_id: int, spot_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     cycle_id = active_cycle.id if active_cycle else None
     # Prefer the active-cycle-scoped assignment; fall back to any matching row (legacy data)
@@ -729,7 +742,8 @@ def remove_spot(member_id: int, spot_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{member_id}")
-def mark_left(member_id: int, db: Session = Depends(get_db)):
+def mark_left(member_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
