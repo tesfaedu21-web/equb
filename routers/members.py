@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import Optional, List
-from database import (get_db, Member, MemberSpot, Spot, Settings, Payment, Cycle,
+from database import (get_db, Member, MemberSpot, Spot, Settings, Payment, Week, Cycle,
                       NotificationLog, PotTransaction, PotDisbursement, cycle_cfg)
 import csv, io, openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -738,3 +738,103 @@ def mark_left(member_id: int, db: Session = Depends(get_db)):
         sa.is_active = False
     db.commit()
     return {"ok": True}
+
+
+class MemberExitIn(BaseModel):
+    exit_week_id: int
+    reason: str = "left"          # left | stopped_paying
+
+
+@router.post("/{member_id}/exit")
+def member_exit(member_id: int, data: MemberExitIn, request: Request,
+                db: Session = Depends(get_db)):
+    """
+    Record a member exit at a specific week.
+    - Marks member status = left
+    - Deactivates their MemberSpot, records exit week + reason
+    - Marks all pending/late payments AFTER the exit week as missed
+    - Returns a financial summary
+    """
+    _require_admin(request)
+    m = db.query(Member).filter(Member.id == member_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    exit_week = db.query(Week).filter(Week.id == data.exit_week_id).first()
+    if not exit_week:
+        raise HTTPException(status_code=404, detail="Exit week not found")
+
+    cycle_id = exit_week.cycle_id
+
+    # Mark member left
+    m.status = "left"
+
+    # Deactivate spot assignments for this cycle, record exit info
+    for sa in m.spot_assignments:
+        if sa.cycle_id == cycle_id:
+            sa.is_active = False
+            sa.exited_at_week_id = data.exit_week_id
+            sa.exit_reason = data.reason
+
+    # All pending/late payments after the exit week → missed
+    future_week_ids = [
+        r[0] for r in db.query(Week.id).filter(
+            Week.cycle_id == cycle_id,
+            Week.week_number > exit_week.week_number
+        ).all()
+    ]
+    if future_week_ids:
+        db.query(Payment).filter(
+            Payment.member_id == member_id,
+            Payment.week_id.in_(future_week_ids),
+            Payment.status.in_(["pending", "late"])
+        ).update({"status": "missed"}, synchronize_session=False)
+
+    db.commit()
+
+    # ── Financial summary ─────────────────────────────────────────────────────
+    all_pmts = db.query(Payment).filter(
+        Payment.member_id == member_id,
+        Payment.week_id.in_(
+            [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
+        )
+    ).all()
+
+    paid_weeks   = [p for p in all_pmts if p.status == "paid"]
+    missed_weeks = [p for p in all_pmts if p.status == "missed"]
+    total_paid   = sum(p.amount for p in paid_weeks)
+    total_missed = sum(p.amount for p in missed_weeks)
+
+    # Did this member ever win the pot in this cycle?
+    has_won = db.query(PotDisbursement).join(Week).filter(
+        Week.cycle_id == cycle_id,
+        PotDisbursement.member_id == member_id
+    ).first() is not None
+
+    # Also check via spot draw
+    if not has_won:
+        spots = [sa.spot_id for sa in m.spot_assignments if sa.cycle_id == cycle_id]
+        has_won = db.query(Week).filter(
+            Week.cycle_id == cycle_id,
+            Week.winner_spot_id.in_(spots),
+            Week.status.in_(["drawn", "sold"])
+        ).first() is not None
+
+    return {
+        "ok": True,
+        "member_id": member_id,
+        "member_name": m.name,
+        "exit_week_number": exit_week.week_number,
+        "reason": data.reason,
+        "weeks_paid": len(paid_weeks),
+        "total_paid": total_paid,
+        "weeks_missed": len(missed_weeks),
+        "total_missed": total_missed,
+        "has_won": has_won,
+        "summary": (
+            f"Won the pot — still owes {len(missed_weeks)} week(s) = {total_missed:,.0f} ETB"
+            if has_won and missed_weeks else
+            "Won the pot — fully settled" if has_won else
+            f"Left without winning — {len(paid_weeks)} week(s) paid ({total_paid:,.0f} ETB)"
+        ),
+    }

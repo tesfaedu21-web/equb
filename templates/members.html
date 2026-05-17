@@ -502,6 +502,67 @@
   </div>
 </div><!-- end edit modal -->
 
+<!-- ── Exit Member Modal ─────────────────────────────────────────────────── -->
+<div x-show="showExitModal" x-cloak class="modal-backdrop" @click.self="showExitModal = false">
+  <div class="modal-box max-w-md">
+    <div class="p-6 border-b flex items-center justify-between">
+      <h3 class="font-bold text-gray-800">Member Exit</h3>
+      <button @click="showExitModal = false" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <p class="text-sm text-gray-600">
+        Recording exit for <strong x-text="exitTarget && exitTarget.name"></strong>.
+        All pending payments after the exit week will be marked as missed.
+      </p>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Last active week</label>
+        <select x-model="exitForm.exit_week_id" class="w-full">
+          <option value="">— Select week —</option>
+          <template x-for="w in exitWeeks" :key="w.id">
+            <option :value="w.id" x-text="'Week #' + w.week_number + ' — ' + (w.draw_date ? w.draw_date.substring(0,10) : '')"></option>
+          </template>
+        </select>
+        <p class="text-xs text-gray-400 mt-1">Select the last week this member paid in.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Reason</label>
+        <select x-model="exitForm.reason" class="w-full">
+          <option value="left">Left voluntarily</option>
+          <option value="stopped_paying">Stopped paying</option>
+        </select>
+      </div>
+      <!-- Summary after exit -->
+      <div x-show="exitResult" class="bg-gray-50 rounded-xl p-4 space-y-1 text-sm border">
+        <div class="flex justify-between">
+          <span class="text-gray-500">Weeks paid</span>
+          <span class="font-semibold" x-text="exitResult && exitResult.weeks_paid"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Total paid</span>
+          <span class="font-semibold text-green-600" x-text="exitResult && fmt(exitResult.total_paid)"></span>
+        </div>
+        <div class="flex justify-between" x-show="exitResult && exitResult.weeks_missed > 0">
+          <span class="text-gray-500">Weeks missed (obligation)</span>
+          <span class="font-semibold text-red-500" x-text="exitResult && exitResult.weeks_missed"></span>
+        </div>
+        <div class="mt-2 pt-2 border-t text-xs font-semibold"
+             :class="exitResult && exitResult.has_won ? 'text-orange-600' : 'text-gray-600'"
+             x-text="exitResult && exitResult.summary"></div>
+      </div>
+    </div>
+    <div class="px-6 pb-6 flex gap-3">
+      <button @click="showExitModal = false" class="btn-secondary flex-1">Cancel</button>
+      <button @click="submitExit()" :disabled="!exitForm.exit_week_id || exitSaving"
+              class="btn-primary flex-1 bg-red-600 hover:bg-red-700"
+              x-text="exitSaving ? 'Saving…' : 'Confirm Exit'"></button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Import Modal ──────────────────────────────────────────────────────── -->
 <div x-show="showImportModal" x-cloak class="modal-backdrop" @click.self="showImportModal = false">
   <div class="modal-box max-w-2xl">
@@ -640,6 +701,12 @@ function members() {
     showAddModal: false,
     showEditModal: false,
     showImportModal: false,
+    showExitModal: false,
+    exitTarget: null,
+    exitWeeks: [],
+    exitForm: { exit_week_id: '', reason: 'left' },
+    exitResult: null,
+    exitSaving: false,
     saving: false,
     importing: false,
     importFile: null,
@@ -982,12 +1049,33 @@ ${d.unpaid.length > 0 ? `
     },
 
     async markLeft(m) {
-      if (!confirm(`Mark ${m.name} as left?`)) return;
+      this.exitTarget = m;
+      this.exitForm = { exit_week_id: '', reason: 'left' };
+      this.exitResult = null;
+      // Load drawn/sold weeks for the active cycle
       try {
-        await this.api('DELETE', `/api/members/${m.id}`);
-        this.showToast(`${m.name} marked as left`);
+        if (!this.selectedCycle) { this.exitWeeks = []; this.showExitModal = true; return; }
+        const weeks = await this.api('GET', `/api/draws/cycles/${this.selectedCycle}/weeks`);
+        this.exitWeeks = (Array.isArray(weeks) ? weeks : [])
+          .filter(w => w.status === 'drawn' || w.status === 'sold')
+          .sort((a,b) => a.week_number - b.week_number);
+      } catch(e) { this.exitWeeks = []; }
+      this.showExitModal = true;
+    },
+
+    async submitExit() {
+      if (!this.exitForm.exit_week_id) return;
+      this.exitSaving = true;
+      try {
+        const res = await this.api('POST', `/api/members/${this.exitTarget.id}/exit`, {
+          exit_week_id: parseInt(this.exitForm.exit_week_id),
+          reason: this.exitForm.reason,
+        });
+        this.exitResult = res;
+        this.showToast(`${this.exitTarget.name} exited at week #${res.exit_week_number}`);
         await this.load();
       } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.exitSaving = false; }
     },
 
     async permanentDelete(m) {

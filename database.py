@@ -194,6 +194,8 @@ class MemberSpot(Base):
     share = Column(String, default="full")                # full | half
     weekly_contribution = Column(Float, default=21000)    # 21000 full, 10500 half
     is_active = Column(Boolean, default=True)
+    exited_at_week_id = Column(Integer, ForeignKey("weeks.id"), nullable=True)
+    exit_reason = Column(String, nullable=True)           # left | stopped_paying
     created_at = Column(DateTime, default=_utcnow)
 
     member = relationship("Member", back_populates="spot_assignments",
@@ -544,6 +546,8 @@ def _migrate(engine):
         "CREATE INDEX IF NOT EXISTS ix_payments_week_status ON payments(week_id, status)",
         "CREATE INDEX IF NOT EXISTS ix_payments_member_status ON payments(member_id, status)",
         "CREATE INDEX IF NOT EXISTS ix_member_spots_cycle_active ON member_spots(cycle_id, is_active)",
+        "ALTER TABLE member_spots ADD COLUMN IF NOT EXISTS exited_at_week_id INTEGER REFERENCES weeks(id)",
+        "ALTER TABLE member_spots ADD COLUMN IF NOT EXISTS exit_reason VARCHAR",
         # Prevent double-assignment of same member to same spot in same cycle
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_member_spot_cycle ON member_spots(member_id, spot_id, cycle_id)",
         # Half-spot disbursement split: allow 2 rows per week (one per half-member)
