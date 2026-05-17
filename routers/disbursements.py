@@ -119,15 +119,16 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
       Gross       = member_count × spot_amount (full or half per member)
       Assoc_fund  = member_count × assoc_deduction (full or half per member)
       Service_fee = winner's weekly amount × 1
-      Voucher     = (member_spots + assoc_spots) × voucher_rate (full or half for winner)
+      Voucher     = winner_rate × total_cycle_weeks
+                    (full winner: 80×weeks, each half winner: 40×weeks)
 
-    Example (113 member spots, 5 assoc spots, all full, 21,000/1,000/80):
+    Example (120 cycle weeks, full-spot winner, rates 21,000/1,000/80):
       Gross   = 113 × 21,000 = 2,373,000
       Assoc   = 113 × 1,000  =   113,000
       Net_pot =               2,260,000
       Service =   1 × 21,000 =    21,000
-      Voucher = 118 ×     80 =     9,440
-      Net     =               2,229,560
+      Voucher =   1 × 80×120 =     9,600
+      Net     =               2,229,380
     """
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w or not w.winner_spot_id:
@@ -141,9 +142,11 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
     # Total weeks members actually pay into (includes worker week if present)
     total_weeks = db.query(Week).filter(Week.cycle_id == w.cycle_id).count()
 
-    # Winner's pot deduction = FULL voucher for ALL spots (assoc collects full amount)
-    full_voucher_total = cfg.full_spot_voucher * total_spots
-    half_voucher_total = cfg.half_spot_voucher * total_spots
+    # Each member's voucher contribution = their rate × total cycle weeks (deducted once when they win)
+    # full-spot winner: 80 × total_weeks   half-spot winner (each): 40 × total_weeks
+    # Two half members together = 80 × total_weeks = same as one full-spot member
+    full_voucher_total = cfg.full_spot_voucher * total_weeks
+    half_voucher_total = cfg.half_spot_voucher * total_weeks
 
     # Vendor payment = only members who actually paid this week
     # (missing members did not attend — vendor does not receive for them)
