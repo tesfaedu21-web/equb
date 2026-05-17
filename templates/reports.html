@@ -479,12 +479,33 @@
     </div>
 
     <div class="card p-0 overflow-hidden">
-      <div class="px-5 py-3 bg-gray-50 border-b">
+      <div class="px-5 py-3 bg-gray-50 border-b flex items-center justify-between flex-wrap gap-3">
         <p class="text-sm text-gray-600">
           Members receive physical voucher cards (full / half) each week they pay.
           The vendor collects used cards and returns them to the association.
           Record the returned card counts below — vendor is paid based on cards actually returned.
         </p>
+        <!-- Filter tabs -->
+        <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1 text-xs font-semibold shrink-0">
+          <button @click="voucherFilter='outstanding'"
+                  :class="voucherFilter==='outstanding' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
+                  class="px-3 py-1 rounded-md transition-colors">
+            Outstanding
+            <span class="ml-1 text-orange-400" x-text="'(' + vouchers.filter(v=>!v.voucher_paid).length + ')'"></span>
+          </button>
+          <button @click="voucherFilter='paid'"
+                  :class="voucherFilter==='paid' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
+                  class="px-3 py-1 rounded-md transition-colors">
+            Paid
+            <span class="ml-1 text-green-400" x-text="'(' + vouchers.filter(v=>v.voucher_paid).length + ')'"></span>
+          </button>
+          <button @click="voucherFilter='all'"
+                  :class="voucherFilter==='all' ? 'bg-white text-gray-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
+                  class="px-3 py-1 rounded-md transition-colors">
+            All
+            <span class="ml-1 text-gray-400" x-text="'(' + vouchers.length + ')'"></span>
+          </button>
+        </div>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -505,7 +526,7 @@
               <th class="px-4 py-3 no-print-cell"></th>
             </tr>
           </thead>
-            <template x-for="v in vouchers" :key="v.week_id">
+            <template x-for="v in vouchers.filter(v => voucherFilter==='all' || (voucherFilter==='paid' ? v.voucher_paid : !v.voucher_paid))" :key="v.week_id">
               <tbody>
                 <!-- Main row -->
                 <tr class="border-b transition-colors"
@@ -630,9 +651,11 @@
                 </tr>
               </tbody>
             </template>
-            <tbody x-show="vouchers.length === 0">
+            <tbody x-show="vouchers.filter(v => voucherFilter==='all' || (voucherFilter==='paid' ? v.voucher_paid : !v.voucher_paid)).length === 0">
               <tr>
-                <td colspan="10" class="px-5 py-10 text-center text-gray-400">No disbursements recorded yet</td>
+                <td colspan="10" class="px-5 py-10 text-center text-gray-400"
+                    x-text="voucherFilter==='paid' ? 'No paid weeks yet' : voucherFilter==='outstanding' ? 'All weeks settled' : 'No weeks recorded yet'">
+                </td>
               </tr>
             </tbody>
         </table>
@@ -886,6 +909,7 @@ function reports() {
     ledger: [],
     balanceSheet: {},
     vouchers: [],
+    voucherFilter: 'outstanding',
     generalLedger: [],
     expenses: [],
     distribution: {},
