@@ -183,6 +183,7 @@ def send_missed_payment(payment, db: Session) -> str:
             template_key="missed_payment", message=msg,
             status=status, provider_response=response,
         ))
+        db.commit()
         return status
     except Exception:
         return "skipped"
@@ -292,7 +293,8 @@ def get_templates(db: Session = Depends(get_db)):
 
 
 @router.put("/templates/{template_id}")
-def update_template(template_id: int, data: TemplateUpdate, db: Session = Depends(get_db)):
+def update_template(template_id: int, data: TemplateUpdate, request: Request, db: Session = Depends(get_db)):
+    _require_admin(request)
     t = db.query(NotificationTemplate).filter(NotificationTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -354,7 +356,11 @@ def broadcast_payment_reminder(week_id: int, request: Request, db: Session = Dep
         raise HTTPException(status_code=404, detail="Week not found")
 
     tmpl = db.query(NotificationTemplate).filter_by(key="payment_reminder").first()
+    if not tmpl or not tmpl.is_active:
+        raise HTTPException(status_code=400, detail="Payment reminder template is disabled or not found")
     cfg = db.query(NotificationSettings).first()
+    if not cfg:
+        raise HTTPException(status_code=500, detail="Notification settings not configured")
 
     pending = (db.query(Payment)
                .filter(Payment.week_id == week_id,
@@ -393,7 +399,11 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
     _require_admin(request)
     """Send missed payment notice to all members with any unpaid weeks in the active cycle."""
     tmpl = db.query(NotificationTemplate).filter_by(key="missed_payment").first()
+    if not tmpl or not tmpl.is_active:
+        raise HTTPException(status_code=400, detail="Missed payment template is disabled or not found")
     cfg = db.query(NotificationSettings).first()
+    if not cfg:
+        raise HTTPException(status_code=500, detail="Notification settings not configured")
 
     active = db.query(Cycle).filter(Cycle.status == "active").first()
     cycle_id = active.id if active else None

@@ -205,9 +205,12 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
     # Always scope to the active cycle so old-cycle debt never bleeds in
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)
-    # Only show weeks whose draw_date has arrived — no future week payments allowed.
-    # include_week_id is honoured only when that week's draw_date is also <= now.
-    q = q.filter(Week.draw_date <= now)
+    # Only show weeks whose draw_date has arrived — no future week payments allowed,
+    # except the explicitly requested week (cashier opened that week's row directly).
+    if include_week_id:
+        q = q.filter((Week.draw_date <= now) | (Week.id == include_week_id))
+    else:
+        q = q.filter(Week.draw_date <= now)
     payments = q.order_by(Week.week_number).all()
     return {
         "member_id": member_id,

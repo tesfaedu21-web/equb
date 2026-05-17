@@ -636,7 +636,6 @@ def init_db():
                 " — change this immediately via Settings → User Accounts", _auto_pw
             )
         if db.query(Spot).count() == 0:
-            s = Settings.__new__(Settings)
             cfg = db.query(Settings).first()
             total_member = cfg.total_member_spots    # 113
             total_assoc = cfg.total_assoc_spots      # 5
