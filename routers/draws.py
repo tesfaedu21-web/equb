@@ -899,34 +899,33 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
         ).delete(synchronize_session=False)
         db.query(Week).filter(Week.cycle_id == cycle_id).delete(synchronize_session=False)
 
-    # Delete association expenses for this cycle
+    # Delete cycle-scoped records (association expenses, distribution cheques, spot assignments)
     db.query(AssociationExpense).filter(
         AssociationExpense.cycle_id == cycle_id
     ).delete(synchronize_session=False)
-
-    # Delete member-spot assignments for this cycle
+    db.query(DistributionCheque).filter(
+        DistributionCheque.cycle_id == cycle_id
+    ).delete(synchronize_session=False)
     db.query(MemberSpot).filter(
         MemberSpot.cycle_id == cycle_id
     ).delete(synchronize_session=False)
 
     db.flush()  # flush so the MemberSpot deletions are visible for the next query
 
-    # Delete members that have no remaining spot assignment AND no payment records in any cycle.
-    # Members with payments in other cycles cannot be hard-deleted (FK constraint on payments.member_id).
+    # Delete members that have no remaining spot assignment AND no remaining payment/batch records.
+    # Members with ANY surviving FK reference must not be hard-deleted.
     remaining_assigned = {r[0] for r in db.query(MemberSpot.member_id).all()}
     has_payments = {r[0] for r in db.query(Payment.member_id).distinct().all()}
+    has_batches   = {r[0] for r in db.query(PaymentBatch.member_id).distinct().all()}
     all_member_ids = [r[0] for r in db.query(Member.id).all()]
     orphan_ids = [mid for mid in all_member_ids
-                  if mid not in remaining_assigned and mid not in has_payments]
+                  if mid not in remaining_assigned
+                  and mid not in has_payments
+                  and mid not in has_batches]
     if orphan_ids:
         from database import NotificationLog as _NLog
         db.query(_NLog).filter(_NLog.member_id.in_(orphan_ids)).delete(synchronize_session=False)
         db.query(Member).filter(Member.id.in_(orphan_ids)).delete(synchronize_session=False)
-
-    # Delete distribution cheques for this cycle (cycle_id FK blocks cycle deletion)
-    db.query(DistributionCheque).filter(
-        DistributionCheque.cycle_id == cycle_id
-    ).delete(synchronize_session=False)
 
     cycle_name = cycle.name
     db.flush()
