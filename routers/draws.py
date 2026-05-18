@@ -930,7 +930,11 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
     cycle_name = cycle.name
     db.flush()
     db.query(Cycle).filter(Cycle.id == cycle_id).delete(synchronize_session=False)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Delete failed: {exc}")
     return {"ok": True, "deleted": cycle_name}
 
 
