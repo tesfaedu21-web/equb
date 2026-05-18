@@ -1,12 +1,32 @@
 """
 Full end-to-end scenario test for Equb project.
 Tests every major workflow as admin, cashier, and owner.
-Run: python e2e_test.py
+
+Run locally:   python e2e_test.py
+Run on Railway: python e2e_test.py  (BASE/credentials already set to Railway defaults)
+
+Override via env vars:
+  EQUB_BASE_URL       — target server  (default: https://equb-production.up.railway.app)
+  EQUB_ADMIN_USER     — admin username (default: admin)
+  EQUB_ADMIN_PASS     — admin password (default: Tesfa123)
+  EQUB_CASHIER_USER   — cashier username (default: cashier)
+  EQUB_CASHIER_PASS   — cashier password (default: cashier123)
+  EQUB_OWNER_USER     — owner username  (default: same as admin)
+  EQUB_OWNER_PASS     — owner password  (default: same as admin)
 """
-import requests, json, sys, time
+import os, requests, json, sys, time
 from datetime import date, timedelta
 
-BASE = 'http://localhost:8000'
+BASE           = os.environ.get("EQUB_BASE_URL",     "https://equb-production.up.railway.app").rstrip("/")
+ADMIN_USER     = os.environ.get("EQUB_ADMIN_USER",   "admin")
+ADMIN_PASS     = os.environ.get("EQUB_ADMIN_PASS",   "Tesfa123")
+CASHIER_USER   = os.environ.get("EQUB_CASHIER_USER", "cashier")
+CASHIER_PASS   = os.environ.get("EQUB_CASHIER_PASS", "cashier123")
+OWNER_USER     = os.environ.get("EQUB_OWNER_USER",   ADMIN_USER)
+OWNER_PASS     = os.environ.get("EQUB_OWNER_PASS",   ADMIN_PASS)
+
+print(f"Target: {BASE}")
+
 # Unique 4-digit suffix so each test run uses fresh phone numbers
 _RUN = str(int(time.time()) % 10000).zfill(4)
 BUGS = []
@@ -46,7 +66,7 @@ print("\n=== PHASE 0: CLEANUP PREVIOUS TEST DATA ===")
 # ============================================================
 
 s_cleanup = requests.Session()
-s_cleanup.post(BASE+'/login', data={'username':'admin','password':'admin123'}, allow_redirects=False)
+s_cleanup.post(BASE+'/login', data={'username': ADMIN_USER, 'password': ADMIN_PASS}, allow_redirects=False)
 
 # Delete all previous cycles (cascades to payments, disbursements, pot transactions, weeks)
 r_cyc = s_cleanup.get(BASE+'/api/draws/cycles')
@@ -73,13 +93,13 @@ s_admin   = requests.Session()
 s_cashier = requests.Session()
 s_anon    = requests.Session()
 
-r = s_owner.post(BASE+'/login', data={'username':'owner','password':'owner123'}, allow_redirects=False)
+r = s_owner.post(BASE+'/login', data={'username': OWNER_USER, 'password': OWNER_PASS}, allow_redirects=False)
 check("Owner login", r.status_code == 302, f"got {r.status_code}")
 
-r = s_admin.post(BASE+'/login', data={'username':'admin','password':'admin123'}, allow_redirects=False)
+r = s_admin.post(BASE+'/login', data={'username': ADMIN_USER, 'password': ADMIN_PASS}, allow_redirects=False)
 check("Admin login", r.status_code == 302, f"got {r.status_code}")
 
-r = s_cashier.post(BASE+'/login', data={'username':'cashier','password':'cashier123'}, allow_redirects=False)
+r = s_cashier.post(BASE+'/login', data={'username': CASHIER_USER, 'password': CASHIER_PASS}, allow_redirects=False)
 check("Cashier login", r.status_code == 302, f"got {r.status_code}")
 
 # Wrong password blocked

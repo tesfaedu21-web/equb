@@ -632,6 +632,13 @@ def init_db():
             db.commit()
         _seed_templates(db)
         _backfill_cycle_settings(db)
+        # Ensure at least one superadmin exists — promote first admin if none
+        if not db.query(User).filter(User.role == "superadmin", User.is_active == True).first():
+            first_admin = db.query(User).filter(User.role == "admin").order_by(User.id).first()
+            if first_admin:
+                first_admin.role = "superadmin"
+                db.commit()
+                logger.warning("MIGRATION: Promoted user '%s' (id=%d) to superadmin", first_admin.username, first_admin.id)
         if db.query(User).count() == 0:
             import secrets as _sec
             _auto_pw = _sec.token_urlsafe(12)
