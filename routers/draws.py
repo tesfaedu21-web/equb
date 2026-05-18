@@ -876,11 +876,12 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
         raise HTTPException(status_code=404, detail="Cycle not found")
 
     week_ids = [w.id for w in cycle.weeks]
+    # Collect all member_ids for this cycle BEFORE any deletions
+    cycle_member_ids = [r[0] for r in db.query(MemberSpot.member_id).filter(
+        MemberSpot.cycle_id == cycle_id
+    ).distinct().all()]
+
     if week_ids:
-        # Collect batch IDs before deleting payments
-        batch_ids = [r[0] for r in db.query(Payment.batch_id).filter(
-            Payment.week_id.in_(week_ids), Payment.batch_id.isnot(None)
-        ).distinct().all()]
         db.query(PotDisbursement).filter(
             PotDisbursement.week_id.in_(week_ids)
         ).delete(synchronize_session=False)
@@ -890,14 +891,21 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
         db.query(Payment).filter(
             Payment.week_id.in_(week_ids)
         ).delete(synchronize_session=False)
-        if batch_ids:
-            db.query(PaymentBatch).filter(
-                PaymentBatch.id.in_(batch_ids)
-            ).delete(synchronize_session=False)
         db.query(VoucherReturn).filter(
             VoucherReturn.week_id.in_(week_ids)
         ).delete(synchronize_session=False)
         db.query(Week).filter(Week.cycle_id == cycle_id).delete(synchronize_session=False)
+
+    # Delete all payment_batches for cycle members that are NOT referenced by
+    # payments in other cycles (covers batches with no payment row).
+    if cycle_member_ids:
+        surviving_batch_ids = {r[0] for r in db.query(Payment.batch_id).filter(
+            Payment.batch_id.isnot(None)
+        ).distinct().all()} if week_ids else set()
+        q = db.query(PaymentBatch).filter(PaymentBatch.member_id.in_(cycle_member_ids))
+        if surviving_batch_ids:
+            q = q.filter(PaymentBatch.id.notin_(surviving_batch_ids))
+        q.delete(synchronize_session=False)
 
     # Delete cycle-scoped records (association expenses, distribution cheques, spot assignments)
     db.query(AssociationExpense).filter(
@@ -912,13 +920,12 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
 
     db.flush()  # flush so the MemberSpot deletions are visible for the next query
 
-    # Delete members that have no remaining spot assignment AND no remaining payment/batch records.
-    # Members with ANY surviving FK reference must not be hard-deleted.
+    # Delete members that have no remaining spot assignment and no payment/batch records.
+    # Members still referenced elsewhere (other cycles) are excluded automatically.
     remaining_assigned = {r[0] for r in db.query(MemberSpot.member_id).all()}
     has_payments = {r[0] for r in db.query(Payment.member_id).distinct().all()}
-    has_batches   = {r[0] for r in db.query(PaymentBatch.member_id).distinct().all()}
-    all_member_ids = [r[0] for r in db.query(Member.id).all()]
-    orphan_ids = [mid for mid in all_member_ids
+    has_batches  = {r[0] for r in db.query(PaymentBatch.member_id).distinct().all()}
+    orphan_ids = [mid for mid in cycle_member_ids
                   if mid not in remaining_assigned
                   and mid not in has_payments
                   and mid not in has_batches]
