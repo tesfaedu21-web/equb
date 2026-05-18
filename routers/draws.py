@@ -5,7 +5,8 @@ from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 from database import (get_db, Week, Cycle, Spot, Member, MemberSpot,
                       PotTransaction, Settings, Payment, PaymentBatch,
-                      PotDisbursement, AssociationExpense, VoucherReturn, cycle_cfg)
+                      PotDisbursement, AssociationExpense, VoucherReturn,
+                      DistributionCheque, cycle_cfg)
 from routers.deps import _require_admin
 
 
@@ -921,6 +922,11 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
         from database import NotificationLog as _NLog
         db.query(_NLog).filter(_NLog.member_id.in_(orphan_ids)).delete(synchronize_session=False)
         db.query(Member).filter(Member.id.in_(orphan_ids)).delete(synchronize_session=False)
+
+    # Delete distribution cheques for this cycle (cycle_id FK blocks cycle deletion)
+    db.query(DistributionCheque).filter(
+        DistributionCheque.cycle_id == cycle_id
+    ).delete(synchronize_session=False)
 
     cycle_name = cycle.name
     db.flush()
