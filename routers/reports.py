@@ -817,47 +817,27 @@ def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session
 
     entries = []
 
-    # 1. Member collections — grouped by paid_date into the week window it was received in
-    from datetime import timedelta as _td
-    _today = _utcnow().date()
+    # 1. Member collections — one entry per week, dated by earliest paid_date (or draw_date)
     weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
     week_map = {w.id: w for w in weeks}
-    sorted_weeks = sorted(weeks, key=lambda w: w.draw_date)
-
-    # Build per-week collection windows: prev_draw_date+1 → this_draw_date
-    windows = []
-    for i, w in enumerate(sorted_weeks):
-        start = (sorted_weeks[i - 1].draw_date.date() + _td(days=1)) if i > 0 else w.draw_date.date() - _td(days=365)
-        windows.append((w, start, w.draw_date.date()))
 
     payments = db.query(Payment).filter(
         Payment.week_id.in_(week_ids), Payment.status == "paid"
     ).all()
-    by_collection_week: dict = {}
-    for p in payments:
-        # Use paid_date when available, fall back to the week's draw_date
-        if p.paid_date:
-            pd = p.paid_date.date() if hasattr(p.paid_date, "date") else p.paid_date
-        else:
-            wk = week_map.get(p.week_id)
-            pd = wk.draw_date.date() if wk else _today
-        for w, ws, we in windows:
-            if ws <= pd <= we:
-                by_collection_week[w.id] = by_collection_week.get(w.id, 0) + p.amount
-                break
-        else:
-            # paid after all draw windows — attribute to the last past week
-            for w, ws, we in reversed(windows):
-                if we <= _today:
-                    by_collection_week[w.id] = by_collection_week.get(w.id, 0) + p.amount
-                    break
 
-    for w in sorted_weeks:
-        total = by_collection_week.get(w.id, 0)
-        if total == 0 or w.draw_date.date() > _today:
+    by_week: dict = {}
+    for p in payments:
+        by_week.setdefault(p.week_id, []).append(p)
+
+    for w in weeks:
+        week_payments = by_week.get(w.id, [])
+        total = sum(p.amount for p in week_payments)
+        if total == 0:
             continue
+        paid_dates = [p.paid_date for p in week_payments if p.paid_date]
+        entry_date = min(paid_dates).date() if paid_dates else w.draw_date.date()
         entries.append({
-            "date":        w.draw_date.isoformat(),
+            "date":        entry_date.isoformat(),
             "type":        "collection",
             "description": f"Week {w.week_number} — Cash Collected",
             "credit":      total,
