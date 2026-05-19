@@ -147,15 +147,12 @@ def week_to_dict(w: Week, cfg=None) -> dict:
     assoc_contribution = (
         (cfg.total_assoc_spots or 0) * (cfg.full_spot_amount or 0) if cfg else 0
     )
-    n_member = w.cycle.total_member_spots if w.cycle else 0
-    is_assoc_week = not w.is_group_week and (w.week_number > (n_member or 0))
     return {
         "id": w.id,
         "cycle_id": w.cycle_id,
         "week_number": w.week_number,
         "draw_date": w.draw_date.isoformat(),
         "is_group_week": w.is_group_week,
-        "is_assoc_week": is_assoc_week,
         "is_worker_week": bool(getattr(w, "is_worker_week", False)),
         "gross_pot": w.gross_pot,
         "association_amount": w.association_amount,
@@ -396,15 +393,13 @@ def start_draws(cycle_id: int, data: StartDrawsData, request: Request, db: Sessi
             days_to_sunday = (6 - draw_date.weekday()) % 7
             if days_to_sunday:
                 draw_date = draw_date + timedelta(days=days_to_sunday)
-            # Pre-assign this week to its association spot so the UI can show it
-            assoc_spot = assoc_spots[i - 1] if i - 1 < len(assoc_spots) else None
+            # No pre-assignment — ማህበር spots enter the random draw pool alongside member spots
             db.add(Week(
                 cycle_id=cycle.id,
                 week_number=last_num + i,
                 draw_date=draw_date,
                 is_group_week=False,
                 gross_pot=gross, association_amount=assoc_amt, net_pot=net,
-                winner_spot_id=assoc_spot.id if assoc_spot else None,
             ))
 
         # Also recalculate all pending member weeks now that final membership is known
@@ -581,53 +576,50 @@ def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = 
     if w.cycle.draw_phase != "active":
         raise HTTPException(status_code=400, detail="Draws have not been started yet by admin")
 
-    # Guard: block draw if all member spots in this cycle have already received a pot
+    # Guard: block draw if all spots (member + ማህበር) in this cycle are already drawn/sold
     active_spots_left = db.query(Spot).filter(
-        Spot.status == "active", Spot.spot_type == "member"
+        Spot.status == "active"
     ).count()
     if active_spots_left == 0:
         raise HTTPException(
             status_code=400,
-            detail="All member spots have already received a pot this cycle. No further draws possible."
+            detail="All spots have already received a pot this cycle. No further draws possible."
         )
 
     spot = db.query(Spot).filter(Spot.id == data.winner_spot_id).first()
     if not spot:
         raise HTTPException(status_code=404, detail="Spot not found")
 
-    # Association spot → must go through sell endpoint (profit tracked)
-    if spot.spot_type == "association":
-        raise HTTPException(
-            status_code=400,
-            detail="Association spot must be sold, not drawn directly. Use the sell endpoint."
-        )
-
-    # All members of winning spot (in this cycle) must be active and fully paid
-    for sa in [sa for sa in spot.spot_assignments if sa.is_active and sa.cycle_id == w.cycle_id]:
-        if sa.member.status == "left":
-            raise HTTPException(
-                status_code=400,
-                detail=f"{sa.member.name} has left the group and cannot receive a pot draw."
-            )
-        s = _check_fully_paid(sa.member, w.week_number, db, cycle_id=w.cycle_id)
-        if not s["fully_paid"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{sa.member.name} has {s['unpaid_count']} unpaid week(s) "
-                       f"(weeks {s['unpaid_weeks']}). Pot is on hold until full payment."
-            )
-
-    w.winner_spot_id = data.winner_spot_id
-    w.status = "drawn"
-    spot.status = "received"
     winners = []
-    for sa in spot.spot_assignments:
-        if sa.is_active and sa.cycle_id == w.cycle_id:
-            sa.member.status = "received"
-            winners.append(sa.member)
+    if spot.spot_type == "association":
+        # ማህበር spot drawn — mark the week as drawn; spot stays active until sold via sell endpoint
+        w.winner_spot_id = data.winner_spot_id
+        w.status = "drawn"
+    else:
+        # Member spot — check all holders are active and fully paid
+        for sa in [sa for sa in spot.spot_assignments if sa.is_active and sa.cycle_id == w.cycle_id]:
+            if sa.member.status == "left":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{sa.member.name} has left the group and cannot receive a pot draw."
+                )
+            s = _check_fully_paid(sa.member, w.week_number, db, cycle_id=w.cycle_id)
+            if not s["fully_paid"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{sa.member.name} has {s['unpaid_count']} unpaid week(s) "
+                           f"(weeks {s['unpaid_weeks']}). Pot is on hold until full payment."
+                )
+        w.winner_spot_id = data.winner_spot_id
+        w.status = "drawn"
+        spot.status = "received"
+        for sa in spot.spot_assignments:
+            if sa.is_active and sa.cycle_id == w.cycle_id:
+                sa.member.status = "received"
+                winners.append(sa.member)
 
     db.commit()
-    # Notify winners via SMS
+    # Notify winners via SMS (member spots only)
     try:
         from routers.notifications import send_draw_winner
         for member in winners:
@@ -653,18 +645,23 @@ def record_batch_draw(data: BatchDrawResult, request: Request, db: Session = Dep
                              "reason": "not found or already processed"})
             continue
         spot = db.query(Spot).filter(Spot.id == winner_spot_id).first()
-        if not spot or spot.spot_type == "association":
+        if not spot:
             results.append({"week_id": week_id, "status": "skipped",
                              "reason": "invalid spot"})
             continue
         w.winner_spot_id = winner_spot_id
         w.status = "drawn"
-        spot.status = "received"
-        for sa in spot.spot_assignments:
-            if sa.is_active and sa.cycle_id == w.cycle_id:
-                sa.member.status = "received"
+        if spot.spot_type == "association":
+            # ማህበር spot — stays active until sold via sell endpoint
+            pass
+        else:
+            spot.status = "received"
+            for sa in spot.spot_assignments:
+                if sa.is_active and sa.cycle_id == w.cycle_id:
+                    sa.member.status = "received"
         results.append({"week_id": week_id, "week_number": w.week_number,
-                        "winner_spot": spot.number, "status": "drawn"})
+                        "winner_spot": spot.number,
+                        "spot_type": spot.spot_type, "status": "drawn"})
     db.commit()
     return {"processed": len([r for r in results if r["status"] == "drawn"]),
             "results": results}
@@ -682,7 +679,7 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
         raise HTTPException(status_code=400, detail="Week already processed")
     if db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).first():
         raise HTTPException(status_code=400, detail="Week already disbursed — cannot record a sale")
-    if w.cycle.draw_phase != "active" and data.transaction_type != "assoc_spot_sale":
+    if w.cycle.draw_phase != "active":
         raise HTTPException(status_code=400, detail="Draws have not been started yet by admin")
 
     buyer = db.query(Member).filter(Member.id == data.buyer_id).first()
@@ -755,23 +752,15 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
                  if sa.is_active and sa.cycle_id == w.cycle_id]
 
     if data.transaction_type == "assoc_spot_sale":
-        # The spot_id here is an ASSOCIATION spot, not a member spot.
-        # Mark the association spot received; buyer's own member spots are untouched.
-        if data.spot_id:
-            assoc_spot = db.query(Spot).filter(
-                Spot.id == data.spot_id, Spot.spot_type == "association"
-            ).first()
-            if not assoc_spot:
-                raise HTTPException(status_code=400, detail="Association spot not found")
-            assoc_spot.status = "received"
-            w.winner_spot_id = data.spot_id
-        elif w.winner_spot_id:
-            # Pre-assigned at start-draws; mark it received
-            pre_spot = db.query(Spot).filter(Spot.id == w.winner_spot_id).first()
-            if pre_spot:
-                pre_spot.status = "received"
-        # Buyer is buying the assoc pot — their own member spot stays active
-        # (they haven't received THEIR weekly pot yet)
+        # ማህበር spot was drawn by the draw machine; winner_spot_id already set on the week.
+        # Mark the ማህበር spot as received; buyer's own member spots are untouched.
+        assoc_spot = db.query(Spot).filter(
+            Spot.id == w.winner_spot_id, Spot.spot_type == "association"
+        ).first() if w.winner_spot_id else None
+        if not assoc_spot:
+            raise HTTPException(status_code=400, detail="No association spot drawn for this week")
+        assoc_spot.status = "received"
+        # Buyer's own member spot stays active (they haven't received their weekly pot yet)
     elif data.spot_id and data.transaction_type == "group_week_sale":
         # spot_id is the BUYER's member spot that this pot covers
         covered_spot_ids = {sa.spot_id for sa in buyer_sas}
