@@ -259,7 +259,9 @@
                                 x-text="w.winner_spot?.spot_type === 'association' ? 'Record Sale' : 'Sell Pot'"></button>
                         <button x-show="isAdmin && w.winner_spot?.spot_type !== 'association'"
                                 @click="openDisbursement(w)"
-                                class="text-xs text-indigo-500 hover:text-indigo-700 font-medium px-2 py-1 rounded-lg hover:bg-gray-100">Disburse</button>
+                                :class="disbursedWeeks.has(w.id) ? 'text-green-600 hover:text-green-700' : 'text-indigo-500 hover:text-indigo-700'"
+                                class="text-xs font-medium px-2 py-1 rounded-lg hover:bg-gray-100"
+                                x-text="disbursedWeeks.has(w.id) ? '✓ Disbursed' : 'Disburse'"></button>
                       </div>
                     </template>
                     <template x-if="w.status !== 'pending' && w.status !== 'drawn'">
