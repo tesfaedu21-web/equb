@@ -121,10 +121,20 @@ def week_to_dict(w: Week, cfg=None) -> dict:
                        "spot_type": w.winner_spot.spot_type, "members": members}
     transaction = None
     if tx:
+        buyer_spot_numbers = []
+        if tx.buyer:
+            buyer_spot_numbers = sorted(
+                sa.spot.number for sa in tx.buyer.spot_assignments
+                if sa.is_active and sa.cycle_id == w.cycle_id and sa.spot
+            )
         transaction = {
             "id": tx.id,
             "type": tx.transaction_type,
-            "buyer": {"id": tx.buyer_id, "name": tx.buyer.name if tx.buyer else None},
+            "buyer": {
+                "id": tx.buyer_id,
+                "name": tx.buyer.name if tx.buyer else None,
+                "spot_numbers": buyer_spot_numbers,
+            },
             "seller": {"id": tx.seller_id, "name": tx.seller.name if tx.seller else None} if tx.seller_id else None,
             "percentage": tx.percentage,
             "gross_amount": tx.gross_amount,

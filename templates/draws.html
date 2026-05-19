@@ -227,8 +227,13 @@
                     </template>
                     <template x-if="w.status === 'sold' && w.transaction">
                       <span>
-                        <span x-show="w.is_group_week && w.winner_spot" class="font-bold text-equb-green text-xs">#<span x-text="w.winner_spot?.number"></span></span>
-                        <span class="font-medium" :class="w.is_group_week && w.winner_spot ? 'ml-1' : ''" x-text="w.transaction.buyer?.name"></span>
+                        <!-- drawn-then-sold: show the drawn winner spot number -->
+                        <span x-show="w.winner_spot" class="font-bold text-equb-green text-xs mr-1">#<span x-text="w.winner_spot?.number"></span></span>
+                        <!-- group/assoc buy (no drawn spot): show buyer's own spot numbers -->
+                        <template x-if="!w.winner_spot && w.transaction.buyer?.spot_numbers?.length">
+                          <span class="font-bold text-equb-green text-xs mr-1" x-text="w.transaction.buyer.spot_numbers.map(n=>'#'+n).join(' ')"></span>
+                        </template>
+                        <span class="font-medium" x-text="w.transaction.buyer?.name"></span>
                         <span x-show="w.transaction.percentage" class="text-xs text-purple-600 ml-1"
                               x-text="`(${w.transaction.percentage}%)`"></span>
                       </span>
