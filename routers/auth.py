@@ -28,6 +28,10 @@ class PasswordChange(BaseModel):
     new_password: str
 
 
+class PasswordReset(BaseModel):
+    new_password: str
+
+
 _MIN_PASSWORD_LEN = 8
 
 
@@ -129,6 +133,31 @@ def update_user(user_id: int, data: UserUpdate, request: Request, db: Session = 
     db.commit()
     db.refresh(u)
     return _user_dict(u)
+
+
+@router.post("/users/{user_id}/reset-password")
+def reset_password(user_id: int, data: PasswordReset, request: Request, db: Session = Depends(get_db)):
+    """Admin resets another user's password without needing the current one."""
+    caller_role = getattr(request.state, "user_role", None)
+    caller_id   = getattr(request.state, "user_id",   None)
+    _require_admin(request)
+
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Superadmin password can only be reset by themselves
+    if u.role == "superadmin" and caller_id != user_id:
+        raise HTTPException(status_code=403, detail="The owner password can only be changed by the owner.")
+
+    # Only superadmin can reset an admin's password
+    if u.role == "admin" and caller_role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only the owner can reset an admin password.")
+
+    _validate_password(data.new_password)
+    u.password_hash = _pwd.hash(data.new_password)
+    db.commit()
+    return {"ok": True, "username": u.username}
 
 
 @router.post("/change-password")

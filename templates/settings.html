@@ -151,6 +151,8 @@
               <td class="px-3 py-2.5 text-right">
                 <button @click="openEditUser(u)"
                         class="text-xs text-gray-400 hover:text-equb-green font-medium px-2 py-1 rounded-lg hover:bg-equb-pale">Edit</button>
+                <button @click="openResetPassword(u)"
+                        class="text-xs text-gray-400 hover:text-amber-600 font-medium px-2 py-1 rounded-lg hover:bg-amber-50 ml-1">Reset Password</button>
                 <button x-show="u.is_active"
                         @click="toggleUser(u)"
                         class="text-xs text-gray-400 hover:text-red-500 font-medium px-2 py-1 rounded-lg hover:bg-red-50 ml-1">Deactivate</button>
@@ -272,6 +274,33 @@
     </div>
   </div>
 </div><!-- end user modal -->
+
+<!-- Reset Password Modal -->
+<div x-show="showResetPwdModal" x-cloak class="modal-backdrop" @click.self="showResetPwdModal=false">
+  <div class="modal-box" style="max-width:400px">
+    <div class="p-6 border-b flex items-center justify-between">
+      <h2 class="text-base font-bold text-gray-900">Reset Password</h2>
+      <button @click="showResetPwdModal=false" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <p class="text-sm text-gray-600">
+        Set a new password for <strong x-text="resetPwdUser?.full_name"></strong>
+        (<span class="font-mono text-xs" x-text="resetPwdUser?.username"></span>).
+      </p>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+        <input x-model="resetPwdForm.new_password" type="password" placeholder="Min. 8 characters"/>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button @click="showResetPwdModal=false" class="btn-secondary flex-1">Cancel</button>
+        <button @click="resetPassword()" :disabled="saving" class="btn-primary flex-1"
+                x-text="saving ? 'Saving…' : 'Set Password'"></button>
+      </div>
+    </div>
+  </div>
+</div><!-- end reset password modal -->
 </div><!-- end x-data scope -->
 {% endblock %}
 
@@ -286,6 +315,9 @@ function settings() {
     editUserId: null,
     userForm: { full_name:'', username:'', password:'', role:'cashier' },
     pwd: { current:'', new:'' },
+    showResetPwdModal: false,
+    resetPwdUser: null,
+    resetPwdForm: { new_password: '' },
 
     async load() {
       try {
@@ -350,6 +382,23 @@ function settings() {
         this.pwd = { current:'', new:'' };
         this.showToast('Password updated');
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    openResetPassword(u) {
+      this.resetPwdUser = u;
+      this.resetPwdForm = { new_password: '' };
+      this.showResetPwdModal = true;
+    },
+
+    async resetPassword() {
+      if (!this.resetPwdForm.new_password) return;
+      this.saving = true;
+      try {
+        await this.api('POST', `/api/auth/users/${this.resetPwdUser.id}/reset-password`, this.resetPwdForm);
+        this.showResetPwdModal = false;
+        this.showToast(`Password reset for ${this.resetPwdUser.full_name}`);
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
     },
   }
 }
