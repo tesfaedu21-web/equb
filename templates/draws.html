@@ -620,12 +620,12 @@
         </div>
         <div class="flex justify-between">
           <span class="text-gray-500"
-                x-text="'Service Fee (' + (_isHalfSpot(drawForm.winner_spot_id) ? fmt(appSettings.half_spot_amount??10500)+' × 2' : fmt(_spotShare(drawForm.winner_spot_id)==='full' ? (appSettings.full_spot_amount??21000) : (appSettings.half_spot_amount??10500))) + ') (−)'"></span>
+                x-text="'Service Fee (' + (_isHalfSpot(drawForm.winner_spot_id) ? fmt(cycleSettings.half_spot_amount??10500)+' × 2' : fmt(_spotShare(drawForm.winner_spot_id)==='full' ? (cycleSettings.full_spot_amount??21000) : (cycleSettings.half_spot_amount??10500))) + ') (−)'"></span>
           <span class="text-orange-600 font-semibold" x-text="fmt(drawServiceFee(drawForm.winner_spot_id))"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-gray-500"
-                x-text="'Voucher (' + (_isHalfSpot(drawForm.winner_spot_id) ? (appSettings.half_spot_voucher??40)+'×'+(cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0)+'×2' : ((_spotShare(drawForm.winner_spot_id)==='full' ? (appSettings.full_spot_voucher??80) : (appSettings.half_spot_voucher??40))+'×'+(cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0))) + ') (−)'"></span>
+                x-text="'Voucher (' + (_isHalfSpot(drawForm.winner_spot_id) ? (cycleSettings.half_spot_voucher??40)+'×'+(cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0)+'×2' : ((_spotShare(drawForm.winner_spot_id)==='full' ? (cycleSettings.full_spot_voucher??80) : (cycleSettings.half_spot_voucher??40))+'×'+(cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0))) + ') (−)'"></span>
           <span class="text-orange-600 font-semibold" x-text="fmt(drawVoucherDeduction(drawForm.winner_spot_id))"></span>
         </div>
         <div class="flex justify-between border-t pt-2 mt-2">
@@ -800,12 +800,12 @@
         </div>
         <div class="flex justify-between">
           <span class="text-gray-500"
-                x-text="'Service Fee (' + fmt(saleShareType==='full' ? (appSettings.full_spot_amount??21000) : (appSettings.half_spot_amount??10500)) + ') (−)'"></span>
+                x-text="'Service Fee (' + fmt(saleShareType==='full' ? (cycleSettings.full_spot_amount??21000) : (cycleSettings.half_spot_amount??10500)) + ') (−)'"></span>
           <span class="text-orange-600 font-semibold" x-text="fmt(saleServiceFee)"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-gray-500"
-                x-text="'Voucher (' + (saleShareType==='full' ? (appSettings.full_spot_voucher??80) : (appSettings.half_spot_voucher??40)) + '×' + (cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0) + ') (−)'"></span>
+                x-text="'Voucher (' + (saleShareType==='full' ? (cycleSettings.full_spot_voucher??80) : (cycleSettings.half_spot_voucher??40)) + '×' + (cycles?.find(c=>c.id===selectedCycle)?.total_weeks||0) + ') (−)'"></span>
           <span class="text-orange-600 font-semibold" x-text="fmt(saleVoucherDeduction)"></span>
         </div>
         <template x-if="saleForm.percentage">
@@ -1591,18 +1591,26 @@ function draws() {
       return this.saleShareType === 'half' ? a / 2 : a;
     },
 
+    get cycleSettings() {
+      const cycle = this.cycles?.find(c => c.id === this.selectedCycle);
+      return cycle?.settings || this.appSettings;
+    },
+
     get saleVoucherDeduction() {
-      const weeks = this.cycles?.find(c => c.id === this.selectedCycle)?.total_weeks || 0;
+      const cycle = this.cycles?.find(c => c.id === this.selectedCycle);
+      const weeks = cycle?.total_weeks || 0;
+      const s = this.cycleSettings;
       const rate = this.saleShareType === 'full'
-        ? (this.appSettings.full_spot_voucher ?? 80)
-        : (this.appSettings.half_spot_voucher ?? 40);
+        ? (s.full_spot_voucher ?? 80)
+        : (s.half_spot_voucher ?? 40);
       return rate * weeks;
     },
 
     get saleServiceFee() {
+      const s = this.cycleSettings;
       return this.saleShareType === 'full'
-        ? (this.appSettings.full_spot_amount ?? 21000)
-        : (this.appSettings.half_spot_amount ?? 10500);
+        ? (s.full_spot_amount ?? 21000)
+        : (s.half_spot_amount ?? 10500);
     },
 
     get buyerReceives() {
@@ -1646,21 +1654,24 @@ function draws() {
     },
     drawShareType(spotId) { return this._spotShare(spotId); },
     drawServiceFee(spotId) {
+      const s = this.cycleSettings;
       if (this._isHalfSpot(spotId)) {
-        return (this.appSettings.half_spot_amount ?? 10500) * 2;
+        return (s.half_spot_amount ?? 10500) * 2;
       }
       return this._spotShare(spotId) === 'full'
-        ? (this.appSettings.full_spot_amount ?? 21000)
-        : (this.appSettings.half_spot_amount ?? 10500);
+        ? (s.full_spot_amount ?? 21000)
+        : (s.half_spot_amount ?? 10500);
     },
     drawVoucherDeduction(spotId) {
-      const weeks = this.cycles?.find(c => c.id === this.selectedCycle)?.total_weeks || 0;
+      const cycle = this.cycles?.find(c => c.id === this.selectedCycle);
+      const weeks = cycle?.total_weeks || 0;
+      const s = this.cycleSettings;
       if (this._isHalfSpot(spotId)) {
-        return (this.appSettings.half_spot_voucher ?? 40) * weeks * 2;
+        return (s.half_spot_voucher ?? 40) * weeks * 2;
       }
       const rate = this._spotShare(spotId) === 'full'
-        ? (this.appSettings.full_spot_voucher ?? 80)
-        : (this.appSettings.half_spot_voucher ?? 40);
+        ? (s.full_spot_voucher ?? 80)
+        : (s.half_spot_voucher ?? 40);
       return rate * weeks;
     },
     drawWinnerReceives(spotId, netPot) {
