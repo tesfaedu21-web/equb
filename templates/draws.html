@@ -229,9 +229,9 @@
                       <span>
                         <!-- drawn-then-sold: show the drawn winner spot number -->
                         <span x-show="w.winner_spot" class="font-bold text-equb-green text-xs mr-1">#<span x-text="w.winner_spot?.number"></span></span>
-                        <!-- group/assoc buy (no drawn spot): show buyer's own spot numbers -->
+                        <!-- group/assoc buy (no drawn spot): show the first spot number only -->
                         <template x-if="!w.winner_spot && w.transaction.buyer?.spot_numbers?.length">
-                          <span class="font-bold text-equb-green text-xs mr-1" x-text="w.transaction.buyer.spot_numbers.map(n=>'#'+n).join(' ')"></span>
+                          <span class="font-bold text-equb-green text-xs mr-1" x-text="'#' + w.transaction.buyer.spot_numbers[0]"></span>
                         </template>
                         <span class="font-medium" x-text="w.transaction.buyer?.name"></span>
                         <span x-show="w.transaction.percentage" class="text-xs text-purple-600 ml-1"
