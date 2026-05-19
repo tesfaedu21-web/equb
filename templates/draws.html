@@ -272,17 +272,25 @@
                               x-text="`(${w.transaction.percentage}%)`"></span>
                       </span>
                     </template>
-                    <span x-show="w.status === 'pending'" class="text-gray-300">—</span>
+                    <!-- Pending assoc week: show pre-assigned spot number -->
+                    <template x-if="w.status === 'pending' && w.winner_spot?.spot_type === 'association'">
+                      <span class="font-bold text-amber-600 text-xs">
+                        #<span x-text="w.winner_spot.number"></span>
+                        <span class="font-normal text-gray-400 ml-0.5">Assoc.</span>
+                      </span>
+                    </template>
+                    <span x-show="w.status === 'pending' && w.winner_spot?.spot_type !== 'association'" class="text-gray-300">—</span>
                   </td>
                   <td class="px-4 py-3 text-right whitespace-nowrap">
                     <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'active' && weekArrived(w)">
                       <div class="flex items-center justify-end gap-2">
-                        <button x-show="!w.is_group_week"
+                        <!-- Hide Record Draw for group or association weeks (they go straight to sale) -->
+                        <button x-show="!w.is_group_week && !w.is_assoc_week && w.winner_spot?.spot_type !== 'association'"
                                 @click="openDraw(w)"
                                 class="text-xs btn-primary py-1 px-3">Record Draw</button>
                         <button @click="openSale(w)"
                                 class="text-xs btn-secondary py-1 px-3"
-                                x-text="w.is_group_week ? 'Record Sale' : 'Sell Pot'"></button>
+                                x-text="w.is_group_week || w.is_assoc_week || w.winner_spot?.spot_type === 'association' ? 'Record Sale' : 'Sell Pot'"></button>
                       </div>
                     </template>
                     <template x-if="w.status === 'pending' && activeCycle?.draw_phase === 'active' && !weekArrived(w)">
@@ -652,12 +660,12 @@
   <div class="modal-box">
     <div class="p-6 border-b">
       <h2 class="text-lg font-bold text-gray-900">
-        <span x-text="activeWeek?.winner_spot?.spot_type === 'association' ? 'Association Spot Sale'
+        <span x-text="(activeWeek?.is_assoc_week || activeWeek?.winner_spot?.spot_type === 'association') ? 'Association Spot Sale'
                     : activeWeek?.is_group_week ? 'Group Week Sale' : 'Sell Pot'"></span>
         — Week <span x-text="activeWeek?.week_number"></span>
       </h2>
-      <p class="text-sm text-gray-500 mt-1" x-text="activeWeek?.winner_spot?.spot_type === 'association'
-        ? 'Association spot winner — pot must be sold to a member. Sale % goes to association fund.'
+      <p class="text-sm text-gray-500 mt-1" x-text="(activeWeek?.is_assoc_week || activeWeek?.winner_spot?.spot_type === 'association')
+        ? 'Association spot — sold to any active member. Sale % profit goes to the association fund.'
         : activeWeek?.is_group_week
           ? 'Group week. The pot is sold to any active member at face value.'
           : activeWeek?.status === 'drawn'
@@ -666,8 +674,41 @@
     </div>
     <form @submit.prevent="recordSale()" class="p-6 space-y-4">
 
-      <!-- Member sale: original winner -->
-      <template x-if="!activeWeek?.is_group_week">
+      <!-- Association spot selector (assoc weeks only) -->
+      <template x-if="activeWeek?.is_assoc_week || activeWeek?.winner_spot?.spot_type === 'association'">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Association Spot <span class="text-red-400">*</span></label>
+          <!-- Pre-assigned spot (from start-draws) -->
+          <template x-if="activeWeek?.winner_spot?.spot_type === 'association'">
+            <div class="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-sm">
+              <span class="font-bold text-amber-700">Spot #<span x-text="activeWeek.winner_spot.number"></span></span>
+              <span class="text-amber-500 text-xs">(Association spot)</span>
+            </div>
+          </template>
+          <!-- No pre-assignment: pick from available assoc spots -->
+          <template x-if="!activeWeek?.winner_spot">
+            <div>
+              <div class="flex gap-2 flex-wrap">
+                <template x-if="assocSpots.length === 0">
+                  <p class="text-sm text-red-500">No available association spots found.</p>
+                </template>
+                <template x-for="sp in assocSpots" :key="sp.id">
+                  <button type="button"
+                          @click="saleForm.assoc_spot_id = sp.id"
+                          :class="saleForm.assoc_spot_id === sp.id
+                            ? 'bg-amber-500 text-white border-amber-500'
+                            : 'bg-white text-gray-700 border-gray-300 hover:border-amber-400 hover:text-amber-700'"
+                          class="px-4 py-1.5 rounded-xl border font-bold text-sm transition-colors"
+                          x-text="'Spot #' + sp.number"></button>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <!-- Member sale: original winner (hidden for assoc weeks — no individual winner) -->
+      <template x-if="!activeWeek?.is_group_week && !activeWeek?.is_assoc_week && activeWeek?.winner_spot?.spot_type !== 'association'">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Original Winner (Seller)</label>
 
@@ -743,8 +784,8 @@
           </div>
         </template>
 
-        <!-- Spot selector: shown when buyer holds multiple spots and this is a group/assoc week -->
-        <template x-if="saleForm.buyer_id && (activeWeek?.is_group_week || activeWeek?.winner_spot?.spot_type==='association') && activeMembers.find(m=>m.id===saleForm.buyer_id)?.spots?.filter(s=>s.status==='active').length > 1">
+        <!-- Spot selector: shown when buyer holds multiple spots and this is a group week (not assoc — their own spots aren't being marked received) -->
+        <template x-if="saleForm.buyer_id && activeWeek?.is_group_week && !activeWeek?.is_assoc_week && activeWeek?.winner_spot?.spot_type !== 'association' && activeMembers.find(m=>m.id===saleForm.buyer_id)?.spots?.filter(s=>s.status==='active').length > 1">
           <div class="mt-3">
             <label class="block text-xs font-medium text-gray-600 mb-1">Which spot is this pot for? <span class="text-red-400">*</span></label>
             <div class="flex gap-2 flex-wrap">
@@ -1510,7 +1551,8 @@ function draws() {
     g1Search: '', g1Open: false,
     g2Search: '', g2Open: false,
     g3Search: '', g3Open: false,
-    saleForm: { original_winner_id: null, seller_id: null, buyer_id: null, percentage: null, notes: '' },
+    assocSpots: [],
+    saleForm: { original_winner_id: null, seller_id: null, buyer_id: null, buyer_spot_id: null, assoc_spot_id: null, percentage: null, notes: '' },
     disbForm: { gross_amount: 0, service_fee: 0, voucher_deduction: 0, cheque_number: '', cheque_date: '', guarantor_1_id: null, guarantor_2_id: null, guarantor_3_id: null, notes: '' },
     existingDisbursement: null,
     existingDisbursements: [],
@@ -1759,25 +1801,31 @@ function draws() {
 
     async openSale(w) {
       this.activeWeek = w;
-      const isAssocSpot = w.winner_spot?.spot_type === 'association';
+      const isAssocWeek = w.is_assoc_week || w.winner_spot?.spot_type === 'association';
       const isGroupWeek = w.is_group_week;
-      // Association spot winner: no member owner — sale goes directly to association fund
-      const winnerId = (!isAssocSpot && w.winner_spot?.members?.length > 0)
+      // Assoc weeks have no individual winner — profit goes to association fund
+      const winnerId = (!isAssocWeek && w.winner_spot?.members?.length > 0)
         ? w.winner_spot.members[0].id : null;
-      const txType = isAssocSpot ? 'assoc_spot_sale'
+      const txType = isAssocWeek ? 'assoc_spot_sale'
                    : isGroupWeek ? 'group_week_sale'
                    : 'member_sale';
       this.saleForm = {
         original_winner_id: winnerId, seller_id: winnerId,
-        buyer_id: null, buyer_spot_id: null, percentage: null, notes: '',
+        buyer_id: null, buyer_spot_id: null,
+        assoc_spot_id: w.winner_spot?.spot_type === 'association' ? w.winner_spot.id : null,
+        percentage: null, notes: '',
         transaction_type: txType,
       };
+      this.assocSpots = [];
       this.buyerPaymentCheck = null;
       this.buyerSearch = ''; this.buyerOpen = false;
       this.sellerSearch = ''; this.sellerOpen = false;
+      // Load assoc spots if this is an assoc week without a pre-assigned spot
+      if (isAssocWeek && !w.winner_spot) {
+        this.assocSpots = await this.api('GET', '/api/draws/assoc-spots').catch(() => []);
+      }
       this.activeMembers = await this.api('GET', `/api/draws/active-members?cycle_id=${this.selectedCycle}`).catch(() => []);
-      // Winner's status becomes "received" after draw, so they're excluded from active-members.
-      // Re-inject them so they appear as the default seller.
+      // Re-inject drawn winner so they appear as default seller
       if (w.winner_spot?.members?.length > 0) {
         for (const wm of w.winner_spot.members) {
           if (!this.activeMembers.find(m => m.id === wm.id)) {
@@ -2142,21 +2190,35 @@ function draws() {
     async recordSale() {
       if (!this.saleForm.buyer_id) return;
       if (this.buyerPaymentCheck && !this.buyerPaymentCheck.eligible) return;
-      // For group/assoc weeks with a multi-spot buyer, a specific spot must be selected
       const buyer = this.activeMembers.find(m => m.id === this.saleForm.buyer_id);
-      const isGroupOrAssoc = this.activeWeek?.is_group_week || this.activeWeek?.winner_spot?.spot_type === 'association';
-      if (isGroupOrAssoc && buyer?.spot_numbers?.length > 1 && !this.saleForm.buyer_spot_id) {
+      const isAssocWeek = this.activeWeek?.is_assoc_week || this.activeWeek?.winner_spot?.spot_type === 'association';
+      const isGroupWeek = this.activeWeek?.is_group_week;
+
+      // Assoc week: require an assoc spot selection if none is pre-assigned
+      if (isAssocWeek && !this.activeWeek?.winner_spot && !this.saleForm.assoc_spot_id) {
+        this.showToast('Please select an association spot to sell', 'error');
+        return;
+      }
+      // Group week only: require buyer spot selection for multi-spot buyers
+      if (isGroupWeek && buyer?.spot_numbers?.length > 1 && !this.saleForm.buyer_spot_id) {
         this.showToast('Please select which spot this pot covers', 'error');
         return;
       }
       this.saving = true;
       try {
+        // Determine spot_id based on week type
+        let spotId = null;
+        if (isAssocWeek) {
+          // Use the selected assoc spot, or fall back to pre-assigned winner spot
+          spotId = this.saleForm.assoc_spot_id || this.activeWeek?.winner_spot?.id || null;
+        } else if (isGroupWeek && this.saleForm.buyer_spot_id) {
+          spotId = buyer?.spots?.find(s => s.number === this.saleForm.buyer_spot_id)?.id ?? null;
+        }
+
         const payload = {
-          transaction_type: this.saleForm.transaction_type || (this.activeWeek.is_group_week ? 'group_week_sale' : 'member_sale'),
+          transaction_type: this.saleForm.transaction_type || (isGroupWeek ? 'group_week_sale' : isAssocWeek ? 'assoc_spot_sale' : 'member_sale'),
           buyer_id: this.saleForm.buyer_id,
-          spot_id: (isGroupOrAssoc && this.saleForm.buyer_spot_id)
-            ? (buyer?.spots?.find(s => s.number === this.saleForm.buyer_spot_id)?.id ?? null)
-            : null,
+          spot_id: spotId,
           original_winner_id: this.saleForm.original_winner_id || null,
           seller_id: this.saleForm.seller_id || null,
           percentage: this.saleForm.percentage || null,

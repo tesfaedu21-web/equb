@@ -147,12 +147,15 @@ def week_to_dict(w: Week, cfg=None) -> dict:
     assoc_contribution = (
         (cfg.total_assoc_spots or 0) * (cfg.full_spot_amount or 0) if cfg else 0
     )
+    n_member = w.cycle.total_member_spots if w.cycle else 0
+    is_assoc_week = not w.is_group_week and (w.week_number > (n_member or 0))
     return {
         "id": w.id,
         "cycle_id": w.cycle_id,
         "week_number": w.week_number,
         "draw_date": w.draw_date.isoformat(),
         "is_group_week": w.is_group_week,
+        "is_assoc_week": is_assoc_week,
         "is_worker_week": bool(getattr(w, "is_worker_week", False)),
         "gross_pot": w.gross_pot,
         "association_amount": w.association_amount,
@@ -383,18 +386,25 @@ def start_draws(cycle_id: int, data: StartDrawsData, request: Request, db: Sessi
         last_num  = last_week.week_number if last_week else n_member
         last_date = last_week.draw_date   if last_week else cycle.start_date
 
+        assoc_spots = (db.query(Spot)
+                       .filter(Spot.spot_type == "association")
+                       .order_by(Spot.number)
+                       .all())
         for i in range(1, n_assoc + 1):
             draw_date = last_date + timedelta(weeks=i)
             # Snap to Sunday
             days_to_sunday = (6 - draw_date.weekday()) % 7
             if days_to_sunday:
                 draw_date = draw_date + timedelta(days=days_to_sunday)
+            # Pre-assign this week to its association spot so the UI can show it
+            assoc_spot = assoc_spots[i - 1] if i - 1 < len(assoc_spots) else None
             db.add(Week(
                 cycle_id=cycle.id,
                 week_number=last_num + i,
                 draw_date=draw_date,
-                is_group_week=False,   # assoc spot weeks are always sale events, never group weeks
+                is_group_week=False,
                 gross_pot=gross, association_amount=assoc_amt, net_pot=net,
+                winner_spot_id=assoc_spot.id if assoc_spot else None,
             ))
 
         # Also recalculate all pending member weeks now that final membership is known
@@ -741,23 +751,37 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
         buyer_payment.paid_date = _utcnow()
         buyer_payment.reference = f"Pot purchase week {w.week_number}"
 
-    # Mark the buyer's spot(s) received.
-    # For group/assoc sales where spot_id is provided: only cover that one spot.
-    # Winner_spot_id is also set so the table shows the correct spot number.
     buyer_sas = [sa for sa in buyer.spot_assignments
                  if sa.is_active and sa.cycle_id == w.cycle_id]
-    if data.spot_id and data.transaction_type in ("group_week_sale", "assoc_spot_sale"):
-        # Validate the spot belongs to the buyer
+
+    if data.transaction_type == "assoc_spot_sale":
+        # The spot_id here is an ASSOCIATION spot, not a member spot.
+        # Mark the association spot received; buyer's own member spots are untouched.
+        if data.spot_id:
+            assoc_spot = db.query(Spot).filter(
+                Spot.id == data.spot_id, Spot.spot_type == "association"
+            ).first()
+            if not assoc_spot:
+                raise HTTPException(status_code=400, detail="Association spot not found")
+            assoc_spot.status = "received"
+            w.winner_spot_id = data.spot_id
+        elif w.winner_spot_id:
+            # Pre-assigned at start-draws; mark it received
+            pre_spot = db.query(Spot).filter(Spot.id == w.winner_spot_id).first()
+            if pre_spot:
+                pre_spot.status = "received"
+        # Buyer is buying the assoc pot — their own member spot stays active
+        # (they haven't received THEIR weekly pot yet)
+    elif data.spot_id and data.transaction_type == "group_week_sale":
+        # spot_id is the BUYER's member spot that this pot covers
         covered_spot_ids = {sa.spot_id for sa in buyer_sas}
         if data.spot_id not in covered_spot_ids:
             raise HTTPException(status_code=400, detail="Selected spot does not belong to this buyer")
         for sa in buyer_sas:
             if sa.spot_id == data.spot_id:
                 sa.spot.status = "received"
-        # Record which spot was covered so the draws table can display it
         if not w.winner_spot_id:
             w.winner_spot_id = data.spot_id
-        # Only mark member fully received if ALL their spots are now received
         all_received = all(
             sa.spot_id == data.spot_id or sa.spot.status == "received"
             for sa in buyer_sas
@@ -765,7 +789,7 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
         if all_received:
             buyer.status = "received"
     else:
-        # Default: mark all buyer spots received (member_sale, or no spot_id given)
+        # Default: member_sale or group/assoc with no spot_id → mark all buyer spots received
         buyer.status = "received"
         for sa in buyer_sas:
             sa.spot.status = "received"
@@ -798,6 +822,15 @@ def active_spots(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
         }
         for s in spots
     ]
+
+
+@router.get("/assoc-spots")
+def assoc_spots_list(db: Session = Depends(get_db)):
+    """Returns association-type spots that are still active (not yet sold this cycle)."""
+    spots = (db.query(Spot)
+             .filter(Spot.spot_type == "association", Spot.status == "active")
+             .order_by(Spot.number).all())
+    return [{"id": s.id, "number": s.number} for s in spots]
 
 
 @router.get("/active-members")
