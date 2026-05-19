@@ -638,6 +638,19 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
         raise HTTPException(status_code=404, detail="Buyer not found")
     if buyer.status == "left":
         raise HTTPException(status_code=400, detail=f"{buyer.name} has left the group and cannot buy a pot")
+
+    # Buyer must be assigned to a spot in this cycle
+    buyer_in_cycle = db.query(MemberSpot).filter(
+        MemberSpot.member_id == buyer.id,
+        MemberSpot.cycle_id == w.cycle_id,
+        MemberSpot.is_active == True,
+    ).first()
+    if not buyer_in_cycle:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{buyer.name} is not a member of this cycle",
+        )
+
     if buyer.status != "active":
         raise HTTPException(status_code=400, detail="Buyer must be an active member (not already received)")
 
