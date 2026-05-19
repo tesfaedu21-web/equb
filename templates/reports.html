@@ -491,7 +491,7 @@
                   :class="voucherFilter==='outstanding' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
                   class="px-3 py-1 rounded-md transition-colors">
             Outstanding
-            <span class="ml-1 text-orange-400" x-text="'(' + vouchers.filter(v=>!v.voucher_paid).length + ')'"></span>
+            <span class="ml-1 text-orange-400" x-text="'(' + vouchers.filter(v=>!v.voucher_paid && v.voucher_deduction>0).length + ')'"></span>
           </button>
           <button @click="voucherFilter='paid'"
                   :class="voucherFilter==='paid' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
@@ -526,7 +526,7 @@
               <th class="px-4 py-3 no-print-cell"></th>
             </tr>
           </thead>
-            <template x-for="v in vouchers.filter(v => voucherFilter==='all' || (voucherFilter==='paid' ? v.voucher_paid : !v.voucher_paid))" :key="v.week_id">
+            <template x-for="v in vouchers.filter(v => voucherFilter==='all' || (voucherFilter==='paid' ? v.voucher_paid : (!v.voucher_paid && v.voucher_deduction>0)))" :key="v.week_id">
               <tbody>
                 <!-- Main row -->
                 <tr class="border-b transition-colors"
