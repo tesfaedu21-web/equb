@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
-from routers.deps import _require_admin
+from routers.deps import _require_feature
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -224,7 +224,7 @@ def available_spots(db: Session = Depends(get_db)):
 def apply_settings_to_cycle(request: Request, db: Session = Depends(get_db)):
     """Push global Settings amounts into the active cycle's own settings and all active
     MemberSpot records. Use after changing global spot amounts for the current cycle."""
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
     settings = db.query(Settings).first()
     if not settings:
         raise HTTPException(status_code=500, detail="Settings not configured")
@@ -383,7 +383,7 @@ def import_template(db: Session = Depends(get_db)):
 
 @router.post("/import")
 async def import_members(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
     """Import members from CSV or Excel. Returns per-row results."""
     filename = (file.filename or "").lower()
     content = await file.read()
@@ -505,7 +505,7 @@ def delete_all_members(request: Request, db: Session = Depends(get_db)):
     Members with no payment records are hard-deleted.
     Members that have payment records are soft-deleted (marked as left).
     """
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
 
     # Remove all spot assignments first
     db.query(MemberSpot).delete(synchronize_session=False)
@@ -531,7 +531,7 @@ def delete_all_members(request: Request, db: Session = Depends(get_db)):
 @router.delete("/permanent/{member_id}")
 def delete_member_permanent(member_id: int, request: Request, db: Session = Depends(get_db)):
     """Hard-delete a member and all their records. Admin only."""
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -588,7 +588,7 @@ def delete_member_permanent(member_id: int, request: Request, db: Session = Depe
 
 @router.post("")
 def create_member(data: MemberCreate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     if cycle and cycle.draw_phase == "active":
         raise HTTPException(status_code=400,
@@ -650,7 +650,7 @@ def get_member(member_id: int, db: Session = Depends(get_db)):
 
 @router.put("/{member_id}")
 def update_member(member_id: int, data: MemberUpdate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -663,7 +663,7 @@ def update_member(member_id: int, data: MemberUpdate, request: Request, db: Sess
 
 @router.post("/{member_id}/spots")
 def add_spot(member_id: int, data: SpotAdd, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -719,7 +719,7 @@ def add_spot(member_id: int, data: SpotAdd, request: Request, db: Session = Depe
 
 @router.delete("/{member_id}/spots/{spot_id}")
 def remove_spot(member_id: int, spot_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
     active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     cycle_id = active_cycle.id if active_cycle else None
     # Prefer the active-cycle-scoped assignment; fall back to any matching row (legacy data)
@@ -743,7 +743,7 @@ def remove_spot(member_id: int, spot_id: int, request: Request, db: Session = De
 
 @router.delete("/{member_id}")
 def mark_left(member_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -769,7 +769,7 @@ def member_exit(member_id: int, data: MemberExitIn, request: Request,
     - Marks all pending/late payments AFTER the exit week as missed
     - Returns a financial summary
     """
-    _require_admin(request)
+    _require_feature(request, db, "manage_members")
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")

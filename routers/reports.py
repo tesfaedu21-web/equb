@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, DistributionCheque, VoucherReturn, cycle_cfg
-from routers.deps import _require_admin
+from routers.deps import _require_feature
 
 
 def _utcnow():
@@ -629,7 +629,7 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
 
 @router.put("/vouchers/week/{week_id}/mark-paid")
 def mark_voucher_paid(week_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     now = _utcnow()
     disbs = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).all()
     if disbs:
@@ -650,7 +650,7 @@ def mark_voucher_paid(week_id: int, request: Request, db: Session = Depends(get_
 
 @router.put("/vouchers/week/{week_id}/unmark-paid")
 def unmark_voucher_paid(week_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     disbs = db.query(PotDisbursement).filter(PotDisbursement.week_id == week_id).all()
     if disbs:
         for d in disbs:
@@ -674,7 +674,7 @@ class VoucherReturnIn(BaseModel):
 @router.post("/voucher-returns/{week_id}")
 def record_voucher_return(week_id: int, data: VoucherReturnIn,
                           request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     """Record (or update) how many full/half voucher cards the vendor returned for a week."""
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
@@ -700,7 +700,7 @@ def record_voucher_return(week_id: int, data: VoucherReturnIn,
 
 @router.delete("/voucher-returns/{week_id}")
 def delete_voucher_return(week_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     """Remove a voucher return record for a week."""
     vr = db.query(VoucherReturn).filter(VoucherReturn.week_id == week_id).first()
     if not vr:
@@ -737,7 +737,7 @@ def list_expenses(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
 
 @router.post("/association-expenses")
 def add_expense(data: ExpenseCreate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     if not cycle:
         raise HTTPException(404, "No active cycle")
@@ -759,7 +759,7 @@ def add_expense(data: ExpenseCreate, request: Request, db: Session = Depends(get
 
 @router.delete("/association-expenses/{expense_id}")
 def delete_expense(expense_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     exp = db.query(AssociationExpense).filter(AssociationExpense.id == expense_id).first()
     if not exp:
         raise HTTPException(404, "Expense not found")
@@ -770,7 +770,7 @@ def delete_expense(expense_id: int, request: Request, db: Session = Depends(get_
 
 @router.get("/general-ledger")
 def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     """Chronological ledger of every financial event for a cycle."""
     if not cycle_id:
         cycle = db.query(Cycle).filter(Cycle.status == "active").first()
@@ -1252,7 +1252,7 @@ def list_distribution_cheques(cycle_id: Optional[int] = None, db: Session = Depe
 
 @router.post("/distribution-cheques")
 def create_distribution_cheque(data: ChequeCreate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     existing = db.query(DistributionCheque).filter(
         DistributionCheque.cycle_id == data.cycle_id,
         DistributionCheque.member_id == data.member_id,
@@ -1276,7 +1276,7 @@ def create_distribution_cheque(data: ChequeCreate, request: Request, db: Session
 
 @router.put("/distribution-cheques/{cheque_id}/collect")
 def collect_distribution_cheque(cheque_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     c = db.query(DistributionCheque).filter(DistributionCheque.id == cheque_id).first()
     if not c:
         raise HTTPException(404, "Cheque not found")
@@ -1288,7 +1288,7 @@ def collect_distribution_cheque(cheque_id: int, request: Request, db: Session = 
 
 @router.put("/distribution-cheques/{cheque_id}/uncollect")
 def uncollect_distribution_cheque(cheque_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     c = db.query(DistributionCheque).filter(DistributionCheque.id == cheque_id).first()
     if not c:
         raise HTTPException(404, "Cheque not found")
@@ -1300,7 +1300,7 @@ def uncollect_distribution_cheque(cheque_id: int, request: Request, db: Session 
 
 @router.delete("/distribution-cheques/{cheque_id}")
 def delete_distribution_cheque(cheque_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "view_reports")
     c = db.query(DistributionCheque).filter(DistributionCheque.id == cheque_id).first()
     if not c:
         raise HTTPException(404, "Cheque not found")

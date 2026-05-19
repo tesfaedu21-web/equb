@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
-    DateTime, ForeignKey, Text, UniqueConstraint, Index,
+    DateTime, ForeignKey, Text, UniqueConstraint, Index, JSON,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
@@ -96,6 +96,8 @@ class Settings(Base):
     group_name = Column(String, default="እቁብ")
     group_tagline = Column(String, default="Equb Manager")
     logo_url = Column(String, nullable=True)
+    # Role permissions matrix — JSON dict of {role: {feature: bool}}
+    permissions = Column(JSON, nullable=True)
 
 
 class User(Base):

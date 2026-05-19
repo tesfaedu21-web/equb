@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from database import init_db, get_db, User, Settings, Payment, Week, _pwd
+from routers.deps import _get_permissions
 from sqlalchemy.orm import Session
 from routers import members, draws, payments, reports, notifications
 from routers import auth as auth_router
@@ -266,9 +267,17 @@ def _ctx(request: Request) -> dict:
     db: Session = next(get_db())
     try:
         s = db.query(Settings).first()
+        role = getattr(request.state, "user_role", "cashier")
+        perms = _get_permissions(db)
+        # Effective permissions for this user's role (superadmin gets everything)
+        if role == "superadmin":
+            effective = {feat: True for feat in ("manage_members", "run_draws", "disbursements", "view_reports", "manage_users", "notifications")}
+        else:
+            effective = perms.get(role, {})
         return {
             "user_name":    getattr(request.state, "user_name", ""),
-            "user_role":    getattr(request.state, "user_role", ""),
+            "user_role":    role,
+            "permissions":  effective,
             "group_name":   s.group_name    if s else "እቁብ",
             "group_tagline":s.group_tagline if s else "Equb Manager",
             "logo_url":     s.logo_url      if s else None,
@@ -358,15 +367,17 @@ async def payments_page(request: Request):
 
 @app.get("/reports",     response_class=HTMLResponse)
 async def reports_page(request: Request):
-    if getattr(request.state, "user_role", "") not in ("admin", "superadmin"):
+    ctx = _ctx(request)
+    if not ctx["permissions"].get("view_reports"):
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse(request, "reports.html", _ctx(request))
+    return templates.TemplateResponse(request, "reports.html", ctx)
 
 @app.get("/notifications", response_class=HTMLResponse)
 async def notifications_page(request: Request):
-    if getattr(request.state, "user_role", "") not in ("admin", "superadmin"):
+    ctx = _ctx(request)
+    if not ctx["permissions"].get("notifications"):
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse(request, "notifications.html", _ctx(request))
+    return templates.TemplateResponse(request, "notifications.html", ctx)
 
 @app.get("/settings",    response_class=HTMLResponse)
 async def settings_page(request: Request):

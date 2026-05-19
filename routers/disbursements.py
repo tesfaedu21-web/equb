@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime, timezone
 from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot, Cycle, PotTransaction, cycle_cfg
-from routers.deps import _require_admin
+from routers.deps import _require_feature
 
 
 def _utcnow():
@@ -226,7 +226,7 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
 
 @router.post("")
 def create_disbursement(data: DisbursementCreate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "disbursements")
 
     w = db.query(Week).filter(Week.id == data.week_id).first()
     if not w:
@@ -379,7 +379,7 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
 @router.put("/{disbursement_id}")
 def update_disbursement(disbursement_id: int, data: DisbursementUpdate,
                         request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "disbursements")
     d = db.query(PotDisbursement).filter(PotDisbursement.id == disbursement_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Disbursement not found")

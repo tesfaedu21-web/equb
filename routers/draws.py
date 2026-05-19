@@ -7,7 +7,7 @@ from database import (get_db, Week, Cycle, Spot, Member, MemberSpot,
                       PotTransaction, Settings, Payment, PaymentBatch,
                       PotDisbursement, AssociationExpense, VoucherReturn,
                       DistributionCheque, cycle_cfg)
-from routers.deps import _require_admin
+from routers.deps import _require_feature
 
 
 def _utcnow():
@@ -262,7 +262,7 @@ def _sync_spots(db: Session, n_member: int, n_assoc: int):
 @router.post("/sync-spots")
 def sync_spots(request: Request, db: Session = Depends(get_db)):
     """Sync Spot table to match current settings (total_member_spots + total_assoc_spots). Admin only."""
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     s = db.query(Settings).first()
     if not s:
         raise HTTPException(status_code=500, detail="Settings not configured")
@@ -275,7 +275,7 @@ def sync_spots(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/cycles")
 def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
 
     start = datetime.fromisoformat(data.start_date)
     gs = db.query(Settings).first()
@@ -357,7 +357,7 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
 
 @router.post("/cycles/{cycle_id}/start-draws")
 def start_draws(cycle_id: int, data: StartDrawsData, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -434,7 +434,7 @@ def recalculate_pot(cycle_id: int, request: Request, db: Session = Depends(get_d
     Only pending weeks are updated — drawn/sold weeks are left as recorded.
     Admin only.
     """
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -536,7 +536,7 @@ class SetSpotData(BaseModel):
 @router.patch("/weeks/{week_id}/set-spot")
 def set_winner_spot(week_id: int, data: SetSpotData, request: Request, db: Session = Depends(get_db)):
     """Set or update the winner spot for a sold/drawn week (admin correction)."""
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -558,7 +558,7 @@ def set_winner_spot(week_id: int, data: SetSpotData, request: Request, db: Sessi
 
 @router.post("/weeks/{week_id}/draw")
 def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -631,7 +631,7 @@ def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = 
 
 @router.post("/batch-draw")
 def record_batch_draw(data: BatchDrawResult, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     """Record multiple draw results at once (batch event after collection phase)."""
     results = []
     for item in data.draws:
@@ -664,7 +664,7 @@ def record_batch_draw(data: BatchDrawResult, request: Request, db: Session = Dep
 
 @router.post("/weeks/{week_id}/sell")
 def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Week not found")
@@ -918,7 +918,7 @@ def closure_checklist(cycle_id: int, db: Session = Depends(get_db)):
 @router.post("/cycles/{cycle_id}/close")
 def close_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
     """Mark a cycle as completed (archive it). Data is preserved. Admin only."""
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -933,7 +933,7 @@ def close_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
 @router.post("/cycles/{cycle_id}/reactivate")
 def reactivate_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
     """Restore a completed cycle back to active status. Admin only."""
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -951,7 +951,7 @@ def reactivate_cycle(cycle_id: int, request: Request, db: Session = Depends(get_
 @router.delete("/cycles/{cycle_id}")
 def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db)):
     """Permanently delete a cycle and all its related data. Admin only."""
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -1142,7 +1142,7 @@ def association_fund(cycle_id: Optional[int] = None, db: Session = Depends(get_d
 @router.post("/association-expenses")
 def add_expense(data: ExpenseCreate, request: Request, db: Session = Depends(get_db)):
     """Record an expense deducted from the association fund (paper, pen, etc.)."""
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     cycle = db.query(Cycle).filter(Cycle.id == data.cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -1175,7 +1175,7 @@ def list_expenses(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
 
 @router.delete("/association-expenses/{expense_id}")
 def delete_expense(expense_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "run_draws")
     e = db.query(AssociationExpense).filter(AssociationExpense.id == expense_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Expense not found")

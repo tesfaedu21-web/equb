@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from database import (get_db, Member, Payment, Week, Cycle, MemberSpot,
                       NotificationSettings, NotificationTemplate, NotificationLog)
-from routers.deps import _require_admin
+from routers.deps import _require_feature
 
 router = APIRouter()
 
@@ -254,7 +254,7 @@ def send_disbursement_ready(week, member, cheque_number: str, db: Session) -> st
 
 @router.get("/settings")
 def get_settings(request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "notifications")
     cfg = db.query(NotificationSettings).first()
     return {
         "provider": cfg.provider,
@@ -267,7 +267,7 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
 
 @router.put("/settings")
 def update_settings(data: SettingsUpdate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "notifications")
     cfg = db.query(NotificationSettings).first()
     if data.provider is not None:
         cfg.provider = data.provider
@@ -294,7 +294,7 @@ def get_templates(db: Session = Depends(get_db)):
 
 @router.put("/templates/{template_id}")
 def update_template(template_id: int, data: TemplateUpdate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "notifications")
     t = db.query(NotificationTemplate).filter(NotificationTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -310,7 +310,7 @@ def update_template(template_id: int, data: TemplateUpdate, request: Request, db
 
 @router.post("/send")
 def send_to_members(data: SendRequest, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "notifications")
     tmpl = db.query(NotificationTemplate).filter_by(key=data.template_key).first()
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -349,7 +349,7 @@ def send_to_members(data: SendRequest, request: Request, db: Session = Depends(g
 
 @router.post("/broadcast/payment-reminder")
 def broadcast_payment_reminder(week_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "notifications")
     """Send reminder to all members with pending/late payment for a specific week."""
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
@@ -396,7 +396,7 @@ def broadcast_payment_reminder(week_id: int, request: Request, db: Session = Dep
 
 @router.post("/broadcast/missed-payments")
 def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "notifications")
     """Send missed payment notice to all members with any unpaid weeks in the active cycle."""
     tmpl = db.query(NotificationTemplate).filter_by(key="missed_payment").first()
     if not tmpl or not tmpl.is_active:
@@ -444,7 +444,7 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/logs")
 def notification_logs(request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "notifications")
     """Return broadcast batches (grouped) and individual notifications separately.
 
     High-volume types (payment_confirmed, payment_reminder, missed_payment) are

@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from database import (get_db, User, _pwd, Cycle, Spot, Member, MemberSpot,
+from database import (get_db, User, Settings, _pwd, Cycle, Spot, Member, MemberSpot,
                        Week, PaymentBatch, Payment, PotTransaction,
                        PotDisbursement, AssociationExpense, DistributionCheque,
                        VoucherReturn, NotificationLog)
-from routers.deps import _require_admin, _require_superadmin
+from routers.deps import _require_admin, _require_superadmin, _require_feature, _get_permissions, DEFAULT_PERMISSIONS
 
 router = APIRouter()
 
@@ -74,14 +74,14 @@ def me(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/users")
 def list_users(request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    _require_feature(request, db, "manage_users")
     return [_user_dict(u) for u in db.query(User).order_by(User.id).all()]
 
 
 @router.post("/users")
 def create_user(data: UserCreate, request: Request, db: Session = Depends(get_db)):
     caller_role = getattr(request.state, "user_role", None)
-    _require_admin(request)
+    _require_feature(request, db, "manage_users")
 
     if data.role not in _VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(sorted(_VALID_ROLES))}")
@@ -109,7 +109,7 @@ def create_user(data: UserCreate, request: Request, db: Session = Depends(get_db
 def update_user(user_id: int, data: UserUpdate, request: Request, db: Session = Depends(get_db)):
     caller_role = getattr(request.state, "user_role", None)
     caller_id   = getattr(request.state, "user_id", None)
-    _require_admin(request)
+    _require_feature(request, db, "manage_users")
 
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
@@ -143,7 +143,7 @@ def reset_password(user_id: int, data: PasswordReset, request: Request, db: Sess
     """Admin resets another user's password without needing the current one."""
     caller_role = getattr(request.state, "user_role", None)
     caller_id   = getattr(request.state, "user_id",   None)
-    _require_admin(request)
+    _require_feature(request, db, "manage_users")
 
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
@@ -175,6 +175,34 @@ def change_password(data: PasswordChange, request: Request, db: Session = Depend
     u.password_hash = _pwd.hash(data.new_password)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/permissions")
+def get_permissions(request: Request, db: Session = Depends(get_db)):
+    _require_superadmin(request)
+    return _get_permissions(db)
+
+
+@router.put("/permissions")
+def set_permissions(data: dict, request: Request, db: Session = Depends(get_db)):
+    _require_superadmin(request)
+    # Validate: only known roles and features
+    for role, feats in data.items():
+        if role not in ("admin", "cashier"):
+            raise HTTPException(status_code=400, detail=f"Unknown role: {role}")
+        if not isinstance(feats, dict):
+            raise HTTPException(status_code=400, detail="Features must be a dict of {feature: bool}")
+        for feat, val in feats.items():
+            if feat not in DEFAULT_PERMISSIONS.get(role, {}):
+                raise HTTPException(status_code=400, detail=f"Unknown feature: {feat}")
+            if not isinstance(val, bool):
+                raise HTTPException(status_code=400, detail=f"Feature value must be boolean")
+    s = db.query(Settings).first()
+    if not s:
+        raise HTTPException(status_code=500, detail="Settings not found")
+    s.permissions = data
+    db.commit()
+    return _get_permissions(db)
 
 
 @router.post("/reset-system")
