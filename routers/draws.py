@@ -121,19 +121,22 @@ def week_to_dict(w: Week, cfg=None) -> dict:
                        "spot_type": w.winner_spot.spot_type, "members": members}
     transaction = None
     if tx:
-        buyer_spot_numbers = []
+        buyer_spots = []
         if tx.buyer:
-            buyer_spot_numbers = sorted(
-                sa.spot.number for sa in tx.buyer.spot_assignments
+            buyer_spots = [
+                {"id": sa.spot_id, "number": sa.spot.number}
+                for sa in tx.buyer.spot_assignments
                 if sa.is_active and sa.cycle_id == w.cycle_id and sa.spot
-            )
+            ]
+            buyer_spots.sort(key=lambda s: s["number"])
         transaction = {
             "id": tx.id,
             "type": tx.transaction_type,
             "buyer": {
                 "id": tx.buyer_id,
                 "name": tx.buyer.name if tx.buyer else None,
-                "spot_numbers": buyer_spot_numbers,
+                "spot_numbers": [s["number"] for s in buyer_spots],
+                "spots": buyer_spots,
             },
             "seller": {"id": tx.seller_id, "name": tx.seller.name if tx.seller else None} if tx.seller_id else None,
             "percentage": tx.percentage,
@@ -522,6 +525,34 @@ def get_week(week_id: int, db: Session = Depends(get_db)):
     w = db.query(Week).filter(Week.id == week_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Week not found")
+    return week_to_dict(w)
+
+
+class SetSpotData(BaseModel):
+    spot_id: Optional[int] = None
+    spot_number: Optional[int] = None
+
+
+@router.patch("/weeks/{week_id}/set-spot")
+def set_winner_spot(week_id: int, data: SetSpotData, request: Request, db: Session = Depends(get_db)):
+    """Set or update the winner spot for a sold/drawn week (admin correction)."""
+    _require_admin(request)
+    w = db.query(Week).filter(Week.id == week_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="Week not found")
+    if w.status not in ("sold", "drawn"):
+        raise HTTPException(status_code=400, detail="Week must be sold or drawn to set a winner spot")
+    if data.spot_id:
+        spot = db.query(Spot).filter(Spot.id == data.spot_id).first()
+    elif data.spot_number:
+        spot = db.query(Spot).filter(Spot.number == data.spot_number).first()
+    else:
+        raise HTTPException(status_code=400, detail="Provide spot_id or spot_number")
+    if not spot:
+        raise HTTPException(status_code=404, detail="Spot not found")
+    w.winner_spot_id = spot.id
+    db.commit()
+    db.refresh(w)
     return week_to_dict(w)
 
 

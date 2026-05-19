@@ -220,18 +220,52 @@
                   </td>
                   <td class="px-4 py-3 text-gray-600 text-sm amharic max-w-[200px] truncate">
                     <template x-if="w.status === 'drawn' && w.winner_spot">
-                      <span>
+                      <span x-data="{changing:false, memberSpots:[]}"
+                            @spot-change-open.window="if($event.detail===w.id){changing=true; fetch('/api/members/'+w.winner_spot.members[0]?.id,{headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.json()).then(d=>{memberSpots=d.spot_numbers||[]})}">
                         <span class="font-bold text-equb-green text-xs">#<span x-text="w.winner_spot.number"></span></span>
                         <span class="ml-1" x-text="w.winner_spot.members.map(m=>m.name).join(' & ')"></span>
+                        <!-- change spot: small inline picker loaded on demand -->
+                        <template x-if="isAdmin && !changing">
+                          <button type="button" @click.stop="$dispatch('spot-change-open',w.id)"
+                            class="ml-1 text-xs text-gray-400 hover:text-equb-green underline">change</button>
+                        </template>
+                        <template x-if="changing">
+                          <span class="inline-flex items-center gap-1 ml-1">
+                            <template x-for="sn in memberSpots" :key="sn">
+                              <button type="button"
+                                @click.stop="fetch('/api/draws/weeks/'+w.id+'/set-spot',{method:'PATCH',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify({spot_number:sn})}).then(r=>r.json()).then(d=>{const i=weeks.findIndex(x=>x.id===w.id);if(i>=0)weeks[i]=d;changing=false;showToast('Spot #'+sn+' set','success');})"
+                                :class="sn===w.winner_spot.number ? 'bg-equb-green text-white border-equb-green' : 'bg-white text-gray-700 border-gray-300 hover:border-equb-green'"
+                                class="px-2 py-0.5 rounded border text-xs font-bold transition-colors"
+                                x-text="'#'+sn"></button>
+                            </template>
+                            <button type="button" @click.stop="changing=false" class="text-xs text-gray-400 hover:text-red-500 ml-1">✕</button>
+                          </span>
+                        </template>
                       </span>
                     </template>
                     <template x-if="w.status === 'sold' && w.transaction">
                       <span>
-                        <!-- drawn-then-sold: show the drawn winner spot number -->
-                        <span x-show="w.winner_spot" class="font-bold text-equb-green text-xs mr-1">#<span x-text="w.winner_spot?.number"></span></span>
-                        <!-- group/assoc buy (no drawn spot): show the first spot number only -->
-                        <template x-if="!w.winner_spot && w.transaction.buyer?.spot_numbers?.length">
-                          <span class="font-bold text-equb-green text-xs mr-1" x-text="'#' + w.transaction.buyer.spot_numbers[0]"></span>
+                        <!-- winner spot set: show number + allow admin to change -->
+                        <template x-if="w.winner_spot">
+                          <span class="inline-flex items-center gap-1">
+                            <span class="font-bold text-equb-green text-xs">#<span x-text="w.winner_spot?.number"></span></span>
+                          </span>
+                        </template>
+                        <!-- no winner spot: buyer has multiple spots → show picker -->
+                        <template x-if="!w.winner_spot && w.transaction.buyer?.spots?.length > 1 && isAdmin">
+                          <span class="inline-flex items-center gap-1 mr-1">
+                            <template x-for="sp in w.transaction.buyer.spots" :key="sp.id">
+                              <button type="button"
+                                @click.stop="fetch(`/api/draws/weeks/${w.id}/set-spot`,{method:'PATCH',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify({spot_id:sp.id})}).then(r=>r.json()).then(d=>{const idx=weeks.findIndex(x=>x.id===w.id);if(idx>=0)weeks[idx]=d;showToast('Spot #'+sp.number+' set','success');})"
+                                class="px-2 py-0.5 rounded border text-xs font-bold bg-yellow-50 border-yellow-400 text-yellow-800 hover:bg-equb-green hover:text-white hover:border-equb-green transition-colors"
+                                x-text="'#' + sp.number"></button>
+                            </template>
+                            <span class="text-xs text-yellow-700 font-medium">pick spot</span>
+                          </span>
+                        </template>
+                        <!-- single spot buyer -->
+                        <template x-if="!w.winner_spot && w.transaction.buyer?.spots?.length === 1">
+                          <span class="font-bold text-equb-green text-xs mr-1" x-text="'#' + w.transaction.buyer.spots[0].number"></span>
                         </template>
                         <span class="font-medium" x-text="w.transaction.buyer?.name"></span>
                         <span x-show="w.transaction.percentage" class="text-xs text-purple-600 ml-1"
