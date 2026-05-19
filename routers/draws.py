@@ -965,15 +965,17 @@ def _assoc_fund_data(db: Session, cycle_id: Optional[int]) -> dict:
     cfg = cycle_cfg(cycle, gs)
 
     weeks_q = db.query(Week).filter(Week.cycle_id == cycle_id) if cycle_id else db.query(Week)
-    completed_weeks = weeks_q.filter(Week.status.in_(["drawn", "sold"])).all()
-    completed_week_ids = [w.id for w in completed_weeks]
-    weekly_deductions = _actual_assoc_collected(db, completed_week_ids, cycle_id) if cycle_id else 0.0
+    all_weeks = weeks_q.all()
+    all_week_ids = [w.id for w in all_weeks]
+    completed_weeks = [w for w in all_weeks if w.status in ("drawn", "sold")]
+
+    # Deductions are collected when members pay — count from all paid weeks, not just drawn ones
+    weekly_deductions = _actual_assoc_collected(db, all_week_ids, cycle_id) if cycle_id else 0.0
 
     tx_q = (db.query(PotTransaction)
             .filter(PotTransaction.transaction_type.in_(["assoc_spot_sale", "group_week_sale"])))
     if cycle_id:
-        week_ids = [w.id for w in weeks_q.all()]
-        tx_q = tx_q.filter(PotTransaction.week_id.in_(week_ids)) if week_ids else tx_q.filter(False)
+        tx_q = tx_q.filter(PotTransaction.week_id.in_(all_week_ids)) if all_week_ids else tx_q.filter(False)
     assoc_txs = tx_q.all()
     spot_sales_profit = sum(t.seller_fee or 0 for t in assoc_txs)
 
@@ -995,7 +997,7 @@ def _assoc_fund_data(db: Session, cycle_id: Optional[int]) -> dict:
     return {
         "cycle": cycle,
         "cfg": cfg,
-        "weeks": weeks_q.all(),
+        "weeks": all_weeks,
         "completed_weeks": completed_weeks,
         "weekly_deductions": weekly_deductions,
         "assoc_txs": assoc_txs,

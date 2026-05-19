@@ -243,15 +243,10 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
             Payment.status == "paid"
         ).all()
         total_collected = sum(p.amount for p in paid)
-        # Association fund: from actual paid member payments (not theoretical week amounts)
-        completed_weeks = db.query(Week).filter(
-            Week.cycle_id == cycle.id,
-            Week.status.in_(["drawn", "sold"])
-        ).all()
+        # Association fund: deductions are collected when members pay, not when the week is drawn
         from routers.draws import _actual_assoc_collected
-        association_fund = _actual_assoc_collected(
-            db, [w.id for w in completed_weeks], cycle.id
-        )
+        all_cycle_week_ids = [w.id for w in db.query(Week).filter(Week.cycle_id == cycle.id).all()]
+        association_fund = _actual_assoc_collected(db, all_cycle_week_ids, cycle.id)
 
         # Service fee and voucher totals from disbursements for this cycle
         disb_week_ids = [w.id for w in completed_weeks]
@@ -526,15 +521,10 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
     voucher_outstanding    = sum(vendor_data[d.id]["vendor_payment"] for d in disbs if not d.voucher_paid)
     assoc_retains_voucher  = total_voucher - total_vendor_payment
 
-    # Association fund: from actual paid member payments
-    completed_weeks = db.query(Week).filter(
-        Week.cycle_id == cycle_id,
-        Week.status.in_(["drawn", "sold"])
-    ).all()
+    # Association fund: deductions are collected when members pay, not when the week is drawn
     from routers.draws import _actual_assoc_collected
-    association_fund = _actual_assoc_collected(
-        db, [w.id for w in completed_weeks], cycle_id
-    )
+    all_cycle_week_ids = [w.id for w in db.query(Week).filter(Week.cycle_id == cycle_id).all()]
+    association_fund = _actual_assoc_collected(db, all_cycle_week_ids, cycle_id)
 
     # Association expenses paid out
     expenses = db.query(AssociationExpense).filter(
