@@ -586,8 +586,13 @@ def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db
         else:
             vendor_payment = 0
 
-        # Sum voucher_deduction across disbursements; 0 if no disbursement yet
+        # Sum voucher_deduction from disbursements; fall back to issued×rate for group weeks
         voucher_deduction = sum(x.voucher_deduction or 0 for x in group)
+        if voucher_deduction == 0 and cfg and (iss["full_issued"] or iss["half_issued"]):
+            voucher_deduction = round(
+                iss["full_issued"] * cfg.full_spot_voucher
+                + iss["half_issued"] * cfg.half_spot_voucher, 2
+            )
         all_paid = bool(group) and all(bool(x.voucher_paid) for x in group)
         # voucher_paid: disbursements all paid OR (no disbursements → use VoucherReturn.vendor_paid)
         if group:
