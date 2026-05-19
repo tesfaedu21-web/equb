@@ -686,8 +686,8 @@
           <input x-show="!saleForm.buyer_id" type="text" x-model="buyerSearch" @focus="buyerOpen=true" @input="buyerOpen=true" @keydown.escape="buyerOpen=false" placeholder="Type name or spot number…" autocomplete="off" class="w-full amharic"/>
           <div x-show="buyerOpen && buyerSearch && !saleForm.buyer_id" @click.outside="buyerOpen=false" class="absolute z-50 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-52 overflow-y-auto">
             <template x-for="m in activeMembers.filter(m => _memberMatches(m, buyerSearch) && m.id !== saleForm.original_winner_id)" :key="m.id">
-              <div @click="saleForm.buyer_id=m.id; buyerSearch=''; buyerOpen=false; checkBuyerPayment()" class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
-                <span class="font-bold text-equb-green w-10 flex-shrink-0" x-text="m.spot_numbers?.length ? '#'+m.spot_numbers[0] : '—'"></span>
+              <div @click="saleForm.buyer_id=m.id; saleForm.buyer_spot_id=(m.spot_numbers?.length===1?m.spot_numbers[0]:null); buyerSearch=''; buyerOpen=false; checkBuyerPayment()" class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
+                <span class="font-bold text-equb-green w-10 flex-shrink-0" x-text="m.spot_numbers?.length ? m.spot_numbers.map(n=>'#'+n).join(' ') : '—'"></span>
                 <span class="amharic truncate" x-text="m.name"></span>
               </div>
             </template>
@@ -706,6 +706,22 @@
             <template x-if="!buyerPaymentCheck.eligible">
               <span>✗ <span x-text="buyerPaymentCheck.ineligible_reason"></span></span>
             </template>
+          </div>
+        </template>
+
+        <!-- Spot selector: shown when buyer holds multiple spots and this is a group/assoc week -->
+        <template x-if="saleForm.buyer_id && (activeWeek?.is_group_week || activeWeek?.winner_spot?.spot_type==='association') && activeMembers.find(m=>m.id===saleForm.buyer_id)?.spots?.filter(s=>s.status==='active').length > 1">
+          <div class="mt-3">
+            <label class="block text-xs font-medium text-gray-600 mb-1">Which spot is this pot for? <span class="text-red-400">*</span></label>
+            <div class="flex gap-2 flex-wrap">
+              <template x-for="sp in activeMembers.find(m=>m.id===saleForm.buyer_id)?.spots?.filter(s=>s.status==='active') || []" :key="sp.number">
+                <button type="button"
+                        @click="saleForm.buyer_spot_id = sp.number"
+                        :class="saleForm.buyer_spot_id === sp.number ? 'bg-equb-green text-white border-equb-green' : 'bg-white text-gray-700 border-gray-300 hover:border-equb-green'"
+                        class="px-4 py-1.5 rounded-xl border font-bold text-sm transition-colors"
+                        x-text="'Spot #' + sp.number"></button>
+              </template>
+            </div>
           </div>
         </template>
       </div>
@@ -1719,7 +1735,7 @@ function draws() {
                    : 'member_sale';
       this.saleForm = {
         original_winner_id: winnerId, seller_id: winnerId,
-        buyer_id: null, percentage: null, notes: '',
+        buyer_id: null, buyer_spot_id: null, percentage: null, notes: '',
         transaction_type: txType,
       };
       this.buyerPaymentCheck = null;
@@ -2092,11 +2108,21 @@ function draws() {
     async recordSale() {
       if (!this.saleForm.buyer_id) return;
       if (this.buyerPaymentCheck && !this.buyerPaymentCheck.eligible) return;
+      // For group/assoc weeks with a multi-spot buyer, a specific spot must be selected
+      const buyer = this.activeMembers.find(m => m.id === this.saleForm.buyer_id);
+      const isGroupOrAssoc = this.activeWeek?.is_group_week || this.activeWeek?.winner_spot?.spot_type === 'association';
+      if (isGroupOrAssoc && buyer?.spot_numbers?.length > 1 && !this.saleForm.buyer_spot_id) {
+        this.showToast('Please select which spot this pot covers', 'error');
+        return;
+      }
       this.saving = true;
       try {
         const payload = {
           transaction_type: this.saleForm.transaction_type || (this.activeWeek.is_group_week ? 'group_week_sale' : 'member_sale'),
           buyer_id: this.saleForm.buyer_id,
+          spot_id: (isGroupOrAssoc && this.saleForm.buyer_spot_id)
+            ? (buyer?.spots?.find(s => s.number === this.saleForm.buyer_spot_id)?.id ?? null)
+            : null,
           original_winner_id: this.saleForm.original_winner_id || null,
           seller_id: this.saleForm.seller_id || null,
           percentage: this.saleForm.percentage || null,

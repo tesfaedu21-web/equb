@@ -199,6 +199,7 @@ class PotSale(BaseModel):
     original_winner_id: Optional[int] = None
     seller_id: Optional[int] = None
     buyer_id: int
+    spot_id: Optional[int] = None   # which of the buyer's spots this purchase covers (group/assoc sales)
     percentage: Optional[float] = None
     notes: Optional[str] = None
 
@@ -709,10 +710,33 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
         buyer_payment.paid_date = _utcnow()
         buyer_payment.reference = f"Pot purchase week {w.week_number}"
 
-    # Mark buyer's spot as received (current cycle only)
-    buyer.status = "received"
-    for sa in buyer.spot_assignments:
-        if sa.is_active and sa.cycle_id == w.cycle_id:
+    # Mark the buyer's spot(s) received.
+    # For group/assoc sales where spot_id is provided: only cover that one spot.
+    # Winner_spot_id is also set so the table shows the correct spot number.
+    buyer_sas = [sa for sa in buyer.spot_assignments
+                 if sa.is_active and sa.cycle_id == w.cycle_id]
+    if data.spot_id and data.transaction_type in ("group_week_sale", "assoc_spot_sale"):
+        # Validate the spot belongs to the buyer
+        covered_spot_ids = {sa.spot_id for sa in buyer_sas}
+        if data.spot_id not in covered_spot_ids:
+            raise HTTPException(status_code=400, detail="Selected spot does not belong to this buyer")
+        for sa in buyer_sas:
+            if sa.spot_id == data.spot_id:
+                sa.spot.status = "received"
+        # Record which spot was covered so the draws table can display it
+        if not w.winner_spot_id:
+            w.winner_spot_id = data.spot_id
+        # Only mark member fully received if ALL their spots are now received
+        all_received = all(
+            sa.spot_id == data.spot_id or sa.spot.status == "received"
+            for sa in buyer_sas
+        )
+        if all_received:
+            buyer.status = "received"
+    else:
+        # Default: mark all buyer spots received (member_sale, or no spot_id given)
+        buyer.status = "received"
+        for sa in buyer_sas:
             sa.spot.status = "received"
 
     w.status = "sold"
@@ -764,9 +788,12 @@ def active_members_for_sale(cycle_id: Optional[int] = None, db: Session = Depend
     def _member_dict(m):
         sas = [sa for sa in m.spot_assignments
                if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)]
+        spots = [{"id": sa.spot_id, "number": sa.spot.number, "status": sa.spot.status}
+                 for sa in sas if sa.spot]
         return {
             "id": m.id, "name": m.name,
-            "spot_numbers": [sa.spot.number for sa in sas],
+            "spots": spots,
+            "spot_numbers": [s["number"] for s in spots],
             "share": sas[0].share if sas else "full",
             "spot_count": len(sas),
         }
