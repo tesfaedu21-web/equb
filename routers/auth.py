@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from database import get_db, User, _pwd
+from database import (get_db, User, _pwd, Cycle, Spot, Member, MemberSpot,
+                       Week, PaymentBatch, Payment, PotTransaction,
+                       PotDisbursement, AssociationExpense, DistributionCheque,
+                       VoucherReturn, NotificationLog)
 from routers.deps import _require_admin, _require_superadmin
 
 router = APIRouter()
@@ -172,3 +175,35 @@ def change_password(data: PasswordChange, request: Request, db: Session = Depend
     u.password_hash = _pwd.hash(data.new_password)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/reset-system")
+def reset_system(request: Request, db: Session = Depends(get_db)):
+    """
+    Wipe all equb data and return the system to a clean state.
+    User accounts and app settings are preserved.
+    Owner (superadmin) access only.
+    """
+    _require_superadmin(request)
+
+    # Delete in FK-safe order
+    db.query(VoucherReturn).delete(synchronize_session=False)
+    db.query(PotDisbursement).delete(synchronize_session=False)
+    db.query(PotTransaction).delete(synchronize_session=False)
+    db.query(Payment).delete(synchronize_session=False)
+    db.query(PaymentBatch).delete(synchronize_session=False)
+    db.query(DistributionCheque).delete(synchronize_session=False)
+    db.query(AssociationExpense).delete(synchronize_session=False)
+    db.query(NotificationLog).delete(synchronize_session=False)
+    db.query(MemberSpot).delete(synchronize_session=False)
+    db.query(Week).delete(synchronize_session=False)
+    db.query(Member).delete(synchronize_session=False)
+    db.query(Cycle).delete(synchronize_session=False)
+    # Reset all spots to active status (ready for next cycle)
+    db.query(Spot).update({"status": "active"}, synchronize_session=False)
+
+    db.commit()
+    return {
+        "ok": True,
+        "message": "System reset complete. All cycles, members, and transactions have been cleared.",
+    }
