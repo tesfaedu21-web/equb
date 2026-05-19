@@ -226,11 +226,12 @@
                       </span>
                     </template>
                     <template x-if="w.status === 'sold' && w.transaction">
-                      <div>
-                        <span class="font-medium" x-text="w.transaction.buyer?.name"></span>
+                      <span>
+                        <span x-show="w.is_group_week && w.winner_spot" class="font-bold text-equb-green text-xs">#<span x-text="w.winner_spot?.number"></span></span>
+                        <span class="font-medium" :class="w.is_group_week && w.winner_spot ? 'ml-1' : ''" x-text="w.transaction.buyer?.name"></span>
                         <span x-show="w.transaction.percentage" class="text-xs text-purple-600 ml-1"
                               x-text="`(${w.transaction.percentage}%)`"></span>
-                      </div>
+                      </span>
                     </template>
                     <span x-show="w.status === 'pending'" class="text-gray-300">—</span>
                   </td>
