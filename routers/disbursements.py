@@ -261,14 +261,16 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
 
     # Identify recipient members (to block them from being their own guarantor)
     winner_member_ids = set()
-    if w.winner_spot:
+    if w.status == "sold":
+        # Sold week — only block the buyer (explicit query avoids lazy-load empty list)
+        tx = db.query(PotTransaction).filter(PotTransaction.week_id == w.id).first()
+        if tx:
+            winner_member_ids = {tx.buyer_id}
+    elif w.winner_spot:
         winner_member_ids = {
             sa.member_id for sa in w.winner_spot.spot_assignments
             if sa.is_active and sa.cycle_id == w.cycle_id
         }
-    elif w.status == "sold" and w.transactions:
-        # Sold without draw — block the buyer from being their own guarantor
-        winner_member_ids = {w.transactions[0].buyer_id}
 
     for gid in guarantor_ids:
         g = db.query(Member).filter(Member.id == gid).first()
