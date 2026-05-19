@@ -90,11 +90,14 @@ def _calculate_pot(db: Session, cycle_id: Optional[int] = None):
         ).all()
         full_count = sum(1 for a in assignments if a.share == "full")
         half_count = sum(1 for a in assignments if a.share == "half")
+        n_assoc    = cycle.total_assoc_spots or 0
 
         gross = (full_count * cfg.full_spot_amount
                  + half_count * cfg.half_spot_amount)
+        # Association deduction covers member spots + ማህበር spots (all full rate)
         assoc = (full_count * cfg.association_deduction
-                 + half_count * (cfg.association_deduction / 2))
+                 + half_count * (cfg.association_deduction / 2)
+                 + n_assoc   * cfg.association_deduction)
         net = gross - assoc
     else:
         cfg = cycle_cfg(None, gs)
