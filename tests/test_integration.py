@@ -23,27 +23,15 @@ import pytest
 from datetime import datetime
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 import database as _db_module
-from database import Base, get_db, _pwd, User, NotificationSettings, Cycle, Week, Spot, Member, MemberSpot, Payment
+from database import get_db, _pwd, User, NotificationSettings, Cycle, Week, Spot, Member, MemberSpot, Payment
 
-
-# ── Create one shared StaticPool engine for all integration tests ─────────────
-_INT_ENGINE = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-Base.metadata.create_all(_INT_ENGINE)
-_IntSession = sessionmaker(bind=_INT_ENGINE)
-
-# Patch database module so BOTH `next(database.get_db())` (login endpoint) and
-# `Depends(get_db)` routes use the same StaticPool connection.
-_db_module.SessionLocal = _IntSession
-_db_module.engine       = _INT_ENGINE
+# Use the shared StaticPool engine set up in conftest.py.
+# conftest patches _db_module before any test file loads, so these aliases
+# always point to the same single in-memory connection.
+_IntSession = _db_module.SessionLocal
+_INT_ENGINE = _db_module.engine
 
 
 def _override_get_db():

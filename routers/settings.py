@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from typing import Optional
 from database import get_db, Settings
 from routers.deps import _require_superadmin
@@ -18,6 +18,17 @@ class SettingsUpdate(BaseModel):
     group_name: Optional[str] = None
     group_tagline: Optional[str] = None
     logo_url: Optional[str] = None
+
+    @field_validator("logo_url", mode="before")
+    @classmethod
+    def validate_logo_url(cls, v):
+        if v is None or v == "":
+            return None
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("logo_url must be an http or https URL")
+        if len(v) > 2048:
+            raise ValueError("logo_url is too long (max 2048 characters)")
+        return v
 
     @model_validator(mode="after")
     def half_less_than_full(self):

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, 
 from routers.deps import _require_feature
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import or_
+from sqlalchemy import or_, func, case
 from pydantic import BaseModel
 from typing import Optional, List
 from database import (get_db, Member, MemberSpot, Spot, Settings, Payment, Week, Cycle,
@@ -159,30 +159,31 @@ def list_members(search: str = "", status: str = "",
 
 @router.get("/stats")
 def member_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    status_agg = db.query(
+        func.count(Member.id).label("total"),
+        func.sum(case((Member.status == "active",   1), else_=0)).label("active"),
+        func.sum(case((Member.status == "received", 1), else_=0)).label("received"),
+        func.sum(case((Member.status == "left",     1), else_=0)).label("left"),
+    )
     if cycle_id:
-        # Count only members who have an active assignment in this cycle
-        member_ids = [
-            r[0] for r in db.query(MemberSpot.member_id).filter(
-                MemberSpot.cycle_id == cycle_id,
-                MemberSpot.is_active == True,
-            ).distinct().all()
-        ]
-        members = db.query(Member).filter(Member.id.in_(member_ids)).all()
-        total    = len(members)
-        active   = sum(1 for m in members if m.status == "active")
-        received = sum(1 for m in members if m.status == "received")
-        left     = sum(1 for m in members if m.status == "left")
+        member_ids_sq = (
+            db.query(MemberSpot.member_id)
+            .filter(MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True)
+            .distinct()
+        )
+        row = status_agg.filter(Member.id.in_(member_ids_sq)).one()
         total_spots_assigned = db.query(MemberSpot).filter(
             MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True
         ).count()
     else:
-        total    = db.query(Member).filter(Member.status != "left").count()
-        active   = db.query(Member).filter(Member.status == "active").count()
-        received = db.query(Member).filter(Member.status == "received").count()
-        left     = db.query(Member).filter(Member.status == "left").count()
+        row = status_agg.one()
         total_spots_assigned = db.query(MemberSpot).filter(MemberSpot.is_active == True).count()
+
     return {
-        "total": total, "active": active, "received": received, "left": left,
+        "total": row.total or 0,
+        "active": row.active or 0,
+        "received": row.received or 0,
+        "left": row.left or 0,
         "total_spots_assigned": total_spots_assigned,
     }
 
@@ -196,6 +197,7 @@ def available_spots(db: Session = Depends(get_db)):
     n_total = (cfg.total_member_spots or 0) + (cfg.total_assoc_spots or 0) if cycle else 99999
     spots = (db.query(Spot)
              .filter(Spot.status == "active", Spot.number <= n_total)
+             .options(selectinload(Spot.spot_assignments).selectinload(MemberSpot.member))
              .order_by(Spot.number).all())
     result = []
     for s in spots:

@@ -57,7 +57,6 @@ class TestCycleCfgOverridePrecedence:
         total_member_spots = 120
         total_assoc_spots = 6
         group_week_interval = 5
-        include_worker_slot = False
 
     class _FakeGlobal:
         full_spot_amount = 23000
@@ -68,7 +67,7 @@ class TestCycleCfgOverridePrecedence:
         total_member_spots = 115
         total_assoc_spots = 5
         group_week_interval = 4
-        include_worker_slot = True
+        include_worker_slot = True   # kept for cycle_cfg internal use; not exposed in API
 
     def test_cycle_overrides_global(self):
         cfg = cycle_cfg(self._FakeCycle(), self._FakeGlobal())

@@ -1,8 +1,12 @@
 """
 Shared fixtures for the Equb test suite.
 
-Uses SQLite in-memory so tests run without a live PostgreSQL instance.
-The DATABASE_URL env var is patched before any app module is imported.
+Uses SQLite in-memory (StaticPool) so tests run without a live PostgreSQL
+instance. The shared engine is created here and patched onto the database
+module so ALL test files — including integration and endpoint tests — use
+the same connection.  Patching happens at import time (before any test
+module code runs), so there is one canonical SessionLocal for the whole
+test run.
 """
 import os
 import pytest
@@ -12,20 +16,35 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production")
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+import database as _db_module
 from database import Base, Settings, Cycle
 
+# ── Single shared test engine (all integration tests share this DB) ───────────
+_SHARED_ENGINE = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+Base.metadata.create_all(_SHARED_ENGINE)
+SharedSession = sessionmaker(bind=_SHARED_ENGINE)
+
+# Patch before any test module code runs so login endpoint (which uses
+# next(get_db()) directly) sees the same in-memory DB as the Depends path.
+_db_module.SessionLocal = SharedSession
+_db_module.engine       = _SHARED_ENGINE
+
+
+# ── Unit-test fixtures (non-integration tests) ────────────────────────────────
 
 @pytest.fixture(scope="session")
 def engine():
-    e = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(e)
-    return e
+    return _SHARED_ENGINE
 
 
 @pytest.fixture
-def db(engine):
-    Session = sessionmaker(bind=engine)
-    session = Session()
+def db():
+    session = SharedSession()
     try:
         yield session
     finally:
