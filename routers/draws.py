@@ -795,8 +795,8 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
 
 @router.get("/active-spots")
 def active_spots(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """Returns only member-type active spots (association spots excluded — use sell endpoint)."""
-    spots = (db.query(Spot).filter(Spot.status == "active", Spot.spot_type == "member")
+    """Returns all active spots (member + ማህበር) available for drawing."""
+    spots = (db.query(Spot).filter(Spot.status == "active")
              .order_by(Spot.number).all())
     return [
         {
@@ -805,12 +805,12 @@ def active_spots(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
                 {"id": sa.member.id, "name": sa.member.name, "share": sa.share}
                 for sa in s.spot_assignments
                 if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)
-            ],
+            ] if s.spot_type == "member" else [],
             "share": next(
                 (sa.share for sa in s.spot_assignments
                  if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)),
                 "full"
-            ),
+            ) if s.spot_type == "member" else "full",
         }
         for s in spots
     ]

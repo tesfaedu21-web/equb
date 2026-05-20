@@ -543,7 +543,7 @@
           <!-- Selected spot badge -->
           <div x-show="drawForm.winner_spot_id"
                class="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-sm">
-            <span class="font-semibold text-green-800" x-text="(() => { const s = activeSpots.find(s=>s.id===drawForm.winner_spot_id); if (!s) return ''; const half = s.members?.length===2; return 'Spot #' + s.number + (half?' ½':'') + ' — ' + (s.members?.map(m=>m.name).join(half?' / ':' & ') || 'Unassigned'); })()"></span>
+            <span class="font-semibold text-green-800" x-text="(() => { const s = activeSpots.find(s=>s.id===drawForm.winner_spot_id); if (!s) return ''; if (s.type==='association') return 'Spot #' + s.number + ' — ማህበር'; const half = s.members?.length===2; return 'Spot #' + s.number + (half?' ½':'') + ' — ' + (s.members?.map(m=>m.name).join(half?' / ':' & ') || 'Unassigned'); })()"></span>
             <button type="button" @click="drawForm.winner_spot_id=null; drawSpotSearch=''; drawSpotOpen=false; checkWinnerPayment()"
                     class="text-gray-400 hover:text-red-500 ml-3 text-xl leading-none">&times;</button>
           </div>
@@ -562,8 +562,9 @@
               <div @click="drawForm.winner_spot_id=s.id; drawSpotSearch=''; drawSpotOpen=false; checkWinnerPayment()"
                    class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0">
                 <span class="font-bold text-equb-green w-10 flex-shrink-0">#<span x-text="s.number"></span></span>
-                <span x-show="s.members?.length===2" class="text-xs bg-purple-100 text-purple-700 font-bold px-1 rounded flex-shrink-0">½</span>
-                <span class="text-gray-700 truncate amharic" x-text="s.members?.map(m=>m.name).join(s.members?.length===2?' / ':' & ') || 'Unassigned'"></span>
+                <span x-show="s.type==='association'" class="text-xs bg-amber-100 text-amber-700 font-bold px-1 rounded flex-shrink-0">ማህበር</span>
+                <span x-show="s.members?.length===2 && s.type!=='association'" class="text-xs bg-purple-100 text-purple-700 font-bold px-1 rounded flex-shrink-0">½</span>
+                <span class="text-gray-700 truncate amharic" x-text="s.type==='association' ? 'ማህበር Spot' : (s.members?.map(m=>m.name).join(s.members?.length===2?' / ':' & ') || 'Unassigned')"></span>
               </div>
             </template>
             <div x-show="activeSpots.filter(s => String(s.number).includes(drawSpotSearch.trim())).length === 0"
