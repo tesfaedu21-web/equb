@@ -140,6 +140,7 @@
             <tr>
               <td class="px-3 py-2.5 font-medium text-gray-800" x-text="u.full_name"></td>
               <td class="px-3 py-2.5 text-gray-500 font-mono text-xs" x-text="u.username"></td>
+              <td class="px-3 py-2.5 text-gray-400 text-xs" x-text="u.email || '—'"></td>
               <td class="px-3 py-2.5">
                 <span :class="u.role === 'superadmin' ? 'badge badge-drawn' : u.role === 'admin' ? 'badge badge-admin' : 'badge badge-cashier'"
                       x-text="u.role === 'superadmin' ? 'Owner' : u.role === 'admin' ? 'Admin' : 'Cashier'"></span>
@@ -381,6 +382,10 @@
         <input x-model="userForm.password" type="password"/>
       </div>
       <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-gray-400 font-normal">(optional)</span></label>
+        <input x-model="userForm.email" type="email" placeholder="e.g. user@example.com"/>
+      </div>
+      <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
         <select x-model="userForm.role">
           <option value="cashier">Cashier — can record payments</option>
@@ -435,7 +440,7 @@ function settings() {
     isSuperAdmin: (window._equbCtx || {}).userRole === 'superadmin',
     showUserModal: false,
     editUserId: null,
-    userForm: { full_name:'', username:'', password:'', role:'cashier' },
+    userForm: { full_name:'', username:'', password:'', role:'cashier', email:'' },
     pwd: { current:'', new:'' },
     showResetPwdModal: false,
     resetPwdUser: null,
@@ -461,13 +466,13 @@ function settings() {
 
     openAddUser() {
       this.editUserId = null;
-      this.userForm = { full_name:'', username:'', password:'', role:'cashier' };
+      this.userForm = { full_name:'', username:'', password:'', role:'cashier', email:'' };
       this.showUserModal = true;
     },
 
     openEditUser(u) {
       this.editUserId = u.id;
-      this.userForm = { full_name: u.full_name, role: u.role };
+      this.userForm = { full_name: u.full_name, role: u.role, email: u.email || '' };
       this.showUserModal = true;
     },
 

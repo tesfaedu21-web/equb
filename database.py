@@ -107,6 +107,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
     role = Column(String, default="cashier")   # admin | cashier
+    email = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=_utcnow)
 

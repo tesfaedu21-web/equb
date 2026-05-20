@@ -18,12 +18,14 @@ class UserCreate(BaseModel):
     password: str
     full_name: str
     role: str = "cashier"
+    email: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    email: Optional[str] = None
 
 
 class PasswordChange(BaseModel):
@@ -56,6 +58,7 @@ def _user_dict(u: User) -> dict:
         "username": u.username,
         "full_name": u.full_name,
         "role": u.role,
+        "email": u.email,
         "is_active": u.is_active,
         "created_at": u.created_at.isoformat() if u.created_at else None,
     }
@@ -98,6 +101,7 @@ def create_user(data: UserCreate, request: Request, db: Session = Depends(get_db
         password_hash=_pwd.hash(data.password),
         full_name=data.full_name,
         role=data.role,
+        email=data.email,
     )
     db.add(u)
     db.commit()
