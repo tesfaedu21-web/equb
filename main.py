@@ -48,10 +48,18 @@ def _get_client_ip(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")
     return forwarded.split(",")[0].strip() if forwarded else (request.client.host or "unknown")
 
+def _prune_attempts():
+    """Remove stale IP entries to prevent unbounded memory growth."""
+    cutoff = time.time() - (_RATE_WINDOW + _LOCKOUT_SEC)
+    stale = [ip for ip, ts in _login_attempts.items() if all(t < cutoff for t in ts)]
+    for ip in stale:
+        del _login_attempts[ip]
+
 def _is_rate_limited(ip: str) -> bool:
     now = time.time()
     attempts = [t for t in _login_attempts[ip] if now - t < _RATE_WINDOW]
     _login_attempts[ip] = attempts
+    _prune_attempts()
     return len(attempts) >= _RATE_MAX
 
 def _record_attempt(ip: str):
@@ -59,6 +67,16 @@ def _record_attempt(ip: str):
 
 def _clear_attempts(ip: str):
     _login_attempts.pop(ip, None)
+
+# ── Session blocklist (server-side invalidation) ──────────────────────────────
+_invalidated_sessions: set = set()   # set of invalidated session tokens
+
+def _invalidate_session(token: str):
+    _invalidated_sessions.add(token)
+    # Prune expired tokens (older than session max_age=3600s + buffer)
+    # We store (token, timestamp) — use a simple size cap for memory safety
+    if len(_invalidated_sessions) > 10000:
+        _invalidated_sessions.clear()
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -230,7 +248,9 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     uid = request.session.get("user_id")
-    if not uid:
+    token = request.session.get("_token")
+    if not uid or (token and token in _invalidated_sessions):
+        request.session.clear()
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Not authenticated"}, status_code=401)
         return RedirectResponse("/login", status_code=302)
@@ -325,6 +345,8 @@ async def login_submit(request: Request,
         # Successful login
         _clear_attempts(ip)
         request.session.clear()                  # regenerate session on login
+        token = secrets.token_hex(16)
+        request.session["_token"]    = token
         request.session["user_id"]   = user.id
         request.session["user_role"] = user.role
         request.session["user_name"] = user.full_name
@@ -335,6 +357,9 @@ async def login_submit(request: Request,
 
 @app.get("/logout")
 async def logout(request: Request):
+    token = request.session.get("_token")
+    if token:
+        _invalidate_session(token)
     request.session.clear()
     return RedirectResponse("/login", status_code=302)
 
@@ -386,7 +411,7 @@ async def settings_page(request: Request):
     return templates.TemplateResponse(request, "settings.html", _ctx(request))
 
 
-# ── ONE-TIME SETUP (disabled once admin exists) ────────────────────────────────
+# ── ONE-TIME SETUP (permanently disabled once any user exists) ────────────────
 @app.get("/setup-admin-equb2024", response_class=HTMLResponse)
 async def setup_admin(token: str = ""):
     if os.environ.get("SETUP_DISABLED", "").lower() in ("1", "true", "yes"):
@@ -396,9 +421,10 @@ async def setup_admin(token: str = ""):
         return HTMLResponse("<h2>Invalid token</h2>", status_code=403)
     db: Session = next(get_db())
     try:
-        existing = db.query(User).filter(User.username == "admin").first()
+        # Disabled permanently once ANY user exists in the DB
+        existing = db.query(User).first()
         if existing:
-            return HTMLResponse("<h2>Admin already exists. Login at /login</h2>")
+            return HTMLResponse("<h2>Setup already complete. Login at /login</h2>", status_code=403)
         pw = secrets.token_urlsafe(16)
         u = User(
             username="admin",

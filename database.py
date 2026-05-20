@@ -173,6 +173,7 @@ class Member(Base):
     notes = Column(Text)
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    deleted_at = Column(DateTime, nullable=True)          # set when member leaves/is removed
 
     spot_assignments = relationship("MemberSpot", back_populates="member",
                                    foreign_keys="MemberSpot.member_id")
@@ -261,6 +262,7 @@ class Payment(Base):
     __table_args__ = (
         Index("ix_payments_week_status", "week_id", "status"),
         Index("ix_payments_member_status", "member_id", "status"),
+        UniqueConstraint("member_id", "week_id", name="uq_payment_member_week"),
     )
     id = Column(Integer, primary_key=True)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
@@ -591,6 +593,12 @@ def _migrate(engine):
         "ALTER TABLE pot_disbursements ALTER COLUMN voucher_paid DROP DEFAULT",
         "ALTER TABLE pot_disbursements ALTER COLUMN voucher_paid TYPE boolean USING CASE WHEN voucher_paid = 0 THEN FALSE ELSE TRUE END",
         "ALTER TABLE pot_disbursements ALTER COLUMN voucher_paid SET DEFAULT FALSE",
+        # Soft-delete audit trail: record when a member left or was removed
+        "ALTER TABLE members ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP",
+        # User email address (optional, for notifications/contact)
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR",
+        # Unique constraint: one payment per member per week
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_member_week ON payments(member_id, week_id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

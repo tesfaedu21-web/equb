@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
 from routers.deps import _require_feature
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import Optional, List
@@ -111,6 +111,7 @@ def _member_dict(m: Member, cycle_id: Optional[int] = None) -> dict:
         "notes": m.notes,
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+        "deleted_at": m.deleted_at.isoformat() if getattr(m, "deleted_at", None) else None,
     }
 
 
@@ -146,7 +147,13 @@ def list_members(search: str = "", status: str = "",
             ).distinct().all()
         ]
         q = q.filter(Member.id.in_(member_ids_in_cycle))
-    members = q.order_by(Member.name).offset(offset).limit(limit).all()
+    members = (q.options(
+        selectinload(Member.spot_assignments).options(
+            selectinload(MemberSpot.spot).selectinload(
+                Spot.spot_assignments
+            ).selectinload(MemberSpot.member)
+        )
+    ).order_by(Member.name).offset(offset).limit(limit).all())
     return [_member_dict(m, cycle_id) for m in members]
 
 
@@ -747,7 +754,9 @@ def mark_left(member_id: int, request: Request, db: Session = Depends(get_db)):
     m = db.query(Member).filter(Member.id == member_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found")
+    from datetime import datetime, timezone
     m.status = "left"
+    m.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
     for sa in m.spot_assignments:
         sa.is_active = False
     db.commit()

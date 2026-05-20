@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from sqlalchemy.orm import Session, selectinload
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 from database import (get_db, Week, Cycle, Spot, Member, MemberSpot,
@@ -206,7 +206,7 @@ class PotSale(BaseModel):
     seller_id: Optional[int] = None
     buyer_id: int
     spot_id: Optional[int] = None   # which of the buyer's spots this purchase covers (group/assoc sales)
-    percentage: Optional[float] = None
+    percentage: Optional[float] = Field(None, ge=0, le=100)
     notes: Optional[str] = None
 
 
@@ -464,11 +464,90 @@ def recalculate_pot(cycle_id: int, request: Request, db: Session = Depends(get_d
 
 @router.get("/cycles/{cycle_id}/weeks")
 def list_weeks(cycle_id: int, db: Session = Depends(get_db)):
-    weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
+    weeks = (db.query(Week)
+             .filter(Week.cycle_id == cycle_id)
+             .options(
+                 selectinload(Week.winner_spot).selectinload(
+                     Spot.spot_assignments
+                 ).selectinload(MemberSpot.member),
+                 selectinload(Week.transactions).options(
+                     selectinload(PotTransaction.buyer).selectinload(
+                         Member.spot_assignments
+                     ).selectinload(MemberSpot.spot),
+                     selectinload(PotTransaction.seller),
+                 ),
+             )
+             .order_by(Week.week_number).all())
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     gs    = db.query(Settings).first()
     cfg   = cycle_cfg(cycle, gs)
     return [week_to_dict(w, cfg) for w in weeks]
+
+
+@router.get("/cycles/{cycle_id}/export")
+def export_cycle(cycle_id: int, db: Session = Depends(get_db)):
+    """Full cycle data export: weeks, members, payments, transactions."""
+    from fastapi.responses import JSONResponse
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+    gs  = db.query(Settings).first()
+    cfg = cycle_cfg(cycle, gs)
+
+    weeks = (db.query(Week)
+             .filter(Week.cycle_id == cycle_id)
+             .options(
+                 selectinload(Week.winner_spot).selectinload(Spot.spot_assignments).selectinload(MemberSpot.member),
+                 selectinload(Week.transactions).options(
+                     selectinload(PotTransaction.buyer).selectinload(Member.spot_assignments).selectinload(MemberSpot.spot),
+                     selectinload(PotTransaction.seller),
+                 ),
+             )
+             .order_by(Week.week_number).all())
+
+    member_ids = {ms.member_id for ms in db.query(MemberSpot.member_id).filter(
+        MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True).all()}
+    members = (db.query(Member)
+               .filter(Member.id.in_(member_ids))
+               .options(selectinload(Member.spot_assignments).selectinload(MemberSpot.spot))
+               .all())
+
+    payments = (db.query(Payment)
+                .join(Week, Payment.week_id == Week.id)
+                .filter(Week.cycle_id == cycle_id)
+                .all())
+
+    return {
+        "cycle": {
+            "id": cycle.id, "name": cycle.name,
+            "status": cycle.status,
+            "start_date": cycle.start_date.isoformat() if cycle.start_date else None,
+            "notes": cycle.notes,
+        },
+        "weeks": [week_to_dict(w, cfg) for w in weeks],
+        "members": [
+            {
+                "id": m.id, "name": m.name, "phone": m.phone,
+                "status": m.status, "notes": m.notes,
+                "spots": [
+                    {"spot_number": sa.spot.number if sa.spot else None, "share": sa.share,
+                     "weekly_contribution": sa.weekly_contribution}
+                    for sa in m.spot_assignments
+                    if sa.is_active and sa.cycle_id == cycle_id
+                ],
+            }
+            for m in members
+        ],
+        "payments": [
+            {
+                "id": p.id, "member_id": p.member_id, "week_id": p.week_id,
+                "amount": p.amount, "status": p.status,
+                "payment_date": p.payment_date.isoformat() if p.payment_date else None,
+            }
+            for p in payments
+        ],
+        "exported_at": _utcnow().isoformat(),
+    }
 
 
 # ── Payment checks ────────────────────────────────────────────────────────────

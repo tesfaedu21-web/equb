@@ -15,7 +15,6 @@ class SettingsUpdate(BaseModel):
     group_week_interval: Optional[int] = Field(None, ge=2)
     full_spot_voucher: Optional[float] = Field(None, ge=0)
     half_spot_voucher: Optional[float] = Field(None, ge=0)
-    include_worker_slot: Optional[bool] = None
     group_name: Optional[str] = None
     group_tagline: Optional[str] = None
     logo_url: Optional[str] = None
@@ -42,7 +41,6 @@ def get_settings(db: Session = Depends(get_db)):
         "group_week_interval": s.group_week_interval,
         "full_spot_voucher": s.full_spot_voucher,
         "half_spot_voucher": s.half_spot_voucher,
-        "include_worker_slot": s.include_worker_slot,
         "group_name": s.group_name,
         "group_tagline": s.group_tagline,
         "logo_url": s.logo_url,

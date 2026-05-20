@@ -253,6 +253,13 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
         if existing:
             raise HTTPException(status_code=400, detail="Disbursement already recorded for this week")
 
+    # Cheque number must be unique across all disbursements
+    dup_cheque = db.query(PotDisbursement).filter(
+        PotDisbursement.cheque_number == data.cheque_number
+    ).first()
+    if dup_cheque:
+        raise HTTPException(status_code=400, detail=f"Cheque number '{data.cheque_number}' already used for week {dup_cheque.week_id}")
+
     guarantor_ids = [data.guarantor_1_id, data.guarantor_2_id, data.guarantor_3_id]
 
     # Guarantors must be distinct

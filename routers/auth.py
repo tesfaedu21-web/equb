@@ -220,7 +220,6 @@ def reset_system(request: Request, db: Session = Depends(get_db)):
         s.group_week_interval   = 4
         s.full_spot_voucher     = 80
         s.half_spot_voucher     = 40
-        s.include_worker_slot   = True
         s.group_name            = "እቁብ"
         s.group_tagline         = "Equb Manager"
         s.logo_url              = None
