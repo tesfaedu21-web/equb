@@ -795,25 +795,32 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
 
 @router.get("/active-spots")
 def active_spots(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """Returns only member-type active spots (association spots excluded — use sell endpoint)."""
-    spots = (db.query(Spot).filter(Spot.status == "active", Spot.spot_type == "member")
+    """Returns all active spots (member + association) for the draw winner dropdown."""
+    spots = (db.query(Spot).filter(Spot.status == "active")
              .order_by(Spot.number).all())
-    return [
-        {
-            "id": s.id, "number": s.number, "type": s.spot_type,
-            "members": [
-                {"id": sa.member.id, "name": sa.member.name, "share": sa.share}
-                for sa in s.spot_assignments
-                if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)
-            ],
-            "share": next(
-                (sa.share for sa in s.spot_assignments
-                 if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)),
-                "full"
-            ),
-        }
-        for s in spots
-    ]
+    result = []
+    for s in spots:
+        if s.spot_type == "association":
+            result.append({
+                "id": s.id, "number": s.number, "type": s.spot_type,
+                "members": [{"id": None, "name": "ማህበር", "share": "full"}],
+                "share": "full",
+            })
+        else:
+            result.append({
+                "id": s.id, "number": s.number, "type": s.spot_type,
+                "members": [
+                    {"id": sa.member.id, "name": sa.member.name, "share": sa.share}
+                    for sa in s.spot_assignments
+                    if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)
+                ],
+                "share": next(
+                    (sa.share for sa in s.spot_assignments
+                     if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)),
+                    "full"
+                ),
+            })
+    return result
 
 
 @router.get("/assoc-spots")
