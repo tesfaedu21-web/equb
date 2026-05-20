@@ -276,25 +276,6 @@ def sync_spots(request: Request, db: Session = Depends(get_db)):
     return {"ok": True, "member_spots": n_member, "assoc_spots": n_assoc, "total": n_member + n_assoc}
 
 
-@router.post("/fix-assoc-weeks")
-def fix_assoc_weeks(request: Request, db: Session = Depends(get_db)):
-    """One-time fix: ensure association spot weeks are never group weeks. Admin only."""
-    _require_feature(request, db, "run_draws")
-    cycle = db.query(Cycle).filter(Cycle.status == "active").first()
-    if not cycle or not cycle.total_member_spots:
-        raise HTTPException(status_code=400, detail="No active cycle with member spots configured")
-    n_member = cycle.total_member_spots
-    weeks = db.query(Week).filter(
-        Week.cycle_id == cycle.id,
-        Week.week_number > n_member,
-        Week.is_group_week == True,
-    ).all()
-    for w in weeks:
-        w.is_group_week = False
-    db.commit()
-    return {"ok": True, "fixed": len(weeks)}
-
-
 @router.post("/cycles")
 def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_db)):
     _require_feature(request, db, "run_draws")
@@ -405,36 +386,21 @@ def start_draws(cycle_id: int, data: StartDrawsData, request: Request, db: Sessi
         last_num  = last_week.week_number if last_week else n_member
         last_date = last_week.draw_date   if last_week else cycle.start_date
 
-        # Build a map of already-existing weeks for assoc range
-        existing_assoc_weeks = {
-            w.week_number: w
-            for w in db.query(Week).filter(
-                Week.cycle_id == cycle.id,
-                Week.week_number > n_member,
-            ).all()
-        }
+        interval = cycle.group_week_interval or 4
         for i in range(1, n_assoc + 1):
             wnum = n_member + i
-            if wnum in existing_assoc_weeks:
-                # Week already exists — ensure it's not a group week and has correct pot
-                ew = existing_assoc_weeks[wnum]
-                ew.is_group_week = False
-                ew.gross_pot = gross
-                ew.association_amount = assoc_amt
-                ew.net_pot = net
-            else:
-                draw_date = last_date + timedelta(weeks=i)
-                days_to_sunday = (6 - draw_date.weekday()) % 7
-                if days_to_sunday:
-                    draw_date = draw_date + timedelta(days=days_to_sunday)
-                # No pre-assignment — ማህበር spots enter the random draw pool
-                db.add(Week(
-                    cycle_id=cycle.id,
-                    week_number=wnum,
-                    draw_date=draw_date,
-                    is_group_week=False,
-                    gross_pot=gross, association_amount=assoc_amt, net_pot=net,
-                ))
+            draw_date = last_date + timedelta(weeks=i)
+            days_to_sunday = (6 - draw_date.weekday()) % 7
+            if days_to_sunday:
+                draw_date = draw_date + timedelta(days=days_to_sunday)
+            # ማህበር spot weeks follow the same group week rule as member weeks
+            db.add(Week(
+                cycle_id=cycle.id,
+                week_number=wnum,
+                draw_date=draw_date,
+                is_group_week=(wnum % interval == 0),
+                gross_pot=gross, association_amount=assoc_amt, net_pot=net,
+            ))
 
         # Also recalculate all pending member weeks now that final membership is known
         pending_weeks = db.query(Week).filter(
