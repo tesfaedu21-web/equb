@@ -5,7 +5,7 @@ from typing import Optional
 from database import (get_db, User, Settings, _pwd, Cycle, Spot, Member, MemberSpot,
                        Week, PaymentBatch, Payment, PotTransaction,
                        PotDisbursement, AssociationExpense, DistributionCheque,
-                       VoucherReturn, NotificationLog)
+                       VoucherReturn, NotificationLog, NotificationSettings, NotificationTemplate)
 from routers.deps import _require_admin, _require_superadmin, _require_feature, _get_permissions, DEFAULT_PERMISSIONS
 
 router = APIRouter()
@@ -179,6 +179,55 @@ def change_password(data: PasswordChange, request: Request, db: Session = Depend
     u.password_hash = _pwd.hash(data.new_password)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/reset-system")
+def reset_system(request: Request, db: Session = Depends(get_db)):
+    """
+    Full system reset — superadmin only.
+    Clears all cycle/member/payment/draw data and resets settings to defaults.
+    The superadmin account is preserved; all other user accounts are deleted.
+    """
+    _require_superadmin(request)
+    caller_id = getattr(request.state, "user_id", None)
+
+    # Delete all transactional data (order matters for FK constraints)
+    db.query(NotificationLog).delete()
+    db.query(VoucherReturn).delete()
+    db.query(DistributionCheque).delete()
+    db.query(AssociationExpense).delete()
+    db.query(PotDisbursement).delete()
+    db.query(PotTransaction).delete()
+    db.query(Payment).delete()
+    db.query(PaymentBatch).delete()
+    db.query(Week).delete()
+    db.query(MemberSpot).delete()
+    db.query(Spot).delete()
+    db.query(Member).delete()
+    db.query(Cycle).delete()
+
+    # Delete all users except the owner (superadmin)
+    db.query(User).filter(User.id != caller_id).delete()
+
+    # Reset settings to defaults (keep the row, clear overrides)
+    s = db.query(Settings).first()
+    if s:
+        s.full_spot_amount      = 21000
+        s.half_spot_amount      = 10500
+        s.association_deduction = 1000
+        s.total_member_spots    = 113
+        s.total_assoc_spots     = 5
+        s.group_week_interval   = 4
+        s.full_spot_voucher     = 80
+        s.half_spot_voucher     = 40
+        s.include_worker_slot   = True
+        s.group_name            = "እቁብ"
+        s.group_tagline         = "Equb Manager"
+        s.logo_url              = None
+        s.permissions           = None
+
+    db.commit()
+    return {"ok": True, "message": "System reset complete. Owner account preserved."}
 
 
 @router.get("/permissions")

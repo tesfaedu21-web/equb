@@ -210,8 +210,8 @@
       <div>
         <p class="text-sm font-semibold text-gray-800">Reset System</p>
         <p class="text-xs text-gray-500 mt-0.5">
-          Permanently delete all cycles, members, payments, and transactions.
-          User accounts and settings are kept.
+          Permanently delete all cycles, members, payments, transactions, and user accounts.
+          Settings reset to defaults. Owner account is preserved.
         </p>
       </div>
       <button @click="confirmReset()"
@@ -513,15 +513,15 @@ function settings() {
 
     async confirmReset() {
       const first = confirm(
-        'WARNING: This will permanently delete ALL cycles, members, payments, and transactions.\n\n' +
-        'User accounts and settings will be kept.\n\nAre you sure you want to continue?'
+        'WARNING: This will permanently delete ALL cycles, members, payments, transactions, and user accounts.\n\n' +
+        'Settings will be reset to defaults. Only the Owner account is kept.\n\nAre you sure you want to continue?'
       );
       if (!first) return;
-      const second = confirm('This cannot be undone. Type OK in the next dialog to confirm.\n\nProceed with full system reset?');
+      const second = confirm('This CANNOT be undone.\n\nProceed with full system reset?');
       if (!second) return;
       try {
         await this.api('POST', '/api/auth/reset-system', {});
-        this.showToast('System reset complete. All data has been cleared.');
+        this.showToast('System reset complete. Owner account preserved.');
         await this.load();
       } catch(e) { this.showToast(e.message, 'error'); }
     },
