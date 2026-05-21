@@ -176,6 +176,22 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
         # Fallback: member was assigned before cycle started → cycle_id may be NULL
         assignments = [sa for sa in w.winner_spot.spot_assignments if sa.is_active]
 
+    if not assignments:
+        # Sold week where winner_spot is an association spot (no member assignments).
+        # Use the buyer's MemberSpot from PotTransaction instead.
+        tx = db.query(PotTransaction).filter(PotTransaction.week_id == week_id).first()
+        if tx and tx.buyer_id:
+            assignments = db.query(MemberSpot).filter(
+                MemberSpot.member_id == tx.buyer_id,
+                MemberSpot.cycle_id == w.cycle_id,
+                MemberSpot.is_active == True,
+            ).all()
+            if not assignments:
+                assignments = db.query(MemberSpot).filter(
+                    MemberSpot.member_id == tx.buyer_id,
+                    MemberSpot.is_active == True,
+                ).all()
+
     total_service_fee = sum(
         cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount
         for sa in assignments
