@@ -790,17 +790,40 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
                    f"(weeks {pay_status['unpaid_weeks']}). Must be fully paid to buy this pot."
         )
 
+    # Buyer's service fee and voucher deductions (same logic as get_voucher_info)
+    gs  = db.query(Settings).first()
+    cfg = cycle_cfg(w.cycle, gs)
+    total_weeks_count = db.query(Week).filter(Week.cycle_id == w.cycle_id).count()
+    buyer_sas = db.query(MemberSpot).filter(
+        MemberSpot.member_id == buyer.id,
+        MemberSpot.cycle_id == w.cycle_id,
+        MemberSpot.is_active == True,
+    ).all()
+    if not buyer_sas:
+        buyer_sas = db.query(MemberSpot).filter(
+            MemberSpot.member_id == buyer.id,
+            MemberSpot.is_active == True,
+        ).all()
+    service_fee_buyer = sum(
+        cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount
+        for sa in buyer_sas
+    )
+    voucher_buyer = sum(
+        (cfg.full_spot_voucher if sa.share == "full" else cfg.half_spot_voucher) * total_weeks_count
+        for sa in buyer_sas
+    )
+
     gross = w.gross_pot or 0
     seller_fee = 0.0
-    buyer_receives = w.net_pot or 0
+    buyer_receives = (w.net_pot or 0) - service_fee_buyer - voucher_buyer
 
     if data.transaction_type == "member_sale" and data.percentage:
         seller_fee = gross * (data.percentage / 100)
-        buyer_receives = (w.net_pot or 0) - seller_fee
+        buyer_receives -= seller_fee
     elif data.transaction_type in ("assoc_spot_sale", "group_week_sale") and data.percentage:
         # Profit (seller_fee) goes to association fund
         seller_fee = gross * (data.percentage / 100)
-        buyer_receives = (w.net_pot or 0) - seller_fee
+        buyer_receives -= seller_fee
 
     tx = PotTransaction(
         week_id=week_id,
