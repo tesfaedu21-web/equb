@@ -172,6 +172,9 @@ def get_voucher_info(week_id: int, db: Session = Depends(get_db)):
 
     assignments = [sa for sa in w.winner_spot.spot_assignments
                    if sa.is_active and sa.cycle_id == w.cycle_id]
+    if not assignments:
+        # Fallback: member was assigned before cycle started → cycle_id may be NULL
+        assignments = [sa for sa in w.winner_spot.spot_assignments if sa.is_active]
 
     total_service_fee = sum(
         cfg.full_spot_amount if sa.share == "full" else cfg.half_spot_amount

@@ -1145,7 +1145,7 @@
                 <div class="space-y-1">
                   <!-- Service fee: from voucherInfo if available, else from form input (live) -->
                   <div class="flex justify-between text-amber-700">
-                    <span x-text="voucherInfo ? ('− Service Fee (' + fmt(voucherInfo.service_fee||0) + ' ETB) (−)') : '− Service Fee (−)'"></span>
+                    <span x-text="voucherInfo ? ('− Service Fee (' + fmt(voucherInfo.service_fee||0) + ') (−)') : '− Service Fee (−)'"></span>
                     <span x-text="'−' + fmt(voucherInfo ? (voucherInfo.service_fee||0) : (disbForm.service_fee||0))"></span>
                   </div>
                   <!-- Voucher: from voucherInfo if available, else from disbForm (pure voucher only) -->
