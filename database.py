@@ -90,8 +90,6 @@ class Settings(Base):
     # Vouchers deducted from winner's pot at disbursement
     full_spot_voucher = Column(Float, default=80)
     half_spot_voucher = Column(Float, default=40)
-    # Whether to add one extra worker-payment week at end of cycle
-    include_worker_slot = Column(Boolean, default=True)
     # Branding
     group_name = Column(String, default="እቁብ")
     group_tagline = Column(String, default="Equb Manager")
@@ -137,9 +135,6 @@ class Cycle(Base):
     total_member_spots   = Column(Integer, nullable=True)
     total_assoc_spots    = Column(Integer, nullable=True)
     group_week_interval  = Column(Integer, nullable=True)
-    # include_worker_slot is intentionally NOT mapped here — stored as INTEGER in PG,
-    # conflicts with Boolean type. Remains a global Settings flag only.
-
     weeks = relationship("Week", back_populates="cycle", order_by="Week.week_number")
     memberships = relationship("MemberSpot", back_populates="cycle")
 
@@ -495,7 +490,6 @@ class CycleCfg:
     total_member_spots: int
     total_assoc_spots: int
     group_week_interval: int
-    include_worker_slot: bool
 
 
 def cycle_cfg(cycle, global_s) -> CycleCfg:
@@ -515,7 +509,6 @@ def cycle_cfg(cycle, global_s) -> CycleCfg:
         total_member_spots   = _pick(getattr(cv, 'total_member_spots', None),    getattr(gs, 'total_member_spots', None),    113),
         total_assoc_spots    = _pick(getattr(cv, 'total_assoc_spots', None),     getattr(gs, 'total_assoc_spots', None),     5),
         group_week_interval  = _pick(getattr(cv, 'group_week_interval', None),   getattr(gs, 'group_week_interval', None),   4),
-        include_worker_slot  = _pick(None,                                        getattr(gs, 'include_worker_slot', None),   True),
     )
 
 

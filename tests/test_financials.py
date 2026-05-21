@@ -67,7 +67,6 @@ class TestCycleCfgOverridePrecedence:
         total_member_spots = 115
         total_assoc_spots = 5
         group_week_interval = 4
-        include_worker_slot = True   # kept for cycle_cfg internal use; not exposed in API
 
     def test_cycle_overrides_global(self):
         cfg = cycle_cfg(self._FakeCycle(), self._FakeGlobal())
@@ -90,11 +89,6 @@ class TestCycleCfgOverridePrecedence:
 
         cfg = cycle_cfg(CycleWithNoneAmount(), self._FakeGlobal())
         assert cfg.full_spot_amount == 23000
-
-    def test_include_worker_slot_always_comes_from_global(self):
-        cfg = cycle_cfg(self._FakeCycle(), self._FakeGlobal())
-        # include_worker_slot is intentionally NOT taken from cycle
-        assert cfg.include_worker_slot == self._FakeGlobal.include_worker_slot
 
 
 # ── Pot payout formula ────────────────────────────────────────────────────────

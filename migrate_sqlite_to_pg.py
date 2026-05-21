@@ -20,7 +20,6 @@ from sqlalchemy.orm import sessionmaker
 
 # Boolean columns in each table (SQLite stores as 0/1, PG needs True/False)
 BOOL_COLS = {
-    "settings":      {"include_worker_slot"},
     "users":         {"is_active"},
     "member_spots":  {"is_active"},
     "weeks":         {"is_group_week", "is_worker_week"},
