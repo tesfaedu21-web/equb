@@ -1033,31 +1033,36 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
 
     result = []
     for w in sorted_weeks:
+        gross = float(w.gross_pot or 0)
         if w.draw_date.date() > today:
             result.append({
-                "week_number":    w.week_number,
-                "draw_date":      w.draw_date.isoformat(),
-                "is_group_week":  w.is_group_week,
-                "week_status":    w.status,
-                "paid":           0.0,
-                "paid_count":     0,
-                "total":          0.0,
-                "cash_collected": 0.0,
+                "week_number":     w.week_number,
+                "draw_date":       w.draw_date.isoformat(),
+                "is_group_week":   w.is_group_week,
+                "week_status":     w.status,
+                "gross_pot":       gross,
+                "paid":            0.0,
+                "paid_count":      0,
+                "total":           0.0,
+                "cash_collected":  0.0,
                 "obligation_paid": 0.0,
                 "obligation_total": float(obligation_total.get(w.id, 0)),
             })
             continue
+        oblig_paid = float(obligation_paid.get(w.id, 0))
         result.append({
-            "week_number":    w.week_number,
-            "draw_date":      w.draw_date.isoformat(),
-            "is_group_week":  w.is_group_week,
-            "week_status":    w.status,
-            "paid":           float(collected.get(w.id, 0)),
-            "paid_count":     paid_counts.get(w.id, 0),
-            "total":          float(collected.get(w.id, 0)),
-            "cash_collected": float(collected.get(w.id, 0)),
-            "obligation_paid": float(obligation_paid.get(w.id, 0)),
+            "week_number":     w.week_number,
+            "draw_date":       w.draw_date.isoformat(),
+            "is_group_week":   w.is_group_week,
+            "week_status":     w.status,
+            "gross_pot":       gross,
+            "paid":            float(collected.get(w.id, 0)),
+            "paid_count":      paid_counts.get(w.id, 0),
+            "total":           float(collected.get(w.id, 0)),
+            "cash_collected":  float(collected.get(w.id, 0)),
+            "obligation_paid": oblig_paid,
             "obligation_total": float(obligation_total.get(w.id, 0)),
+            "collection_rate": round(oblig_paid / gross * 100, 1) if gross else 0,
         })
     return result
 

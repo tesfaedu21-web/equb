@@ -236,7 +236,7 @@
       <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
         <button @click="trendMode='compliance'; _drawChart()"
                 :class="trendMode==='compliance' ? 'bg-white shadow text-gray-800' : 'text-gray-400'"
-                class="text-xs px-2.5 py-1 rounded-md font-medium transition-all">Compliance</button>
+                class="text-xs px-2.5 py-1 rounded-md font-medium transition-all">Actual</button>
         <button @click="trendMode='cashflow'; _drawChart()"
                 :class="trendMode==='cashflow' ? 'bg-white shadow text-gray-800' : 'text-gray-400'"
                 class="text-xs px-2.5 py-1 rounded-md font-medium transition-all">Cash Flow</button>
@@ -245,17 +245,23 @@
     <div x-show="trendData.length === 0" class="text-center py-8 text-gray-400 text-sm">
       No data yet — trend shows once weeks are drawn.
     </div>
-    <div x-show="trendData.length > 0" style="position:relative;height:160px;">
+    <div x-show="trendData.length > 0" style="position:relative;height:180px;">
       <canvas id="trendChart"></canvas>
     </div>
     <div x-show="trendData.length > 0" class="flex items-center gap-4 mt-3 text-xs text-gray-400">
       <span class="flex items-center gap-1.5">
-        <span class="w-3 h-3 rounded inline-block" style="background:rgba(7,137,48,0.75)"></span>Regular
+        <span class="w-3 h-3 rounded inline-block" style="background:rgba(7,137,48,0.75)"></span>100%
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded inline-block" style="background:rgba(245,158,11,0.75)"></span>&lt;100%
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded inline-block" style="background:rgba(59,130,246,0.75)"></span>&gt;100%
       </span>
       <span class="flex items-center gap-1.5">
         <span class="w-3 h-3 rounded inline-block" style="background:rgba(168,85,247,0.75)"></span>Group week
       </span>
-      <span class="ml-auto text-gray-400" x-text="trendMode==='cashflow' ? 'Cash received per week window' : 'Obligation collected per week'"></span>
+      <span class="ml-auto text-gray-400" x-text="trendMode==='cashflow' ? 'Cash received per week window' : 'Actual ETB collected vs expected'"></span>
     </div>
   </div>
 
@@ -500,18 +506,43 @@ function dashboard() {
       if (window._equbTrendChart) { window._equbTrendChart.destroy(); }
       const data = this.trendData;
       const mode = this.trendMode;
-      const fmt = v => v >= 1000 ? (v/1000).toFixed(1).replace(/\.0$/,'') + 'k' : String(v);
+      const fmt = v => v >= 1000000 ? (v/1000000).toFixed(2).replace(/\.?0+$/,'') + 'M'
+                     : v >= 1000 ? (v/1000).toFixed(1).replace(/\.0$/,'') + 'k' : String(v);
+      const barVals = data.map(w => mode === 'cashflow' ? (w.cash_collected || 0) : (w.obligation_paid || w.paid || 0));
+      const expected = data.map(w => w.gross_pot || w.obligation_total || 0);
+      const barColors = data.map((w, i) => {
+        if (w.is_group_week) return 'rgba(168,85,247,0.75)';
+        const exp = expected[i]; const got = barVals[i];
+        if (!exp || got === 0) return 'rgba(7,137,48,0.75)';
+        if (got < exp * 0.9999) return 'rgba(245,158,11,0.82)';
+        if (got > exp * 1.0001) return 'rgba(59,130,246,0.82)';
+        return 'rgba(7,137,48,0.75)';
+      });
       window._equbTrendChart = new Chart(canvas, {
         type: 'bar',
         data: {
           labels: data.map(w => 'W' + w.week_number),
-          datasets: [{
-            label: 'Collected',
-            data: data.map(w => mode === 'cashflow' ? (w.cash_collected || 0) : (w.obligation_paid || w.paid || 0)),
-            backgroundColor: data.map(w => w.is_group_week ? 'rgba(168,85,247,0.75)' : 'rgba(7,137,48,0.75)'),
-            borderRadius: 5,
-            borderSkipped: false,
-          }]
+          datasets: [
+            {
+              label: 'Collected',
+              data: barVals,
+              backgroundColor: barColors,
+              borderRadius: 4,
+              borderSkipped: false,
+              order: 2,
+            },
+            {
+              label: 'Expected',
+              data: expected,
+              type: 'line',
+              borderColor: 'rgba(156,163,175,0.6)',
+              borderWidth: 1.5,
+              borderDash: [4, 3],
+              pointRadius: 0,
+              fill: false,
+              order: 1,
+            }
+          ]
         },
         options: {
           responsive: true,
@@ -524,18 +555,25 @@ function dashboard() {
               bodyColor: '#86efac',
               padding: 10,
               cornerRadius: 10,
+              filter: item => item.datasetIndex === 0,
               callbacks: {
                 title: items => 'Week ' + (data[items[0].dataIndex]?.week_number || ''),
                 label: item => {
                   const w = data[item.dataIndex];
+                  const exp = expected[item.dataIndex] || 0;
+                  const got = item.raw;
+                  const rate = exp > 0 ? Math.round(got / exp * 100) : 0;
+                  const diff = got - exp;
+                  const sign = diff >= 0 ? '+' : '';
                   if (mode === 'cashflow') {
-                    const total = w.obligation_total || 0;
-                    const rate = total > 0 ? Math.round((w.cash_collected || 0) / total * 100) : 0;
-                    return ` ${item.raw.toLocaleString()} ETB  ·  ${rate}% of weekly pot`;
+                    return [` ${got.toLocaleString()} ETB  ·  ${rate}% of expected`,
+                            ` Expected: ${exp.toLocaleString()} ETB`];
                   }
-                  const total = w.obligation_total || w.total || 0;
-                  const rate = total > 0 ? Math.round((w.obligation_paid || w.paid || 0) / total * 100) : 0;
-                  return ` ${item.raw.toLocaleString()} ETB  ·  ${w.paid_count ?? 0} paid  ·  ${rate}% rate`;
+                  return [
+                    ` Collected: ${got.toLocaleString()} ETB  (${rate}%)`,
+                    ` Expected:  ${exp.toLocaleString()} ETB`,
+                    ` Diff: ${sign}${diff.toLocaleString()} ETB  ·  ${w.paid_count ?? 0} members paid`,
+                  ];
                 }
               }
             }
