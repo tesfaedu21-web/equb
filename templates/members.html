@@ -275,6 +275,13 @@
                         d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                     </svg>
                   </button>
+                  <button @click="openTransfer(m)" x-show="m.status === 'active' && isAdmin"
+                          class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Transfer Spot to Another Member">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                  </button>
                   <button @click="markLeft(m)" x-show="m.status !== 'left'"
                           class="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Remove from Group (marks member as left — preserves all payment records)">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -502,6 +509,63 @@
   </div>
 </div><!-- end edit modal -->
 
+<!-- ── Spot Transfer Modal ────────────────────────────────────────────────── -->
+<div x-show="showTransferModal" x-cloak class="modal-backdrop" @click.self="showTransferModal = false">
+  <div class="modal-box max-w-md">
+    <div class="p-6 border-b flex items-center justify-between">
+      <h3 class="font-bold text-gray-800">Transfer Spot</h3>
+      <button @click="showTransferModal = false" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div class="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
+        Transfers the spot from <strong x-text="transferTarget?.name"></strong> to a new member.
+        Past payments stay with the original member. Future pending payments will be reassigned.
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Spot to Transfer</label>
+        <select x-model.number="transferForm.spot_id">
+          <option :value="null">— Select spot —</option>
+          <template x-for="s in (transferTarget?.spots || [])" :key="s.spot_id">
+            <option :value="s.spot_id" x-text="'Spot #' + s.spot_number + ' (' + (s.share === 'half' ? 'Half' : 'Full') + ')'"></option>
+          </template>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Transfer To (New Member)</label>
+        <select x-model.number="transferForm.to_member_id">
+          <option :value="null">— Select member —</option>
+          <template x-for="m in members.filter(m => m.id !== transferTarget?.id && m.status === 'active')" :key="m.id">
+            <option :value="m.id" x-text="m.name"></option>
+          </template>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Effective From Week</label>
+        <select x-model.number="transferForm.effective_week_id">
+          <option :value="null">— Select week —</option>
+          <template x-for="w in transferWeeks" :key="w.id">
+            <option :value="w.id" x-text="'Week ' + w.week_number + ' (' + fmtDate(w.draw_date) + ')'"></option>
+          </template>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Reason (optional)</label>
+        <input x-model="transferForm.reason" type="text" placeholder="e.g. Member relocated, financial difficulty…"/>
+      </div>
+    </div>
+    <div class="px-6 pb-6 flex gap-3">
+      <button @click="showTransferModal = false" class="btn-secondary flex-1">Cancel</button>
+      <button @click="submitTransfer()"
+              :disabled="!transferForm.spot_id || !transferForm.to_member_id || !transferForm.effective_week_id || transferSaving"
+              class="btn-primary flex-1" x-text="transferSaving ? 'Transferring…' : 'Transfer Spot'"></button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Exit Member Modal ─────────────────────────────────────────────────── -->
 <div x-show="showExitModal" x-cloak class="modal-backdrop" @click.self="showExitModal = false">
   <div class="modal-box max-w-md">
@@ -707,6 +771,11 @@ function members() {
     exitForm: { exit_week_id: '', reason: 'left' },
     exitResult: null,
     exitSaving: false,
+    showTransferModal: false,
+    transferTarget: null,
+    transferWeeks: [],
+    transferForm: { spot_id: null, to_member_id: null, effective_week_id: null, reason: '' },
+    transferSaving: false,
     saving: false,
     importing: false,
     importFile: null,
@@ -1085,6 +1154,43 @@ ${d.unpaid.length > 0 ? `
         this.showToast(`${m.name} permanently deleted`, 'success');
         await this.load();
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async openTransfer(m) {
+      this.transferTarget = m;
+      this.transferForm = { spot_id: null, to_member_id: null, effective_week_id: null, reason: '' };
+      // Pre-select first spot if member has only one
+      if (m.spots && m.spots.length === 1) this.transferForm.spot_id = m.spots[0].id;
+      // Load pending/future weeks
+      try {
+        if (this.selectedCycle) {
+          const weeks = await this.api('GET', `/api/draws/cycles/${this.selectedCycle}/weeks`);
+          this.transferWeeks = (Array.isArray(weeks) ? weeks : [])
+            .filter(w => w.status === 'pending')
+            .sort((a, b) => a.week_number - b.week_number);
+        } else {
+          this.transferWeeks = [];
+        }
+      } catch(e) { this.transferWeeks = []; }
+      this.showTransferModal = true;
+    },
+
+    async submitTransfer() {
+      if (!this.transferForm.spot_id || !this.transferForm.to_member_id || !this.transferForm.effective_week_id) return;
+      this.transferSaving = true;
+      try {
+        const res = await this.api('POST', '/api/members/spot-transfer', {
+          from_member_id: this.transferTarget.id,
+          to_member_id: parseInt(this.transferForm.to_member_id),
+          spot_id: parseInt(this.transferForm.spot_id),
+          effective_week_id: parseInt(this.transferForm.effective_week_id),
+          reason: this.transferForm.reason || null,
+        });
+        this.showTransferModal = false;
+        this.showToast(`Spot transferred — ${res.payments_reassigned} payment(s) reassigned`);
+        await this.load();
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.transferSaving = false; }
     },
 
     openImport() {

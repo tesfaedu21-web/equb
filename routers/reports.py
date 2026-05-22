@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, DistributionCheque, VoucherReturn, cycle_cfg
 from routers.deps import _require_feature
 
@@ -237,10 +238,31 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
             "collected": sum(p.amount for p in wps if p.status == "paid"),
         }
 
-    # ── Debtors count (members with any past-due unpaid weeks) ──────────────
+    # ── Debtors count + top debtors ─────────────────────────────────────────
     debtors_count = 0
+    debtors_total_owed = 0.0
+    top_debtors = []
     if cycle:
         now_dt = _utcnow()
+        debtor_rows = (
+            db.query(
+                Payment.member_id,
+                Member.name,
+                func.count(Payment.id).label("unpaid_weeks"),
+                func.sum(Payment.amount + func.coalesce(Payment.penalty_amount, 0)).label("total_owed"),
+            )
+            .join(Week, Week.id == Payment.week_id)
+            .join(Member, Member.id == Payment.member_id)
+            .filter(
+                Payment.status.in_(["pending", "late", "missed"]),
+                Week.draw_date <= now_dt,
+                Week.cycle_id == cycle.id,
+            )
+            .group_by(Payment.member_id, Member.name)
+            .order_by(func.sum(Payment.amount + func.coalesce(Payment.penalty_amount, 0)).desc())
+            .limit(5)
+            .all()
+        )
         debtors_count = (
             db.query(Payment.member_id)
             .join(Week, Week.id == Payment.week_id)
@@ -252,6 +274,11 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
             .distinct()
             .count()
         )
+        debtors_total_owed = sum(float(r.total_owed or 0) for r in debtor_rows)
+        top_debtors = [
+            {"name": r.name, "unpaid_weeks": r.unpaid_weeks, "total_owed": round(float(r.total_owed or 0), 2)}
+            for r in debtor_rows
+        ]
 
     return {
         "total_spots": total_spots,
@@ -277,6 +304,8 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
         } if cycle else None,
         "current_week": current_week_stats,
         "debtors_count": debtors_count,
+        "debtors_total_owed": debtors_total_owed,
+        "top_debtors": top_debtors,
         "settings": (lambda cfg: {
             "full_spot_amount": cfg.full_spot_amount,
             "half_spot_amount": cfg.half_spot_amount,
