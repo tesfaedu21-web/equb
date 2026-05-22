@@ -396,16 +396,31 @@
             </table>
           </div>
         </div>
-        <!-- Unpaid members summary -->
-        <div x-show="summaryData.unpaid_count > 0 || summaryData.pending_count > 0"
-             class="card bg-amber-50 border border-amber-200 flex items-center gap-3 py-4">
-          <svg class="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          <div class="text-sm text-amber-800">
-            <span class="font-semibold" x-text="(summaryData.unpaid_count || summaryData.pending_count || 0)"></span>
-            member(s) have not yet paid for this week.
-            <a @click.prevent="activeTab='debtors'; loadDebtors()" href="#" class="underline font-medium ml-1">View Debtors →</a>
+        <!-- Unpaid members for this week -->
+        <div x-show="summaryData.unpaid_count > 0" class="card p-0 overflow-hidden">
+          <div class="px-5 py-3 border-b bg-amber-50 flex items-center justify-between">
+            <span class="text-sm font-semibold text-amber-800">
+              Unpaid — Week <span x-text="summaryData.week_number"></span>
+            </span>
+            <span class="text-xs text-amber-600 font-semibold" x-text="summaryData.unpaid_count + ' member(s)'"></span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <tbody class="divide-y divide-gray-50">
+                <template x-for="(u, i) in (summaryData.unpaid || [])" :key="i">
+                  <tr class="hover:bg-amber-50/40">
+                    <td class="px-5 py-2.5 font-medium text-gray-800 amharic" x-text="u.member_name"></td>
+                    <td class="px-5 py-2.5">
+                      <span :class="{
+                        'badge bg-red-100 text-red-700': u.status==='missed' || u.status==='late',
+                        'badge bg-amber-100 text-amber-700': u.status==='pending',
+                      }" x-text="u.status"></span>
+                    </td>
+                    <td class="px-5 py-2.5 text-right text-gray-500" x-text="fmt(u.amount)"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
