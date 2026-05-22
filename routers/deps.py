@@ -57,6 +57,15 @@ def _require_superadmin(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Owner access required")
 
 
+def _get_current_user(request: Request, db: Session):
+    """Return the User ORM object for the logged-in session user, or None."""
+    from database import User
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        return None
+    return db.query(User).filter(User.id == user_id).first()
+
+
 def _require_feature(request: Request, db: Session, feature: str) -> None:
     role = getattr(request.state, "user_role", None)
     if not role:

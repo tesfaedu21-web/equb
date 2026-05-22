@@ -257,6 +257,88 @@ def set_permissions(data: dict, request: Request, db: Session = Depends(get_db))
     return _get_permissions(db)
 
 
+class TOTPVerify(BaseModel):
+    code: str
+
+
+@router.post("/2fa/setup")
+def setup_2fa(request: Request, db: Session = Depends(get_db)):
+    """Generate a new TOTP secret for the current user and return the provisioning URI."""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        import pyotp
+        secret = pyotp.random_base32()
+        totp = pyotp.TOTP(secret)
+        gs = db.query(Settings).first()
+        issuer = (gs.group_name if gs and gs.group_name else "Equb")
+        uri = totp.provisioning_uri(name=u.username, issuer_name=issuer)
+        # Store secret (not yet enabled — confirmed by /2fa/verify)
+        u.totp_secret = secret
+        db.commit()
+        return {"secret": secret, "uri": uri}
+    except ImportError:
+        raise HTTPException(status_code=500, detail="pyotp not installed on server")
+
+
+@router.post("/2fa/verify")
+def verify_2fa(data: TOTPVerify, request: Request, db: Session = Depends(get_db)):
+    """Confirm a TOTP code to enable 2FA for the current user."""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    u = db.query(User).filter(User.id == uid).first()
+    if not u or not u.totp_secret:
+        raise HTTPException(status_code=400, detail="Run /2fa/setup first")
+    try:
+        import pyotp
+        totp = pyotp.TOTP(u.totp_secret)
+        if not totp.verify(data.code, valid_window=1):
+            raise HTTPException(status_code=400, detail="Invalid TOTP code")
+        u.totp_enabled = True
+        db.commit()
+        return {"ok": True, "message": "2FA enabled"}
+    except ImportError:
+        raise HTTPException(status_code=500, detail="pyotp not installed on server")
+
+
+@router.post("/2fa/disable")
+def disable_2fa(data: TOTPVerify, request: Request, db: Session = Depends(get_db)):
+    """Disable 2FA — requires a valid TOTP code to confirm."""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not u.totp_enabled or not u.totp_secret:
+        raise HTTPException(status_code=400, detail="2FA is not enabled")
+    try:
+        import pyotp
+        totp = pyotp.TOTP(u.totp_secret)
+        if not totp.verify(data.code, valid_window=1):
+            raise HTTPException(status_code=400, detail="Invalid TOTP code")
+        u.totp_enabled = False
+        u.totp_secret = None
+        db.commit()
+        return {"ok": True, "message": "2FA disabled"}
+    except ImportError:
+        raise HTTPException(status_code=500, detail="pyotp not installed on server")
+
+
+@router.get("/2fa/status")
+def twofa_status(request: Request, db: Session = Depends(get_db)):
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    u = db.query(User).filter(User.id == uid).first()
+    return {"totp_enabled": bool(u and u.totp_enabled)}
+
+
 @router.post("/reset-system")
 def reset_system(request: Request, db: Session = Depends(get_db)):
     """

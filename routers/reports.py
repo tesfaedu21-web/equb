@@ -423,26 +423,57 @@ def association_fund_detail(cycle_id: Optional[int] = None, db: Session = Depend
     else:
         cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     if not cycle:
-        return {"total": 0, "weeks": []}
+        return {"total": 0, "expenses_total": 0, "balance": 0, "events": []}
 
     weeks = db.query(Week).filter(
         Week.cycle_id == cycle.id,
         Week.status.in_(["drawn", "sold"])
     ).order_by(Week.week_number).all()
 
-    total = 0
-    breakdown = []
+    expenses = (db.query(AssociationExpense)
+                .filter(AssociationExpense.cycle_id == cycle.id)
+                .order_by(AssociationExpense.expense_date)
+                .all())
+
+    # Build chronological event list for running balance
+    events = []
     for w in weeks:
         amt = w.association_amount or 0
-        total += amt
-        breakdown.append({
+        events.append({
+            "type": "collection",
             "week_number": w.week_number,
             "draw_date": w.draw_date.isoformat(),
+            "description": f"Week {w.week_number}" + (" (Group)" if w.is_group_week else ""),
             "amount": amt,
             "is_group_week": w.is_group_week,
         })
+    for e in expenses:
+        events.append({
+            "type": "expense",
+            "date": e.expense_date.isoformat() if e.expense_date else None,
+            "description": e.description,
+            "amount": -e.amount,
+        })
+    # Sort by date
+    def _sort_key(ev):
+        return ev.get("draw_date") or ev.get("date") or ""
+    events.sort(key=_sort_key)
 
-    return {"total": total, "weeks": breakdown}
+    # Add running balance
+    balance = 0.0
+    for ev in events:
+        balance += ev["amount"]
+        ev["running_balance"] = round(balance, 2)
+
+    total_collected = sum(ev["amount"] for ev in events if ev["type"] == "collection")
+    expenses_total  = sum(abs(ev["amount"]) for ev in events if ev["type"] == "expense")
+
+    return {
+        "total": round(total_collected, 2),
+        "expenses_total": round(expenses_total, 2),
+        "balance": round(total_collected - expenses_total, 2),
+        "events": events,
+    }
 
 
 @router.get("/balance-sheet")
@@ -1312,3 +1343,165 @@ def delete_distribution_cheque(cheque_id: int, request: Request, db: Session = D
     db.delete(c)
     db.commit()
     return {"ok": True}
+
+
+# ── Cycle Closure Report ──────────────────────────────────────────────────────
+
+@router.get("/cycle-closure")
+def cycle_closure_report(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """
+    End-of-cycle summary: all financial totals in one printable view.
+    Suitable for presenting to committee at cycle close.
+    """
+    if not cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        if not cycle:
+            return {}
+        cycle_id = cycle.id
+
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    if not cycle:
+        raise HTTPException(404, "Cycle not found")
+
+    gs = db.query(Settings).first()
+    cfg = cycle_cfg(cycle, gs)
+
+    week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
+    weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
+    total_weeks = len(weeks)
+    drawn_weeks = [w for w in weeks if w.status in ("drawn", "sold")]
+
+    # Member counts
+    memberships = db.query(MemberSpot).filter(
+        MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True
+    ).all()
+    member_ids = list({ms.member_id for ms in memberships})
+    total_members = len(member_ids)
+    full_spots = sum(1 for ms in memberships if ms.share == "full")
+    half_spots = sum(1 for ms in memberships if ms.share == "half")
+
+    # Collections
+    paid_payments = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids), Payment.status == "paid"
+    ).all() if week_ids else []
+    total_collected = sum(p.amount for p in paid_payments)
+    missed_payments = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids), Payment.status.in_(["missed", "late"])
+    ).all() if week_ids else []
+    total_missed = sum(p.amount for p in missed_payments)
+
+    # Disbursements
+    disbs = db.query(PotDisbursement).filter(
+        PotDisbursement.week_id.in_(week_ids)
+    ).all() if week_ids else []
+    active_disbs = [d for d in disbs if d.status != "voided"]
+    total_gross_disbursed = sum(d.gross_amount for d in active_disbs)
+    total_net_disbursed = sum(d.net_amount for d in active_disbs)
+    total_service_fee = sum(d.service_fee or 0 for d in active_disbs)
+    total_voucher = sum(d.voucher_deduction or 0 for d in active_disbs)
+    voided_count = sum(1 for d in disbs if d.status == "voided")
+
+    # Association fund
+    from routers.draws import _actual_assoc_collected
+    association_fund = _actual_assoc_collected(db, [w.id for w in drawn_weeks], cycle_id)
+    expenses = db.query(AssociationExpense).filter(AssociationExpense.cycle_id == cycle_id).all()
+    expenses_total = sum(e.amount for e in expenses)
+    association_balance = association_fund - expenses_total
+
+    # Vendor payments
+    vendor_data = _calc_vendor_payments(db, active_disbs, cycle_id)
+    total_vendor = sum(v["vendor_payment"] for v in vendor_data.values())
+    voucher_retained = total_voucher - total_vendor
+
+    # Distribution cheques issued
+    dist_cheques = db.query(DistributionCheque).filter(
+        DistributionCheque.cycle_id == cycle_id
+    ).all()
+    total_distributed = sum(c.amount for c in dist_cheques)
+    distributed_collected = sum(c.amount for c in dist_cheques if c.status == "collected")
+
+    # Cash position
+    cash_out = total_net_disbursed + total_vendor + expenses_total + total_distributed
+    cash_balance = total_collected - cash_out
+
+    return {
+        "cycle": {
+            "id": cycle.id,
+            "name": cycle.name,
+            "start_date": cycle.start_date.isoformat(),
+            "status": cycle.status,
+            "draw_phase": cycle.draw_phase,
+        },
+        "totals": {
+            "total_weeks": total_weeks,
+            "drawn_weeks": len(drawn_weeks),
+            "total_members": total_members,
+            "full_spots": full_spots,
+            "half_spots": half_spots,
+        },
+        "collections": {
+            "total_collected": round(total_collected, 2),
+            "total_missed": round(total_missed, 2),
+            "collection_rate": round(total_collected / (total_collected + total_missed) * 100, 1)
+                               if (total_collected + total_missed) else 0,
+        },
+        "disbursements": {
+            "count": len(active_disbs),
+            "voided_count": voided_count,
+            "total_gross": round(total_gross_disbursed, 2),
+            "total_service_fee": round(total_service_fee, 2),
+            "total_voucher": round(total_voucher, 2),
+            "total_net": round(total_net_disbursed, 2),
+        },
+        "association": {
+            "fund_collected": round(association_fund, 2),
+            "expenses": round(expenses_total, 2),
+            "balance": round(association_balance, 2),
+            "voucher_retained": round(voucher_retained, 2),
+            "vendor_paid": round(total_vendor, 2),
+        },
+        "distribution": {
+            "total_issued": round(total_distributed, 2),
+            "total_collected": round(distributed_collected, 2),
+            "cheques_count": len(dist_cheques),
+        },
+        "cash_balance": round(cash_balance, 2),
+        "settings": {
+            "full_spot_amount": cfg.full_spot_amount,
+            "half_spot_amount": cfg.half_spot_amount,
+            "association_deduction": cfg.association_deduction,
+            "full_spot_voucher": cfg.full_spot_voucher,
+            "half_spot_voucher": cfg.half_spot_voucher,
+        },
+    }
+
+
+# ── Audit Log ─────────────────────────────────────────────────────────────────
+
+@router.get("/audit-log")
+def audit_log(request: Request, limit: int = 100, offset: int = 0,
+              table_name: Optional[str] = None, db: Session = Depends(get_db)):
+    _require_feature(request, db, "view_reports")
+    from database import AuditLog
+    q = db.query(AuditLog).order_by(AuditLog.timestamp.desc())
+    if table_name:
+        q = q.filter(AuditLog.table_name == table_name)
+    total = q.count()
+    rows = q.offset(offset).limit(limit).all()
+    return {
+        "total": total,
+        "rows": [
+            {
+                "id": r.id,
+                "timestamp": r.timestamp.isoformat(),
+                "username": r.username,
+                "action": r.action,
+                "table_name": r.table_name,
+                "record_id": r.record_id,
+                "description": r.description,
+                "old_value": r.old_value,
+                "new_value": r.new_value,
+            }
+            for r in rows
+        ],
+    }

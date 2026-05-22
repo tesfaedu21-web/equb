@@ -104,9 +104,11 @@ class User(Base):
     username = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
-    role = Column(String, default="cashier")   # admin | cashier
+    role = Column(String, default="cashier")   # superadmin | admin | cashier
     email = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    totp_secret = Column(String, nullable=True)   # base32 TOTP secret; None = 2FA disabled
+    totp_enabled = Column(Boolean, default=False)
     created_at = Column(DateTime, default=_utcnow)
 
 
@@ -268,6 +270,7 @@ class Payment(Base):
     payment_method = Column(String, nullable=True)
     reference = Column(String, nullable=True)
     status = Column(String, default="pending")            # pending | paid | late | missed
+    penalty_amount = Column(Float, default=0)             # late-payment penalty in ETB
     notes = Column(Text)
     collected_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
@@ -329,9 +332,12 @@ class PotDisbursement(Base):
     guarantor_1_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     guarantor_2_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     guarantor_3_id = Column(Integer, ForeignKey("members.id"), nullable=False)
-    status = Column(String, default="issued")             # issued | collected
+    status = Column(String, default="issued")             # issued | collected | voided
     voucher_paid = Column(Boolean, default=False)
     voucher_paid_date = Column(DateTime, nullable=True)
+    voided_at = Column(DateTime, nullable=True)
+    void_reason = Column(Text, nullable=True)
+    voided_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     notes = Column(Text)
     created_at = Column(DateTime, default=_utcnow)
 
@@ -341,6 +347,7 @@ class PotDisbursement(Base):
     guarantor_1 = relationship("Member", foreign_keys=[guarantor_1_id])
     guarantor_2 = relationship("Member", foreign_keys=[guarantor_2_id])
     guarantor_3 = relationship("Member", foreign_keys=[guarantor_3_id])
+    voided_by = relationship("User", foreign_keys=[voided_by_id])
 
 
 # ── Association Fund ──────────────────────────────────────────────────────────
@@ -397,6 +404,38 @@ class VoucherReturn(Base):
 
 
 # ── Notifications ─────────────────────────────────────────────────────────────
+
+class AuditLog(Base):
+    """Immutable record of every create/update/delete action on financial data."""
+    __tablename__ = "audit_log"
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, default=_utcnow, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    username = Column(String, nullable=True)          # denormalized for history
+    action = Column(String, nullable=False)           # create | update | delete | void
+    table_name = Column(String, nullable=False)
+    record_id = Column(Integer, nullable=True)
+    description = Column(Text, nullable=False)        # human-readable summary
+    old_value = Column(JSON, nullable=True)
+    new_value = Column(JSON, nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
+def log_action(db, *, user, action: str, table: str, record_id=None,
+               description: str, old=None, new=None):
+    """Append one audit entry. Call inside any endpoint that mutates financial data."""
+    db.add(AuditLog(
+        user_id=getattr(user, "id", None),
+        username=getattr(user, "username", str(user)) if user else "system",
+        action=action,
+        table_name=table,
+        record_id=record_id,
+        description=description,
+        old_value=old,
+        new_value=new,
+    ))
+
 
 class NotificationSettings(Base):
     __tablename__ = "notification_settings"
@@ -592,6 +631,30 @@ def _migrate(engine):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR",
         # Unique constraint: one payment per member per week
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_member_week ON payments(member_id, week_id)",
+        # Late-payment penalty tracking
+        "ALTER TABLE payments ADD COLUMN IF NOT EXISTS penalty_amount REAL DEFAULT 0",
+        # Disbursement void/correction audit trail
+        "ALTER TABLE pot_disbursements ADD COLUMN IF NOT EXISTS voided_at TIMESTAMP",
+        "ALTER TABLE pot_disbursements ADD COLUMN IF NOT EXISTS void_reason TEXT",
+        "ALTER TABLE pot_disbursements ADD COLUMN IF NOT EXISTS voided_by_id INTEGER REFERENCES users(id)",
+        # 2FA: TOTP secret per user (NULL = 2FA disabled)
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE",
+        # Audit log: immutable history of all financial actions
+        """CREATE TABLE IF NOT EXISTS audit_log (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL DEFAULT now(),
+            user_id INTEGER REFERENCES users(id),
+            username VARCHAR,
+            action VARCHAR NOT NULL,
+            table_name VARCHAR NOT NULL,
+            record_id INTEGER,
+            description TEXT NOT NULL,
+            old_value JSONB,
+            new_value JSONB
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_audit_log_table_record ON audit_log(table_name, record_id)",
+        "CREATE INDEX IF NOT EXISTS ix_audit_log_timestamp ON audit_log(timestamp DESC)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

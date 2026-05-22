@@ -863,3 +863,110 @@ def member_exit(member_id: int, data: MemberExitIn, request: Request,
             f"Left without winning — {len(paid_weeks)} week(s) paid ({total_paid:,.0f} ETB)"
         ),
     }
+
+
+# ── Spot Transfer ─────────────────────────────────────────────────────────────
+
+class SpotTransferIn(BaseModel):
+    from_member_id: int
+    to_member_id: int
+    spot_id: int
+    effective_week_id: int          # first week the new member is responsible
+    reason: Optional[str] = None
+
+
+@router.post("/spot-transfer")
+def spot_transfer(data: SpotTransferIn, request: Request, db: Session = Depends(get_db)):
+    """
+    Transfer a spot from one member to another mid-cycle.
+    Past payments stay with the old member; future pending/late payments
+    are reassigned to the new member.
+    """
+    from database import log_action
+    from routers.deps import _get_current_user
+    _require_feature(request, db, "manage_members")
+
+    from_member = db.query(Member).filter(Member.id == data.from_member_id).first()
+    to_member   = db.query(Member).filter(Member.id == data.to_member_id).first()
+    if not from_member:
+        raise HTTPException(404, "Source member not found")
+    if not to_member:
+        raise HTTPException(404, "Destination member not found")
+    if data.from_member_id == data.to_member_id:
+        raise HTTPException(400, "Source and destination must be different")
+
+    # Find active MemberSpot for the from_member on this spot
+    ms = db.query(MemberSpot).filter(
+        MemberSpot.member_id == data.from_member_id,
+        MemberSpot.spot_id == data.spot_id,
+        MemberSpot.is_active == True,
+    ).first()
+    if not ms:
+        raise HTTPException(404, f"No active spot assignment found for member {data.from_member_id} on spot {data.spot_id}")
+
+    effective_week = db.query(Week).filter(Week.id == data.effective_week_id).first()
+    if not effective_week:
+        raise HTTPException(404, "Effective week not found")
+
+    cycle_id = ms.cycle_id
+
+    # Check to_member doesn't already have this spot in this cycle
+    existing = db.query(MemberSpot).filter(
+        MemberSpot.member_id == data.to_member_id,
+        MemberSpot.spot_id == data.spot_id,
+        MemberSpot.cycle_id == cycle_id,
+        MemberSpot.is_active == True,
+    ).first()
+    if existing:
+        raise HTTPException(400, "Destination member already has this spot in this cycle")
+
+    # Deactivate old assignment
+    ms.is_active = False
+    ms.exit_reason = data.reason or "Spot transferred"
+    ms.exited_at_week_id = data.effective_week_id
+
+    # Create new assignment for to_member
+    new_ms = MemberSpot(
+        member_id=data.to_member_id,
+        spot_id=data.spot_id,
+        cycle_id=cycle_id,
+        share=ms.share,
+        weekly_contribution=ms.weekly_contribution,
+        is_active=True,
+    )
+    db.add(new_ms)
+
+    # Reassign future pending/late payments (>= effective week) to new member
+    future_week_ids = [
+        r[0] for r in db.query(Week.id).filter(
+            Week.cycle_id == cycle_id,
+            Week.week_number >= effective_week.week_number,
+        ).all()
+    ]
+    reassigned = 0
+    if future_week_ids:
+        rows = db.query(Payment).filter(
+            Payment.member_id == data.from_member_id,
+            Payment.week_id.in_(future_week_ids),
+            Payment.status.in_(["pending", "late"]),
+        ).all()
+        for p in rows:
+            p.member_id = data.to_member_id
+            reassigned += 1
+
+    user = _get_current_user(request, db)
+    log_action(db, user=user, action="update", table="member_spots",
+               record_id=ms.id,
+               description=(f"Spot {data.spot_id} transferred from {from_member.name} "
+                            f"to {to_member.name} effective week {effective_week.week_number}. "
+                            f"{reassigned} payments reassigned."))
+    db.commit()
+
+    return {
+        "ok": True,
+        "spot_id": data.spot_id,
+        "from_member": from_member.name,
+        "to_member": to_member.name,
+        "effective_week": effective_week.week_number,
+        "payments_reassigned": reassigned,
+    }

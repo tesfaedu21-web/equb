@@ -23,6 +23,7 @@ class PaymentUpdate(BaseModel):
     payment_method: Optional[str] = None
     reference: Optional[str] = None
     notes: Optional[str] = None
+    penalty_amount: Optional[float] = None  # late-payment penalty in ETB
 
 
 class BatchPaymentRecord(BaseModel):
@@ -72,6 +73,7 @@ def payment_to_dict(p: Payment, cycle_id: Optional[int] = None) -> dict:
         "reference": p.reference,
         "status": p.status,
         "notes": p.notes,
+        "penalty_amount": p.penalty_amount or 0,
         "collected_by_id": p.collected_by_id,
         "collected_by_name": p.collected_by.full_name if p.collected_by else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
@@ -300,6 +302,8 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
         p.paid_date = _utcnow()
     if data.notes is not None:
         p.notes = data.notes
+    if data.penalty_amount is not None:
+        p.penalty_amount = data.penalty_amount
     if data.status == "paid" and was_unpaid:
         p.collected_by_id = getattr(request.state, "user_id", None)
     db.commit()

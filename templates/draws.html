@@ -5,9 +5,17 @@
 {% block head %}
 <style>
 @media print {
-  body > div > aside, .mobile-topbar, .no-print { display: none !important; }
+  body > div > aside, .mobile-topbar, .no-print, button:not(.print-show) { display: none !important; }
   main { width: 100% !important; padding: 0 !important; }
-  body { background: white !important; }
+  body { background: white !important; font-size: 11px; }
+  .card { border: 1px solid #e5e7eb !important; box-shadow: none !important; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #d1d5db; padding: 4px 8px !important; }
+  thead { background: #f9fafb !important; }
+}
+@media (max-width: 768px) {
+  .draws-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .disbursements-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 </style>
 {% endblock %}
@@ -356,9 +364,16 @@
 
     <!-- Table -->
     <div class="card p-0 overflow-hidden">
-      <div class="px-5 py-4 border-b flex items-center justify-between">
+      <div class="px-5 py-4 border-b flex items-center justify-between no-print">
         <h2 class="font-semibold text-gray-800">Cheque Disbursements</h2>
-        <span class="text-xs text-gray-400">All cycles</span>
+        <button @click="window.print()" title="Print disbursements"
+                class="text-xs flex items-center gap-1 text-gray-400 hover:text-gray-700 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+          </svg>
+          Print
+        </button>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm min-w-[700px]">
@@ -400,11 +415,15 @@
                   <span :class="d.status === 'collected' ? 'badge badge-active' : 'badge badge-pending'"
                         x-text="d.status === 'collected' ? '✓ Collected' : 'Issued'"></span>
                 </td>
-                <td class="px-5 py-3.5 text-right">
+                <td class="px-5 py-3.5 text-right flex items-center gap-1 justify-end">
                   <button x-show="d.status === 'issued'"
                           @click="markDisbCollected(d)"
                           class="text-xs btn-primary py-1 px-3">Mark Collected</button>
-                  <span x-show="d.status === 'collected'" class="text-xs text-gray-300">—</span>
+                  <button x-show="d.status === 'issued' && isAdmin"
+                          @click="openVoidDisb(d)"
+                          class="text-xs py-1 px-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors">Void</button>
+                  <span x-show="d.status === 'collected'" class="text-xs text-gray-300">Collected</span>
+                  <span x-show="d.status === 'voided'" class="text-xs text-red-400 line-through">Voided</span>
                 </td>
               </tr>
             </template>
@@ -1323,6 +1342,34 @@
   </div>
 </div>
 
+<!-- Void Disbursement Modal -->
+<div x-show="showVoidDisb" x-cloak class="modal-backdrop" @click.self="showVoidDisb = false; voidReason = ''">
+  <div class="modal-box max-w-md">
+    <h3 class="text-lg font-bold text-gray-900 mb-4">Void Disbursement</h3>
+    <template x-if="voidTarget">
+      <div class="text-sm text-gray-600 mb-4 space-y-1">
+        <div>Cheque <span class="font-mono font-bold" x-text="voidTarget.cheque_number"></span></div>
+        <div>Week <span x-text="voidTarget.week_number"></span> — <span class="font-bold text-red-700" x-text="fmt(voidTarget.net_amount) + ' ETB'"></span></div>
+        <p class="text-amber-600 text-xs mt-2">⚠ Voiding is permanent. The cheque cannot be re-activated. Issue a new disbursement if needed.</p>
+      </div>
+    </template>
+    <div class="mb-4">
+      <label class="block text-xs font-medium text-gray-600 mb-1">Reason for voiding *</label>
+      <textarea x-model="voidReason" rows="3" placeholder="e.g. Cheque lost, wrong amount issued…"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"></textarea>
+    </div>
+    <div class="flex justify-end gap-2">
+      <button @click="showVoidDisb = false; voidReason = ''" class="btn-secondary text-sm">Cancel</button>
+      <button @click="confirmVoidDisb()"
+              :disabled="!voidReason || voidReason.trim().length < 5 || saving"
+              class="bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-40">
+        <span x-show="!saving">Void Cheque</span>
+        <span x-show="saving">Voiding…</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- New Cycle Modal -->
 <div x-show="showNewCycle" x-cloak class="modal-backdrop" @click.self="showNewCycle = false; cycleError = ''">
   <div class="modal-box max-w-lg flex flex-col" style="max-height:90vh; overflow:hidden;">
@@ -1510,6 +1557,9 @@ function draws() {
     showChecklist: false,
     checklistLoading: false,
     checklist: null,
+    showVoidDisb: false,
+    voidTarget: null,
+    voidReason: '',
     activeWeek: null,
     saving: false,
     startDrawsWeek: null,
@@ -2060,6 +2110,28 @@ function draws() {
         this.showToast('Marked as collected');
         await this.loadCycleAndWeeks();
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    openVoidDisb(d) {
+      this.voidTarget = d;
+      this.voidReason = '';
+      this.showVoidDisb = true;
+    },
+
+    async confirmVoidDisb() {
+      if (!this.voidTarget || this.voidReason.trim().length < 5) return;
+      this.saving = true;
+      try {
+        const updated = await this.api('POST', `/api/disbursements/${this.voidTarget.id}/void`, { reason: this.voidReason.trim() });
+        const idx = this.disbursements.findIndex(x => x.id === this.voidTarget.id);
+        if (idx !== -1) this.disbursements[idx] = updated;
+        this.disbursements = [...this.disbursements];
+        this.showVoidDisb = false;
+        this.voidTarget = null;
+        this.voidReason = '';
+        this.showToast('Disbursement voided');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.saving = false; }
     },
 
     async openChecklist() {

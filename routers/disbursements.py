@@ -4,8 +4,8 @@ from sqlalchemy import func as sqla_func
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime, timezone
-from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot, Cycle, PotTransaction, cycle_cfg
-from routers.deps import _require_feature
+from database import get_db, PotDisbursement, Week, Member, Settings, Spot, Payment, MemberSpot, Cycle, PotTransaction, cycle_cfg, log_action
+from routers.deps import _require_feature, _get_current_user
 
 
 def _utcnow():
@@ -42,6 +42,10 @@ class DisbursementUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class VoidRequest(BaseModel):
+    reason: str = Field(..., min_length=5)
+
+
 def _to_dict(d: PotDisbursement) -> dict:
     def _m(m):
         return {"id": m.id, "name": m.name} if m else None
@@ -73,6 +77,8 @@ def _to_dict(d: PotDisbursement) -> dict:
         "guarantor_2": _m(d.guarantor_2),
         "guarantor_3": _m(d.guarantor_3),
         "status": d.status,
+        "voided_at": d.voided_at.isoformat() if d.voided_at else None,
+        "void_reason": d.void_reason,
         "notes": d.notes,
         "created_at": d.created_at.isoformat(),
     }
@@ -307,10 +313,10 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
                 status_code=400,
                 detail=f"{g.name} is the pot winner and cannot be their own guarantor"
             )
-        if g.status == "left":
+        if g.status != "active":
             raise HTTPException(
                 status_code=400,
-                detail=f"{g.name} has left the group and cannot act as guarantor"
+                detail=f"{g.name} is not an active member (status: {g.status}) and cannot act as guarantor"
             )
 
     # ── Service fee: auto-calculated when winner spot is known; use form value for sold-without-draw ──
@@ -380,6 +386,13 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
         notes=data.notes,
     )
     db.add(d)
+    db.flush()  # get d.id before commit
+    user = _get_current_user(request, db)
+    log_action(db, user=user, action="create", table="pot_disbursements",
+               record_id=d.id,
+               description=f"Issued cheque {data.cheque_number} for week {data.week_id}, amount {data.gross_amount:,.0f} ETB",
+               new={"week_id": data.week_id, "gross_amount": data.gross_amount,
+                    "cheque_number": data.cheque_number, "status": data.status})
     db.commit()
     db.refresh(d)
     # Notify the cheque recipient that their cheque is ready
@@ -409,8 +422,40 @@ def update_disbursement(disbursement_id: int, data: DisbursementUpdate,
     d = db.query(PotDisbursement).filter(PotDisbursement.id == disbursement_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Disbursement not found")
+    old = _to_dict(d)
     for field, val in data.model_dump(exclude_none=True).items():
         setattr(d, field, val)
+    user = _get_current_user(request, db)
+    log_action(db, user=user, action="update", table="pot_disbursements",
+               record_id=d.id,
+               description=f"Updated disbursement #{d.id} (week {d.week_id})",
+               old=old, new=data.model_dump(exclude_none=True))
+    db.commit()
+    db.refresh(d)
+    return _to_dict(d)
+
+
+@router.post("/{disbursement_id}/void")
+def void_disbursement(disbursement_id: int, data: VoidRequest,
+                      request: Request, db: Session = Depends(get_db)):
+    _require_feature(request, db, "disbursements")
+    d = db.query(PotDisbursement).filter(PotDisbursement.id == disbursement_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Disbursement not found")
+    if d.status == "voided":
+        raise HTTPException(status_code=400, detail="Already voided")
+    if d.status == "collected":
+        raise HTTPException(status_code=400, detail="Cannot void a collected cheque — contact superadmin")
+    old = _to_dict(d)
+    user = _get_current_user(request, db)
+    d.status = "voided"
+    d.voided_at = _utcnow()
+    d.void_reason = data.reason
+    d.voided_by_id = user.id if user else None
+    log_action(db, user=user, action="void", table="pot_disbursements",
+               record_id=d.id,
+               description=f"Voided cheque {d.cheque_number} for week {d.week_id}: {data.reason}",
+               old=old)
     db.commit()
     db.refresh(d)
     return _to_dict(d)
