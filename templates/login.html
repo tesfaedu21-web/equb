@@ -379,6 +379,35 @@
           </div>
           {% endif %}
 
+          {% if step == "totp" %}
+          <!-- TOTP 2FA Step -->
+          <form method="post" action="/login/2fa" @submit="submitting = true" class="space-y-5">
+            <div class="text-center mb-2">
+              <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-50 mb-3">
+                <svg class="w-7 h-7 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+              </div>
+              <p class="text-sm text-gray-600">Enter the 6-digit code from your authenticator app</p>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Authentication Code</label>
+              <input name="totp_code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                     required autofocus autocomplete="one-time-code"
+                     class="field text-center text-2xl tracking-widest {% if error %}error{% endif %}"
+                     placeholder="000000"/>
+            </div>
+            <button type="submit" class="btn-signin mt-2"
+                    :disabled="submitting"
+                    x-text="submitting ? 'Verifying…' : 'Verify'">
+            </button>
+            <div class="text-center">
+              <a href="/login" class="text-xs text-gray-400 hover:text-gray-600">← Back to login</a>
+            </div>
+          </form>
+
+          {% else %}
           <!-- Form -->
           <form method="post" action="/login" @submit="submitting = true" class="space-y-5">
 
@@ -427,6 +456,7 @@
                     x-text="submitting ? 'Signing in…' : 'Sign In'">
             </button>
           </form>
+          {% endif %}
 
           <!-- Footer -->
           <div class="mt-7 pt-5" style="border-top:1px solid #f0f2f5">

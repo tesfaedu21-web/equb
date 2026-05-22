@@ -342,14 +342,66 @@ async def login_submit(request: Request,
                 {"error": msg, "locked": False},
                 status_code=401,
             )
-        # Successful login
+        # Successful password check — now check 2FA
         _clear_attempts(ip)
-        request.session.clear()                  # regenerate session on login
+        request.session.clear()
+        if getattr(user, "totp_enabled", False) and getattr(user, "totp_secret", None):
+            # Store pending state; full session granted after TOTP verify
+            request.session["pending_2fa_user_id"] = user.id
+            request.session["pending_2fa_role"]    = user.role
+            request.session["pending_2fa_name"]    = user.full_name
+        else:
+            token = secrets.token_hex(16)
+            request.session["_token"]    = token
+            request.session["user_id"]   = user.id
+            request.session["user_role"] = user.role
+            request.session["user_name"] = user.full_name
+    finally:
+        db.close()
+    if request.session.get("pending_2fa_user_id"):
+        return RedirectResponse("/login/2fa", status_code=302)
+    return RedirectResponse("/", status_code=302)
+
+
+@app.get("/login/2fa", response_class=HTMLResponse)
+async def totp_page(request: Request):
+    if not request.session.get("pending_2fa_user_id"):
+        return RedirectResponse("/login", status_code=302)
+    return templates.TemplateResponse(request, "login.html", {"step": "totp", "error": None})
+
+
+@app.post("/login/2fa")
+async def totp_submit(request: Request, totp_code: str = Form(...)):
+    uid = request.session.get("pending_2fa_user_id")
+    if not uid:
+        return RedirectResponse("/login", status_code=302)
+    db: Session = next(get_db())
+    try:
+        user = db.query(User).filter(User.id == uid).first()
+        if not user:
+            request.session.clear()
+            return RedirectResponse("/login", status_code=302)
+        try:
+            import pyotp
+            totp = pyotp.TOTP(user.totp_secret)
+            valid = totp.verify(totp_code.strip(), valid_window=1)
+        except Exception:
+            valid = False
+        if not valid:
+            return templates.TemplateResponse(
+                request, "login.html",
+                {"step": "totp", "error": "Invalid code. Please try again."},
+                status_code=401,
+            )
+        # TOTP verified — promote to full session
+        role = request.session.pop("pending_2fa_role", user.role)
+        name = request.session.pop("pending_2fa_name", user.full_name)
+        request.session.pop("pending_2fa_user_id", None)
         token = secrets.token_hex(16)
         request.session["_token"]    = token
         request.session["user_id"]   = user.id
-        request.session["user_role"] = user.role
-        request.session["user_name"] = user.full_name
+        request.session["user_role"] = role
+        request.session["user_name"] = name
     finally:
         db.close()
     return RedirectResponse("/", status_code=302)
