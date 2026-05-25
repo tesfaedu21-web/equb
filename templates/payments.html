@@ -746,8 +746,8 @@
           </button>
         </div>
 
-        <!-- Search input + dropdown -->
-        <div x-show="!batch.member_id" class="relative">
+        <!-- Search input + inline results -->
+        <div x-show="!batch.member_id">
           <div class="relative">
             <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -765,18 +765,17 @@
                    autocomplete="off"
                    class="pl-9 text-sm w-full"/>
           </div>
-          <!-- Dropdown results -->
+          <!-- Inline results list (not absolute — avoids modal overflow clipping) -->
           <div x-show="memberDropdownOpen && (filteredMembers.length > 0 || memberSearch)"
-               @click.outside="memberDropdownOpen = false"
-               class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto divide-y divide-gray-50">
-            <div x-show="filteredMembers.length === 0" class="px-4 py-4 text-sm text-gray-400 text-center">
+               class="mt-1 border border-gray-200 rounded-xl bg-white shadow-sm max-h-48 overflow-y-auto divide-y divide-gray-50">
+            <div x-show="filteredMembers.length === 0"
+                 class="px-4 py-4 text-sm text-gray-400 text-center">
               No members found
             </div>
             <template x-for="m in filteredMembers.slice(0, 25)" :key="m.id">
               <button type="button"
                       @mousedown.prevent="selectMember(m)"
                       class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-equb-pale transition-colors text-left">
-                <!-- Spot badge -->
                 <div class="w-9 shrink-0 text-center">
                   <span x-show="m.spot_numbers && m.spot_numbers.length"
                         class="inline-block bg-equb-pale text-equb-green text-xs font-bold rounded-lg px-1.5 py-0.5 leading-tight"
@@ -784,7 +783,6 @@
                   <span x-show="!m.spot_numbers || !m.spot_numbers.length"
                         class="text-gray-300 text-xs">—</span>
                 </div>
-                <!-- Name + phone -->
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-medium text-gray-800 amharic truncate" x-text="m.name"></div>
                   <div x-show="m.phone" class="text-xs text-gray-400 font-mono" x-text="m.phone"></div>
