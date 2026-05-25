@@ -1053,7 +1053,15 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
     ).all()
     week_map = {w.id: w for w in weeks}
 
-    # Bucket each payment into a collection window by paid_date
+    # Renderable week IDs: non-pending weeks with draw_date in the past
+    renderable_ids = {
+        w.id for w in sorted_weeks
+        if w.status != "pending" and w.draw_date.date() <= today
+    }
+
+    # Bucket each payment into a collection window by paid_date.
+    # If the matched window belongs to a pending/future week (excluded from chart),
+    # fall back to the payment's obligation week so collections aren't lost.
     collected: dict = {}
     for p in all_paid:
         if p.paid_date:
@@ -1061,15 +1069,21 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
         else:
             wk = week_map.get(p.week_id)
             pd = wk.draw_date.date() if wk else today
+        matched_id = None
         for w, ws, we in windows:
             if ws <= pd <= we:
-                collected[w.id] = collected.get(w.id, 0) + p.amount
+                matched_id = w.id
                 break
+        # Use matched window only if it's a renderable (completed) week
+        if matched_id and matched_id in renderable_ids:
+            target = matched_id
+        elif p.week_id in renderable_ids:
+            target = p.week_id  # fall back to obligation week
         else:
-            for w, ws, we in reversed(windows):
-                if we <= today:
-                    collected[w.id] = collected.get(w.id, 0) + p.amount
-                    break
+            # last renderable week
+            target = next((w.id for w, _, _ in reversed(windows) if w.id in renderable_ids), None)
+        if target:
+            collected[target] = collected.get(target, 0) + p.amount
 
     # Per-week obligation: sum payments by week_id regardless of paid_date
     all_week_payments = db.query(Payment).filter(Payment.week_id.in_(week_ids)).all()
