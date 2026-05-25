@@ -129,13 +129,11 @@ _PAYMENT_METHOD_EN = {
     "cash": "Cash",
     "bank_transfer": "Bank Transfer",
     "cheque": "Cheque",
-    "pot_sale": "Pot Sale",
 }
 _PAYMENT_METHOD_AM = {
     "cash": "ጥሬ ገንዘብ",
     "bank_transfer": "የባንክ ዝውውር",
     "cheque": "ቼክ",
-    "pot_sale": "የድስት ሽያጭ",
 }
 
 
