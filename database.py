@@ -445,7 +445,8 @@ class NotificationSettings(Base):
     username = Column(String, nullable=True)
     sender_id = Column(String, nullable=True)
     is_active = Column(Boolean, default=False)
-    device_token = Column(String, nullable=True)   # secret token for Android SMS gateway
+    device_token = Column(String, nullable=True)
+    sms_language = Column(String, default="en")    # en | am | both
 
 
 class SmsQueue(Base):
@@ -470,6 +471,7 @@ class NotificationTemplate(Base):
     key = Column(String, unique=True, nullable=False)
     title = Column(String, nullable=False)
     message = Column(Text, nullable=False)
+    message_am = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
 
 
@@ -495,44 +497,54 @@ DEFAULT_TEMPLATES = [
         "key": "payment_confirmed",
         "title": "Payment Confirmed",
         "message": "Dear {member_name}, your Equb payment of {amount} ETB for Week {week_number} ({draw_date}) has been received via {payment_method}. Thank you!",
+        "message_am": "ውድ {member_name}፣ የሳምንት {week_number} ({draw_date}) የእቁብ ክፍያዎ {amount} ብር በ{payment_method} ደርሷል። አመሰግናለን!",
     },
     {
         "key": "payment_reminder",
         "title": "Payment Reminder",
         "message": "Dear {member_name}, your Equb payment of {amount} ETB is due for week {week_number} ({draw_date}). Please pay on time. Thank you.",
+        "message_am": "ውድ {member_name}፣ የሳምንት {week_number} ({draw_date}) የእቁብ ክፍያ {amount} ብር ይጠብቃል። በጊዜ ይክፈሉ። አመሰግናለን።",
     },
     {
         "key": "missed_payment",
         "title": "Missed Payment Notice",
         "message": "Dear {member_name}, you have {unpaid_count} missed Equb payment(s) totaling {unpaid_amount} ETB (weeks {weeks_list}). Please settle your balance to remain eligible.",
+        "message_am": "ውድ {member_name}፣ {unpaid_count} ያልተከፈሉ ክፍያዎች (ሳምንቶች: {weeks_list}) አሉዎት — ድምር {unpaid_amount} ብር። ቀሪ ሂሳብዎን ይጠርጉ።",
     },
     {
         "key": "draw_winner",
         "title": "Draw Winner",
         "message": "Congratulations {member_name}! You won the Equb pot for Week {week_number}. Your pot of {net_pot} ETB will be disbursed after confirming full payment.",
+        "message_am": "እንኳን ደስ አለዎ {member_name}! የሳምንት {week_number} የእቁብ ዕጣ ደርሷሎ። {net_pot} ብር ሙሉ ክፍያ ሲረጋገጥ ይከፈልዎታል።",
     },
     {
         "key": "pot_on_hold",
         "title": "Pot On Hold",
         "message": "Dear {member_name}, your pot for Week {week_number} ({net_pot} ETB) is ON HOLD. Please pay {unpaid_count} outstanding week(s) ({unpaid_amount} ETB) to receive it.",
+        "message_am": "ውድ {member_name}፣ የሳምንት {week_number} ድርሻዎ ({net_pot} ብር) ታግዷል። {unpaid_count} ያልተከፈሉ ሳምንቶች ({unpaid_amount} ብር) ይፈጽሙ።",
     },
     {
         "key": "pot_sold",
         "title": "Pot Sale",
         "message": "Dear {member_name}, your pot for Week {week_number} was sold. You receive a fee of {seller_fee} ETB. The buyer gets {buyer_receives} ETB.",
+        "message_am": "ውድ {member_name}፣ የሳምንት {week_number} ድርሻዎ ተሸጧል። ክፍያዎ {seller_fee} ብር ነው። ገዢው {buyer_receives} ብር ያገኛል።",
     },
     {
         "key": "disbursement_ready",
         "title": "Cheque Ready",
         "message": "Dear {member_name}, your Equb pot cheque for Week {week_number} (Cheque #{cheque_number}) is ready for collection. Please visit the office to sign and collect.",
+        "message_am": "ውድ {member_name}፣ የሳምንት {week_number} የእቁብ ቼክዎ (ቼክ #{cheque_number}) ዝግጁ ነው። ለፊርማ እና ለቀብ ቢሮ ይምጡ።",
     },
 ]
 
 
 def _seed_templates(db) -> None:
     for t in DEFAULT_TEMPLATES:
-        if not db.query(NotificationTemplate).filter_by(key=t["key"]).first():
+        existing = db.query(NotificationTemplate).filter_by(key=t["key"]).first()
+        if not existing:
             db.add(NotificationTemplate(**t))
+        elif not existing.message_am and t.get("message_am"):
+            existing.message_am = t["message_am"]
     db.commit()
 
 
@@ -687,6 +699,9 @@ def _migrate(engine):
             provider_response TEXT
         )""",
         "CREATE INDEX IF NOT EXISTS ix_sms_queue_status ON sms_queue(status)",
+        # Bilingual templates + language preference
+        "ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS message_am TEXT",
+        "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS sms_language VARCHAR DEFAULT 'en'",
     ]
     with engine.connect() as conn:
         for sql in migrations:

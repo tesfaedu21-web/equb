@@ -28,11 +28,13 @@ class SettingsUpdate(BaseModel):
     username: Optional[str] = None
     sender_id: Optional[str] = None
     is_active: Optional[bool] = None
+    sms_language: Optional[str] = None   # en | am | both
 
 
 class TemplateUpdate(BaseModel):
     title: Optional[str] = None
     message: Optional[str] = None
+    message_am: Optional[str] = None
     is_active: Optional[bool] = None
 
 
@@ -128,6 +130,18 @@ def _render(template: str, vars: dict) -> str:
     return template
 
 
+def _pick_message(tmpl, cfg, vars_: dict) -> str:
+    """Return rendered message in the configured language (en / am / both)."""
+    lang = (cfg.sms_language or "en") if cfg else "en"
+    en_msg = _render(tmpl.message, vars_)
+    am_msg = _render(tmpl.message_am, vars_) if tmpl.message_am else en_msg
+    if lang == "am":
+        return am_msg
+    if lang == "both" and tmpl.message_am:
+        return f"{en_msg}\n\n{am_msg}"
+    return en_msg
+
+
 def _member_vars(m: Member, db: Session, week_number: int = 9999, cycle_id: Optional[int] = None) -> dict:
     q = (db.query(Payment).join(Week)
          .filter(Payment.member_id == m.id,
@@ -172,7 +186,7 @@ def send_payment_confirmed(payment, db: Session) -> str:
             "draw_date": w.draw_date.strftime("%d %b %Y"),
             "payment_method": method_label,
         }
-        msg = _render(tmpl.message, vars_)
+        msg = _pick_message(tmpl, cfg, vars_)
         status, response = _send_sms(m.phone, msg, cfg, db=db,
                                      template_key="payment_confirmed", member_id=m.id)
         db.add(NotificationLog(
@@ -208,7 +222,7 @@ def send_missed_payment(payment, db: Session) -> str:
             "draw_date": w.draw_date.strftime("%d %b %Y"),
             "unpaid_count": "1",
         }
-        msg = _render(tmpl.message, vars_)
+        msg = _pick_message(tmpl, cfg, vars_)
         status, response = _send_sms(m.phone, msg, cfg, db=db,
                                      template_key="missed_payment", member_id=m.id)
         db.add(NotificationLog(
@@ -241,7 +255,7 @@ def send_draw_winner(week, member, db: Session) -> str:
             "draw_date": week.draw_date.strftime("%d %b %Y"),
             "net_pot": str(int(week.net_pot or 0)),
         }
-        msg = _render(tmpl.message, vars_)
+        msg = _pick_message(tmpl, cfg, vars_)
         status, response = _send_sms(member.phone, msg, cfg, db=db,
                                      template_key="draw_winner", member_id=member.id)
         db.add(NotificationLog(
@@ -272,7 +286,7 @@ def send_disbursement_ready(week, member, cheque_number: str, db: Session) -> st
             "week_number": str(week.week_number),
             "cheque_number": cheque_number or "—",
         }
-        msg = _render(tmpl.message, vars_)
+        msg = _pick_message(tmpl, cfg, vars_)
         status, response = _send_sms(member.phone, msg, cfg, db=db,
                                      template_key="disbursement_ready", member_id=member.id)
         db.add(NotificationLog(
@@ -298,6 +312,7 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
         "sender_id": cfg.sender_id,
         "is_active": cfg.is_active,
         "has_device_token": bool(cfg.device_token),
+        "sms_language": cfg.sms_language or "en",
     }
 
 
@@ -315,6 +330,8 @@ def update_settings(data: SettingsUpdate, request: Request, db: Session = Depend
         cfg.sender_id = data.sender_id
     if data.is_active is not None:
         cfg.is_active = data.is_active
+    if data.sms_language is not None:
+        cfg.sms_language = data.sms_language
     db.commit()
     return {"ok": True}
 
@@ -323,7 +340,7 @@ def update_settings(data: SettingsUpdate, request: Request, db: Session = Depend
 def get_templates(db: Session = Depends(get_db)):
     return [
         {"id": t.id, "key": t.key, "title": t.title,
-         "message": t.message, "is_active": t.is_active}
+         "message": t.message, "message_am": t.message_am or "", "is_active": t.is_active}
         for t in db.query(NotificationTemplate).all()
     ]
 
@@ -338,6 +355,8 @@ def update_template(template_id: int, data: TemplateUpdate, request: Request, db
         t.title = data.title
     if data.message is not None:
         t.message = data.message
+    if data.message_am is not None:
+        t.message_am = data.message_am
     if data.is_active is not None:
         t.is_active = data.is_active
     db.commit()
@@ -365,7 +384,7 @@ def send_to_members(data: SendRequest, request: Request, db: Session = Depends(g
 
         vars_ = _member_vars(m, db, cycle_id=active_cycle_id)
         vars_.update(data.extra or {})
-        msg = _render(tmpl.message, vars_)
+        msg = _pick_message(tmpl, cfg, vars_)
         status, response = _send_sms(m.phone, msg, cfg, db=db,
                                      template_key=data.template_key, member_id=m.id)
 
@@ -416,7 +435,7 @@ def broadcast_payment_reminder(week_id: int, request: Request, db: Session = Dep
             "week_number": str(w.week_number),
             "draw_date": w.draw_date.strftime("%d %b %Y"),
         }
-        msg = _render(tmpl.message, vars_)
+        msg = _pick_message(tmpl, cfg, vars_)
         status, response = _send_sms(m.phone, msg, cfg, db=db,
                                      template_key="payment_reminder", member_id=m.id)
         log = NotificationLog(
@@ -464,7 +483,7 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
         vars_ = _member_vars(m, db, cycle_id=cycle_id)
         if vars_["unpaid_count"] == "0":
             continue
-        msg = _render(tmpl.message, vars_)
+        msg = _pick_message(tmpl, cfg, vars_)
         status, response = _send_sms(m.phone, msg, cfg, db=db,
                                      template_key="missed_payment", member_id=m.id)
         log = NotificationLog(

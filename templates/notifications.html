@@ -302,6 +302,19 @@
             </div>
           </div>
 
+          <!-- Language preference -->
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">SMS Language</label>
+            <select x-model="cfg.sms_language" class="text-sm">
+              <option value="en">English only</option>
+              <option value="am">Amharic only (አማርኛ)</option>
+              <option value="both">Both — English + Amharic</option>
+            </select>
+            <div x-show="cfg.sms_language === 'both'" class="text-xs text-amber-600 mt-1">
+              "Both" sends English then Amharic in one message — may split into 2–3 SMS segments.
+            </div>
+          </div>
+
           <div class="flex items-center gap-2 pt-1">
             <input type="checkbox" x-model="cfg.is_active" id="liveMode" class="w-auto rounded"/>
             <label for="liveMode" class="text-sm text-gray-700">Enable live sending</label>
@@ -335,7 +348,7 @@
 
 <!-- Edit Template Modal -->
 <div x-show="showEditTemplate" x-cloak class="modal-backdrop" @click.self="showEditTemplate = false">
-  <div class="modal-box">
+  <div class="modal-box" style="max-width:640px">
     <div class="p-6 border-b">
       <h2 class="text-lg font-bold text-gray-900" x-text="'Edit: ' + (editTmpl.title || '')"></h2>
     </div>
@@ -344,15 +357,36 @@
         <label class="block text-sm font-medium text-gray-700 mb-1">Title</label>
         <input x-model="editTmpl.title" type="text" name="tmpl_title" id="tmpl_title" required/>
       </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
-        <textarea x-model="editTmpl.message" name="tmpl_message" id="tmpl_message" rows="5"
-                  placeholder="Use {member_name}, {amount}, {week_number}, etc."></textarea>
-        <div class="text-xs text-gray-400 mt-1">
-          Keep messages under 160 chars for single SMS. Available variables:
-          <span class="font-mono text-equb-green">{member_name} {amount} {week_number} {draw_date} {unpaid_count} {unpaid_amount} {weeks_list} {net_pot} {seller_fee} {buyer_receives}</span>
-        </div>
+
+      <!-- Character count helper -->
+      <div class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
+        Available variables:
+        <span class="font-mono text-equb-green">{member_name} {amount} {week_number} {draw_date} {unpaid_count} {unpaid_amount} {weeks_list} {net_pot} {seller_fee} {buyer_receives} {payment_method} {cheque_number}</span>
+        <span class="block mt-1 text-amber-600">⚠ Amharic uses Unicode encoding — keep under 70 chars per SMS segment (vs 160 for English).</span>
       </div>
+
+      <!-- English message -->
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="block text-sm font-medium text-gray-700">🇺🇸 English Message</label>
+          <span class="text-xs" :class="(editTmpl.message||'').length > 160 ? 'text-amber-600 font-semibold' : 'text-gray-400'"
+                x-text="(editTmpl.message||'').length + ' chars' + ((editTmpl.message||'').length > 160 ? ' — will split into ' + Math.ceil((editTmpl.message||'').length/153) + ' SMS' : '')"></span>
+        </div>
+        <textarea x-model="editTmpl.message" name="tmpl_message" id="tmpl_message" rows="4"
+                  placeholder="English message…"></textarea>
+      </div>
+
+      <!-- Amharic message -->
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="block text-sm font-medium text-gray-700">🇪🇹 Amharic Message (አማርኛ)</label>
+          <span class="text-xs" :class="(editTmpl.message_am||'').length > 70 ? 'text-amber-600 font-semibold' : 'text-gray-400'"
+                x-text="(editTmpl.message_am||'').length + ' chars' + ((editTmpl.message_am||'').length > 70 ? ' — will split into ' + Math.ceil((editTmpl.message_am||'').length/67) + ' SMS' : '')"></span>
+        </div>
+        <textarea x-model="editTmpl.message_am" name="tmpl_message_am" id="tmpl_message_am" rows="4"
+                  placeholder="አማርኛ መልዕክት…" class="amharic" lang="am"></textarea>
+      </div>
+
       <div class="flex items-center gap-2">
         <input type="checkbox" x-model="editTmpl.is_active" id="tmplActive" class="w-auto rounded"/>
         <label for="tmplActive" class="text-sm text-gray-700">Active</label>
@@ -410,7 +444,7 @@
 <script>
 function notifications() {
   return {
-    cfg: { provider: 'africastalking', username: '', api_key: null, api_key_input: '', sender_id: '', is_active: false, has_device_token: false, newToken: '' },
+    cfg: { provider: 'africastalking', username: '', api_key: null, api_key_input: '', sender_id: '', is_active: false, has_device_token: false, newToken: '', sms_language: 'en' },
     templates: [], logBatches: [], logIndividuals: [], expandedBatch: null,
     weeks: [], allMembers: [],
     reminderWeekId: '',
@@ -472,6 +506,7 @@ function notifications() {
           username: this.cfg.username,
           sender_id: this.cfg.sender_id,
           is_active: this.cfg.is_active,
+          sms_language: this.cfg.sms_language,
         };
         if (this.cfg.api_key_input) payload.api_key = this.cfg.api_key_input;
         await this.api('PUT', '/api/notifications/settings', payload);
@@ -505,6 +540,7 @@ function notifications() {
         await this.api('PUT', `/api/notifications/templates/${this.editTmpl.id}`, {
           title: this.editTmpl.title,
           message: this.editTmpl.message,
+          message_am: this.editTmpl.message_am,
           is_active: this.editTmpl.is_active,
         });
         const idx = this.templates.findIndex(t => t.id === this.editTmpl.id);
