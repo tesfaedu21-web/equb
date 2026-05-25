@@ -103,6 +103,8 @@
               </div>
               <div class="text-xs text-gray-500 font-mono bg-gray-50 rounded-lg p-2.5 leading-relaxed"
                    x-text="t.message"></div>
+              <div x-show="t.message_am" class="text-xs text-gray-500 amharic bg-equb-pale/50 rounded-lg p-2.5 leading-relaxed mt-1.5 border border-equb-green/10"
+                   x-text="'🇪🇹 ' + t.message_am"></div>
               <div class="text-xs text-gray-400 mt-1.5">
                 Variables: <span class="font-mono text-equb-green">{member_name}</span>
                 <span class="font-mono text-equb-green ml-1">{amount}</span>
