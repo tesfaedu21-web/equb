@@ -748,9 +748,11 @@
 
         <!-- Search input + inline results -->
         <div x-show="!batch.member_id">
-          <div class="relative">
-            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <!-- Flex wrapper replaces absolute-icon approach to avoid CSS specificity fight -->
+          <div class="flex items-center gap-2"
+               style="border:1.5px solid var(--c-border);border-radius:12px;padding:9px 14px;background:var(--bg-input);transition:border-color 0.2s,box-shadow 0.2s;"
+               :style="memberDropdownOpen ? 'border-color:#078930;box-shadow:0 0 0 4px rgba(7,137,48,.12);background:var(--bg-input-f);' : ''">
+            <svg class="w-4 h-4 shrink-0" style="color:var(--c-muted)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
             </svg>
@@ -758,19 +760,19 @@
                    x-ref="memberSearchInput"
                    @input="memberDropdownOpen = true"
                    @focus="memberDropdownOpen = true"
-                   @keydown.escape="memberDropdownOpen = false"
+                   @keydown.escape="memberDropdownOpen = false; memberSearch = ''"
                    @keydown.enter.prevent="if(filteredMembers.length===1){ selectMember(filteredMembers[0]); }"
                    type="text"
                    placeholder="Search by name or spot number…"
                    autocomplete="off"
-                   class="pl-9 text-sm w-full"/>
+                   style="border:none!important;border-radius:0!important;padding:0!important;box-shadow:none!important;background:transparent!important;outline:none;width:100%;font-size:0.8125rem;font-family:inherit;"/>
           </div>
-          <!-- Inline results list (not absolute — avoids modal overflow clipping) -->
-          <div x-show="memberDropdownOpen && (filteredMembers.length > 0 || memberSearch)"
+          <!-- Results — only shown when user has typed something -->
+          <div x-show="memberSearch.trim() && memberDropdownOpen"
                class="mt-1 border border-gray-200 rounded-xl bg-white shadow-sm max-h-48 overflow-y-auto divide-y divide-gray-50">
             <div x-show="filteredMembers.length === 0"
                  class="px-4 py-4 text-sm text-gray-400 text-center">
-              No members found
+              No members found for "<span x-text="memberSearch"></span>"
             </div>
             <template x-for="m in filteredMembers.slice(0, 25)" :key="m.id">
               <button type="button"
