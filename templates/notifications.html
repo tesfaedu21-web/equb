@@ -418,14 +418,26 @@
                   class="text-xs text-gray-400 hover:underline">Clear</button>
         </div>
       </div>
+      <div class="relative">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+        </svg>
+        <input x-model="customSearch" type="text" placeholder="Search name or phone…"
+               class="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-equb-green/30"/>
+        <button x-show="customSearch" @click="customSearch=''" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+      </div>
       <div class="border rounded-xl divide-y max-h-56 overflow-y-auto">
-        <template x-for="m in allMembers" :key="m.id">
+        <template x-for="m in customSearch.trim()
+          ? allMembers.filter(m => m.name.toLowerCase().includes(customSearch.toLowerCase()) || (m.phone||'').includes(customSearch))
+          : allMembers" :key="m.id">
           <label class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer">
             <input type="checkbox" :value="m.id" x-model="custom.member_ids" class="w-auto rounded"/>
             <span class="amharic text-sm font-medium text-gray-800" x-text="m.name"></span>
             <span class="text-xs text-gray-400" x-text="m.phone || 'no phone'"></span>
           </label>
         </template>
+        <div x-show="customSearch.trim() && !allMembers.filter(m => m.name.toLowerCase().includes(customSearch.toLowerCase()) || (m.phone||'').includes(customSearch)).length"
+             class="px-4 py-3 text-sm text-gray-400 text-center">No members found</div>
       </div>
       <div class="text-xs text-gray-400">
         <span x-text="custom.member_ids.length"></span> selected ·
@@ -453,6 +465,7 @@ function notifications() {
     sending: { reminder: false, missed: false, custom: false },
     savingCfg: false, savingTmpl: false, generatingToken: false,
     showEditTemplate: false, showCustom: false,
+    customSearch: '',
     editTmpl: {},
     custom: { template_key: '', member_ids: [] },
 
@@ -577,6 +590,7 @@ function notifications() {
     openCustom() {
       if (!this.custom.template_key) { this.showToast('Select a template first', 'error'); return; }
       this.custom.member_ids = [];
+      this.customSearch = '';
       this.showCustom = true;
     },
 
