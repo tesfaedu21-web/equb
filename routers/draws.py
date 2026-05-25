@@ -700,9 +700,12 @@ def record_draw(week_id: int, data: DrawResult, request: Request, db: Session = 
     db.commit()
     # Notify winners via SMS (member spots only)
     try:
-        from routers.notifications import send_draw_winner
+        from routers.notifications import send_draw_winner, send_draw_announcement
         for member in winners:
             send_draw_winner(w, member, db)
+        # Broadcast draw result to all members
+        winner_name = " & ".join(m.name for m in winners) if winners else "—"
+        send_draw_announcement(w, spot.number, winner_name, db)
     except Exception:
         pass
     return week_to_dict(w)

@@ -535,6 +535,12 @@ DEFAULT_TEMPLATES = [
         "message": "Dear {member_name}, your Equb pot cheque for Week {week_number} (Cheque #{cheque_number}) is ready for collection. Please visit the office to sign and collect.",
         "message_am": "ውድ {member_name}፣ የሳምንት {week_number} የእቁብ ቼክዎ (ቼክ #{cheque_number}) ዝግጁ ነው። ለፊርማ እና ለቀብ ቢሮ ይምጡ።",
     },
+    {
+        "key": "draw_announcement",
+        "title": "Draw Announcement",
+        "message": "Equb Week {week_number} draw result: Spot #{spot_number} won by {winner_name} — pot {net_pot} ETB. Congratulations!",
+        "message_am": "የሳምንት {week_number} የእቁብ ዕጣ ውጤት: ቁጥር #{spot_number} — {winner_name} {net_pot} ብር አሸነፉ። እንኳን ደስ አለዎ!",
+    },
 ]
 
 

@@ -326,6 +326,56 @@ def send_draw_winner(week, member, db: Session) -> str:
         return "skipped"
 
 
+# ── Draw announcement to all members ─────────────────────────────────────────
+
+def send_draw_announcement(week, spot_number: int, winner_name: str, db: Session) -> int:
+    """Broadcast draw result to every member with a phone. Returns sent count."""
+    try:
+        cfg = db.query(NotificationSettings).first()
+        if not cfg:
+            return 0
+        tmpl = db.query(NotificationTemplate).filter_by(key="draw_announcement").first()
+        if not tmpl or not tmpl.is_active:
+            return 0
+        vars_ = {
+            "week_number": str(week.week_number),
+            "spot_number":  str(spot_number),
+            "winner_name":  winner_name,
+            "net_pot":      f"{int(week.net_pot or 0):,}",
+            "draw_date":    week.draw_date.strftime("%d %b %Y"),
+        }
+        from database import Member as _Member, MemberSpot as _MemberSpot
+        members = (
+            db.query(_Member)
+            .join(_MemberSpot, _MemberSpot.member_id == _Member.id)
+            .filter(_MemberSpot.cycle_id == week.cycle_id, _MemberSpot.is_active == True)
+            .filter(_Member.phone.isnot(None), _Member.phone != "")
+            .distinct()
+            .all()
+        )
+        sent = 0
+        bid = _batch_id()
+        for m in members:
+            try:
+                msg = _pick_message(tmpl, cfg, {**vars_, "member_name": m.name})
+                status, response = _send_sms(m.phone, msg, cfg, db=db,
+                                             template_key="draw_announcement",
+                                             member_id=m.id, batch_id=bid)
+                db.add(NotificationLog(
+                    member_id=m.id, phone=m.phone,
+                    template_key="draw_announcement", message=msg,
+                    status=status, provider_response=response, batch_id=bid,
+                ))
+                if status == "sent":
+                    sent += 1
+            except Exception:
+                pass
+        db.commit()
+        return sent
+    except Exception:
+        return 0
+
+
 # ── Auto-send on disbursement created ────────────────────────────────────────
 
 def send_disbursement_ready(week, member, cheque_number: str, db: Session) -> str:
