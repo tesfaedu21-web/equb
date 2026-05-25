@@ -210,7 +210,7 @@ def _member_vars(m: Member, db: Session, week_number: int = 9999, cycle_id: Opti
     return {
         "member_name": m.name,
         "unpaid_count": str(len(unpaid)),
-        "unpaid_amount": str(int(sum(p.amount for p in unpaid))),
+        "unpaid_amount": f"{int(sum(p.amount for p in unpaid)):,}",
         "weeks_list": ", ".join(str(p.week.week_number) for p in unpaid),
     }
 
@@ -238,7 +238,7 @@ def send_payment_confirmed(payment, db: Session) -> str:
         method_label = _PAYMENT_METHOD_EN.get(pm_key, "Cash")
         vars_ = {
             "member_name": m.name,
-            "amount": str(int(payment.amount)),
+            "amount": f"{int(payment.amount):,}",
             "week_number": str(w.week_number),
             "draw_date": w.draw_date.strftime("%d %b %Y"),
             "payment_method": method_label,
@@ -276,7 +276,7 @@ def send_missed_payment(payment, db: Session) -> str:
         vars_ = {
             "member_name": m.name,
             "week_number": str(w.week_number),
-            "amount": str(int(payment.amount)),
+            "amount": f"{int(payment.amount):,}",
             "draw_date": w.draw_date.strftime("%d %b %Y"),
             "unpaid_count": "1",
         }
@@ -489,7 +489,7 @@ def broadcast_payment_reminder(week_id: int, request: Request, db: Session = Dep
             continue
         vars_ = {
             "member_name": m.name,
-            "amount": str(int(p.amount)),
+            "amount": f"{int(p.amount):,}",
             "week_number": str(w.week_number),
             "draw_date": w.draw_date.strftime("%d %b %Y"),
         }
