@@ -297,6 +297,7 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
         "username": cfg.username,
         "sender_id": cfg.sender_id,
         "is_active": cfg.is_active,
+        "has_device_token": bool(cfg.device_token),
     }
 
 
