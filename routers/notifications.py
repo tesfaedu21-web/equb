@@ -328,8 +328,8 @@ def send_draw_winner(week, member, db: Session) -> str:
 
 # ── Draw announcement to all members ─────────────────────────────────────────
 
-def send_draw_announcement(week, spot_number: int, winner_name: str, db: Session) -> int:
-    """Broadcast draw result to every member with a phone. Returns sent count."""
+def send_draw_announcement(week, spot_number: int, db: Session) -> int:
+    """Broadcast draw result (spot number only) to every member with a phone."""
     try:
         cfg = db.query(NotificationSettings).first()
         if not cfg:
@@ -339,10 +339,8 @@ def send_draw_announcement(week, spot_number: int, winner_name: str, db: Session
             return 0
         vars_ = {
             "week_number": str(week.week_number),
-            "spot_number":  str(spot_number),
-            "winner_name":  winner_name,
-            "net_pot":      f"{int(week.net_pot or 0):,}",
-            "draw_date":    week.draw_date.strftime("%d %b %Y"),
+            "spot_number": str(spot_number),
+            "draw_date":   week.draw_date.strftime("%d %b %Y"),
         }
         from database import Member as _Member, MemberSpot as _MemberSpot
         members = (
@@ -357,7 +355,7 @@ def send_draw_announcement(week, spot_number: int, winner_name: str, db: Session
         bid = _batch_id()
         for m in members:
             try:
-                msg = _pick_message(tmpl, cfg, {**vars_, "member_name": m.name})
+                msg = _pick_message(tmpl, cfg, vars_)
                 status, response = _send_sms(m.phone, msg, cfg, db=db,
                                              template_key="draw_announcement",
                                              member_id=m.id, batch_id=bid)

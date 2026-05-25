@@ -538,8 +538,8 @@ DEFAULT_TEMPLATES = [
     {
         "key": "draw_announcement",
         "title": "Draw Announcement",
-        "message": "Equb Week {week_number} draw result: Spot #{spot_number} won by {winner_name} — pot {net_pot} ETB. Congratulations!",
-        "message_am": "የሳምንት {week_number} የእቁብ ዕጣ ውጤት: ቁጥር #{spot_number} — {winner_name} {net_pot} ብር አሸነፉ። እንኳን ደስ አለዎ!",
+        "message": "Equb Week {week_number} draw result: Spot #{spot_number} has been drawn. Congratulations to the winner!",
+        "message_am": "የሳምንት {week_number} የእቁብ ዕጣ ውጤት: ቁጥር #{spot_number} ወጥቷል። ለአሸናፊው እንኳን ደስ አለዎ!",
     },
 ]
 
