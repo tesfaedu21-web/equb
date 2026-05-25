@@ -134,7 +134,7 @@
     <!-- Payments table -->
     <div x-show="selectedWeek" class="card p-0 overflow-hidden">
       <div class="px-5 py-3 border-b flex flex-wrap items-center gap-3 bg-gray-50">
-        <input x-model="search" type="text" placeholder="Search member…" class="w-48 py-1.5 text-xs"/>
+        <input x-model="search" type="text" placeholder="Search name or spot #…" class="w-48 py-1.5 text-xs"/>
         <select x-model="filterStatus" class="w-36 py-1.5 text-xs">
           <option value="">All Status</option>
           <option value="pending">Pending</option>
@@ -967,10 +967,9 @@ function payments() {
         const q = this.search.trim();
         let s = !q;
         if (!s) {
-          const isNum = /^\d+$/.test(q);
-          s = isNum
-            ? p.spot_numbers?.some(sn => String(sn).includes(q))
-            : p.member_name?.toLowerCase().includes(q.toLowerCase());
+          const nameMatch = p.member_name?.toLowerCase().includes(q.toLowerCase());
+          const spotMatch = p.spot_numbers?.some(sn => String(sn) === q.replace('#','').trim());
+          s = nameMatch || spotMatch;
         }
         const st = !this.filterStatus || p.status === this.filterStatus;
         return s && st;
