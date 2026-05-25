@@ -726,13 +726,15 @@
 
         <!-- Selected member card -->
         <div x-show="batch.member_id" class="flex items-center gap-3 bg-equb-pale border border-equb-green/20 rounded-xl px-4 py-3">
-          <div class="w-9 h-9 rounded-full bg-equb-green/15 flex items-center justify-center text-equb-green font-bold text-sm shrink-0"
-               x-text="(allMembers.find(m=>m.id===batch.member_id)?.name||'?')[0]"></div>
+          <div class="shrink-0 text-center w-9">
+            <span class="inline-block bg-equb-green/15 text-equb-green text-xs font-bold rounded-lg px-1.5 py-1 leading-tight"
+                  x-text="(allMembers.find(m=>m.id===batch.member_id)?.spot_numbers||[]).join('·') || '#'"></span>
+          </div>
           <div class="flex-1 min-w-0">
             <div class="font-semibold text-gray-800 amharic text-sm truncate"
                  x-text="allMembers.find(m=>m.id===batch.member_id)?.name"></div>
             <div class="text-xs text-gray-400"
-                 x-text="'Spot ' + (allMembers.find(m=>m.id===batch.member_id)?.spot_numbers?.join(', ') || '—')"></div>
+                 x-text="allMembers.find(m=>m.id===batch.member_id)?.phone || ''"></div>
           </div>
           <button type="button"
                   @click="batch.member_id=null; memberSearch=''; outstanding=[]; memberDropdownOpen=false"
@@ -766,25 +768,27 @@
           <!-- Dropdown results -->
           <div x-show="memberDropdownOpen && (filteredMembers.length > 0 || memberSearch)"
                @click.outside="memberDropdownOpen = false"
-               class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+               class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto divide-y divide-gray-50">
             <div x-show="filteredMembers.length === 0" class="px-4 py-4 text-sm text-gray-400 text-center">
               No members found
             </div>
-            <template x-for="m in filteredMembers.slice(0, 20)" :key="m.id">
+            <template x-for="m in filteredMembers.slice(0, 25)" :key="m.id">
               <button type="button"
                       @mousedown.prevent="selectMember(m)"
-                      class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-equb-pale text-left transition-colors border-b border-gray-50 last:border-0">
-                <div class="w-8 h-8 rounded-full bg-equb-green/10 flex items-center justify-center text-equb-green text-xs font-bold shrink-0"
-                     x-text="m.name[0]"></div>
+                      class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-equb-pale transition-colors text-left">
+                <!-- Spot badge -->
+                <div class="w-9 shrink-0 text-center">
+                  <span x-show="m.spot_numbers && m.spot_numbers.length"
+                        class="inline-block bg-equb-pale text-equb-green text-xs font-bold rounded-lg px-1.5 py-0.5 leading-tight"
+                        x-text="m.spot_numbers.join('·')"></span>
+                  <span x-show="!m.spot_numbers || !m.spot_numbers.length"
+                        class="text-gray-300 text-xs">—</span>
+                </div>
+                <!-- Name + phone -->
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-medium text-gray-800 amharic truncate" x-text="m.name"></div>
-                  <div x-show="m.spot_numbers && m.spot_numbers.length"
-                       class="text-xs text-gray-400"
-                       x-text="'Spot ' + m.spot_numbers.join(', ')"></div>
+                  <div x-show="m.phone" class="text-xs text-gray-400 font-mono" x-text="m.phone"></div>
                 </div>
-                <span x-show="m.spot_numbers && m.spot_numbers.length"
-                      class="text-xs font-bold text-equb-green/70 shrink-0"
-                      x-text="'#' + m.spot_numbers[0]"></span>
               </button>
             </template>
           </div>
@@ -978,7 +982,7 @@ function payments() {
       const isNumber = /^\d+$/.test(q);
       return this.allMembers.filter(m => {
         if (isNumber) {
-          return m.spot_numbers && m.spot_numbers.some(sn => String(sn).startsWith(q));
+          return m.spot_numbers && m.spot_numbers.some(sn => String(sn) === q);
         }
         return m.name.toLowerCase().includes(q) ||
                (m.phone && m.phone.includes(q));
