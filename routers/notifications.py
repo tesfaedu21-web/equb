@@ -125,6 +125,19 @@ _ET_EPOCH = 1723856
 _ET_MONTHS = ["መስከረም", "ጥቅምት", "ህዳር", "ታህሳስ", "ጥር", "የካቲት",
                "መጋቢት", "ሚያዚያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"]
 
+_PAYMENT_METHOD_EN = {
+    "cash": "Cash",
+    "bank_transfer": "Bank Transfer",
+    "cheque": "Cheque",
+    "pot_sale": "Pot Sale",
+}
+_PAYMENT_METHOD_AM = {
+    "cash": "ጥሬ ገንዘብ",
+    "bank_transfer": "የባንክ ዝውውር",
+    "cheque": "ቼክ",
+    "pot_sale": "የድስት ሽያጭ",
+}
+
 
 def _to_et_date(date_str: str) -> str:
     """Convert a Gregorian date string to Ethiopian calendar (e.g. '15 ጥቅምት 2017')."""
@@ -167,10 +180,19 @@ def _render(template: str, vars: dict) -> str:
 def _pick_message(tmpl, cfg, vars_: dict) -> str:
     """Return rendered message in the configured language (en / am / both)."""
     lang = (cfg.sms_language or "en") if cfg else "en"
-    if lang in ("am", "both") and vars_.get("draw_date"):
-        vars_ = {**vars_, "draw_date": _to_et_date(str(vars_["draw_date"]))}
-    en_msg = _render(tmpl.message, vars_)
-    am_msg = _render(tmpl.message_am, vars_) if tmpl.message_am else en_msg
+    en_vars = vars_
+    am_vars = vars_
+    if lang in ("am", "both"):
+        overrides = {}
+        if vars_.get("draw_date"):
+            overrides["draw_date"] = _to_et_date(str(vars_["draw_date"]))
+        pm_key = vars_.get("_pm_key")
+        if pm_key:
+            overrides["payment_method"] = _PAYMENT_METHOD_AM.get(pm_key, vars_.get("payment_method", pm_key))
+        if overrides:
+            am_vars = {**vars_, **overrides}
+    en_msg = _render(tmpl.message, en_vars)
+    am_msg = _render(tmpl.message_am, am_vars) if tmpl.message_am else _render(tmpl.message, am_vars)
     if lang == "am":
         return am_msg
     if lang == "both" and tmpl.message_am:
@@ -213,14 +235,15 @@ def send_payment_confirmed(payment, db: Session) -> str:
         tmpl = db.query(NotificationTemplate).filter_by(key="payment_confirmed").first()
         if not tmpl or not tmpl.is_active:
             return "skipped"
-        method_label = {"cash": "Cash", "bank_transfer": "Bank Transfer",
-                        "cheque": "Cheque"}.get(payment.payment_method or "", "Cash")
+        pm_key = payment.payment_method or "cash"
+        method_label = _PAYMENT_METHOD_EN.get(pm_key, "Cash")
         vars_ = {
             "member_name": m.name,
             "amount": str(int(payment.amount)),
             "week_number": str(w.week_number),
             "draw_date": w.draw_date.strftime("%d %b %Y"),
             "payment_method": method_label,
+            "_pm_key": pm_key,
         }
         msg = _pick_message(tmpl, cfg, vars_)
         status, response = _send_sms(m.phone, msg, cfg, db=db,
