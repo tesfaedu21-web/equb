@@ -121,6 +121,40 @@ def _send_africastalking(phone: str, message: str, cfg: NotificationSettings) ->
         return "failed", str(e)
 
 
+_ET_EPOCH = 1723856
+_ET_MONTHS = ["መስከረም", "ጥቅምት", "ህዳር", "ታህሳስ", "ጥር", "የካቲት",
+               "መጋቢት", "ሚያዚያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"]
+
+
+def _to_et_date(date_str: str) -> str:
+    """Convert a Gregorian date string to Ethiopian calendar (e.g. '15 ጥቅምት 2017')."""
+    try:
+        from datetime import datetime
+        dt = None
+        for fmt in ("%Y-%m-%d", "%d %b %Y", "%d/%m/%Y", "%B %d, %Y"):
+            try:
+                dt = datetime.strptime(str(date_str).strip(), fmt)
+                break
+            except ValueError:
+                continue
+        if dt is None:
+            return date_str
+        y, m, d = dt.year, dt.month, dt.day
+        a = (14 - m) // 12
+        yy = y + 4800 - a
+        mm = m + 12 * a - 3
+        jdn = d + (153 * mm + 2) // 5 + 365 * yy + yy // 4 - yy // 100 + yy // 400 - 32045
+        r = (jdn - _ET_EPOCH) % 1461
+        n = r % 365 + 365 * (r // 1460)
+        et_year = 4 * ((jdn - _ET_EPOCH) // 1461) + (r // 365) - (r // 1460)
+        et_month = (n // 30) + 1
+        et_day = (n % 30) + 1
+        month_name = _ET_MONTHS[et_month - 1] if 1 <= et_month <= 13 else str(et_month)
+        return f"{et_day} {month_name} {et_year}"
+    except Exception:
+        return date_str
+
+
 def _render(template: str, vars: dict) -> str:
     for k, v in vars.items():
         template = template.replace("{" + k + "}", str(v))
@@ -133,6 +167,8 @@ def _render(template: str, vars: dict) -> str:
 def _pick_message(tmpl, cfg, vars_: dict) -> str:
     """Return rendered message in the configured language (en / am / both)."""
     lang = (cfg.sms_language or "en") if cfg else "en"
+    if lang in ("am", "both") and vars_.get("draw_date"):
+        vars_ = {**vars_, "draw_date": _to_et_date(str(vars_["draw_date"]))}
     en_msg = _render(tmpl.message, vars_)
     am_msg = _render(tmpl.message_am, vars_) if tmpl.message_am else en_msg
     if lang == "am":
