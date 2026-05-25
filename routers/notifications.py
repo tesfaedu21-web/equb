@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from database import (get_db, Member, Payment, Week, Cycle, MemberSpot,
-                      NotificationSettings, NotificationTemplate, NotificationLog)
+                      NotificationSettings, NotificationTemplate, NotificationLog, SmsQueue)
 from routers.deps import _require_feature
 
 router = APIRouter()
@@ -49,7 +49,19 @@ class BroadcastRequest(BaseModel):
 
 # ── SMS sending ──────────────────────────────────────────────────────────────
 
-def _send_sms(phone: str, message: str, cfg: NotificationSettings) -> tuple[str, str]:
+def _normalize_ethiopian_phone(phone: str) -> str:
+    """Convert Ethiopian phone numbers to +251XXXXXXXXX format."""
+    phone = phone.strip().replace(" ", "").replace("-", "")
+    if phone.startswith("+251"):
+        return phone
+    if phone.startswith("251") and len(phone) == 12:
+        return "+" + phone
+    if phone.startswith("0") and len(phone) == 10:
+        return "+251" + phone[1:]
+    return phone  # return as-is if unrecognized format
+
+
+def _send_sms(phone: str, message: str, cfg: NotificationSettings, db=None, **kwargs) -> tuple[str, str]:
     """
     Returns (status, provider_response).
     If is_active=False uses 'mock' mode — logs without sending.
@@ -60,11 +72,30 @@ def _send_sms(phone: str, message: str, cfg: NotificationSettings) -> tuple[str,
     if cfg.provider == "africastalking":
         return _send_africastalking(phone, message, cfg)
 
+    if cfg.provider == "android_gateway":
+        return _queue_for_android(phone, message, cfg, db, **kwargs)
+
     return "failed", f"Unknown provider: {cfg.provider}"
+
+
+def _queue_for_android(phone: str, message: str, cfg: NotificationSettings, db, **kwargs) -> tuple[str, str]:
+    if db is None:
+        return "failed", "android_gateway requires db session"
+    phone = _normalize_ethiopian_phone(phone)
+    job = SmsQueue(
+        phone=phone,
+        message=message,
+        template_key=kwargs.get("template_key"),
+        member_id=kwargs.get("member_id"),
+    )
+    db.add(job)
+    db.flush()  # get the id before commit
+    return "queued", f"sgw:{job.id}"
 
 
 def _send_africastalking(phone: str, message: str, cfg: NotificationSettings) -> tuple[str, str]:
     try:
+        phone = _normalize_ethiopian_phone(phone)
         data = urllib.parse.urlencode({
             "username": cfg.username or "sandbox",
             "to": phone,
@@ -142,7 +173,8 @@ def send_payment_confirmed(payment, db: Session) -> str:
             "payment_method": method_label,
         }
         msg = _render(tmpl.message, vars_)
-        status, response = _send_sms(m.phone, msg, cfg)
+        status, response = _send_sms(m.phone, msg, cfg, db=db,
+                                     template_key="payment_confirmed", member_id=m.id)
         db.add(NotificationLog(
             member_id=m.id, phone=m.phone,
             template_key="payment_confirmed", message=msg,
@@ -177,7 +209,8 @@ def send_missed_payment(payment, db: Session) -> str:
             "unpaid_count": "1",
         }
         msg = _render(tmpl.message, vars_)
-        status, response = _send_sms(m.phone, msg, cfg)
+        status, response = _send_sms(m.phone, msg, cfg, db=db,
+                                     template_key="missed_payment", member_id=m.id)
         db.add(NotificationLog(
             member_id=m.id, phone=m.phone,
             template_key="missed_payment", message=msg,
@@ -209,7 +242,8 @@ def send_draw_winner(week, member, db: Session) -> str:
             "net_pot": str(int(week.net_pot or 0)),
         }
         msg = _render(tmpl.message, vars_)
-        status, response = _send_sms(member.phone, msg, cfg)
+        status, response = _send_sms(member.phone, msg, cfg, db=db,
+                                     template_key="draw_winner", member_id=member.id)
         db.add(NotificationLog(
             member_id=member.id, phone=member.phone,
             template_key="draw_winner", message=msg,
@@ -239,7 +273,8 @@ def send_disbursement_ready(week, member, cheque_number: str, db: Session) -> st
             "cheque_number": cheque_number or "—",
         }
         msg = _render(tmpl.message, vars_)
-        status, response = _send_sms(member.phone, msg, cfg)
+        status, response = _send_sms(member.phone, msg, cfg, db=db,
+                                     template_key="disbursement_ready", member_id=member.id)
         db.add(NotificationLog(
             member_id=member.id, phone=member.phone,
             template_key="disbursement_ready", message=msg,
@@ -330,7 +365,8 @@ def send_to_members(data: SendRequest, request: Request, db: Session = Depends(g
         vars_ = _member_vars(m, db, cycle_id=active_cycle_id)
         vars_.update(data.extra or {})
         msg = _render(tmpl.message, vars_)
-        status, response = _send_sms(m.phone, msg, cfg)
+        status, response = _send_sms(m.phone, msg, cfg, db=db,
+                                     template_key=data.template_key, member_id=m.id)
 
         log = NotificationLog(
             member_id=m.id, phone=m.phone,
@@ -380,7 +416,8 @@ def broadcast_payment_reminder(week_id: int, request: Request, db: Session = Dep
             "draw_date": w.draw_date.strftime("%d %b %Y"),
         }
         msg = _render(tmpl.message, vars_)
-        status, response = _send_sms(m.phone, msg, cfg)
+        status, response = _send_sms(m.phone, msg, cfg, db=db,
+                                     template_key="payment_reminder", member_id=m.id)
         log = NotificationLog(
             member_id=m.id, phone=m.phone,
             template_key="payment_reminder", message=msg,
@@ -427,7 +464,8 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
         if vars_["unpaid_count"] == "0":
             continue
         msg = _render(tmpl.message, vars_)
-        status, response = _send_sms(m.phone, msg, cfg)
+        status, response = _send_sms(m.phone, msg, cfg, db=db,
+                                     template_key="missed_payment", member_id=m.id)
         log = NotificationLog(
             member_id=m.id, phone=m.phone,
             template_key="missed_payment", message=msg,

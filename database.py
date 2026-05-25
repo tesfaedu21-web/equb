@@ -445,6 +445,23 @@ class NotificationSettings(Base):
     username = Column(String, nullable=True)
     sender_id = Column(String, nullable=True)
     is_active = Column(Boolean, default=False)
+    device_token = Column(String, nullable=True)   # secret token for Android SMS gateway
+
+
+class SmsQueue(Base):
+    __tablename__ = "sms_queue"
+    id = Column(Integer, primary_key=True)
+    phone = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    template_key = Column(String, nullable=True)
+    member_id = Column(Integer, ForeignKey("members.id"), nullable=True)
+    status = Column(String, default="pending")     # pending | sent | failed | cancelled
+    attempts = Column(Integer, default=0)
+    created_at = Column(DateTime, default=_utcnow)
+    sent_at = Column(DateTime, nullable=True)
+    provider_response = Column(Text, nullable=True)
+
+    member = relationship("Member")
 
 
 class NotificationTemplate(Base):
@@ -655,6 +672,21 @@ def _migrate(engine):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_audit_log_table_record ON audit_log(table_name, record_id)",
         "CREATE INDEX IF NOT EXISTS ix_audit_log_timestamp ON audit_log(timestamp DESC)",
+        # Android SMS gateway: device token + outbound queue
+        "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS device_token VARCHAR",
+        """CREATE TABLE IF NOT EXISTS sms_queue (
+            id SERIAL PRIMARY KEY,
+            phone VARCHAR NOT NULL,
+            message TEXT NOT NULL,
+            template_key VARCHAR,
+            member_id INTEGER REFERENCES members(id),
+            status VARCHAR DEFAULT 'pending',
+            attempts INTEGER DEFAULT 0,
+            created_at TIMESTAMP,
+            sent_at TIMESTAMP,
+            provider_response TEXT
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_sms_queue_status ON sms_queue(status)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

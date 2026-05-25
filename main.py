@@ -17,6 +17,7 @@ from routers import members, draws, payments, reports, notifications
 from routers import auth as auth_router
 from routers import settings as settings_router
 from routers import disbursements as disbursements_router
+from routers import sms_gateway as sms_gateway_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -96,6 +97,7 @@ app.include_router(notifications.router,        prefix="/api/notifications", tag
 app.include_router(auth_router.router,          prefix="/api/auth",          tags=["auth"])
 app.include_router(settings_router.router,      prefix="/api/settings",      tags=["settings"])
 app.include_router(disbursements_router.router, prefix="/api/disbursements", tags=["disbursements"])
+app.include_router(sms_gateway_router.router,   prefix="/api/sms-gateway",   tags=["sms-gateway"])
 
 
 # ── Nightly scheduler jobs ────────────────────────────────────────────────────
@@ -239,12 +241,14 @@ async def security_headers(request: Request, call_next):
 
 
 # ── Auth middleware ───────────────────────────────────────────────────────────
+# Android SMS gateway endpoints use device-token auth, not session auth
+_GATEWAY_PUBLIC = {"/api/sms-gateway/pending", "/api/sms-gateway/ack"}
 _PUBLIC = {"/login", "/favicon.ico"}
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    if path in _PUBLIC or path.startswith("/static"):
+    if path in _PUBLIC or path in _GATEWAY_PUBLIC or path.startswith("/static"):
         return await call_next(request)
 
     uid = request.session.get("user_id")
@@ -264,6 +268,7 @@ async def auth_middleware(request: Request, call_next):
 @app.middleware("http")
 async def csrf_middleware(request: Request, call_next):
     if (request.url.path.startswith("/api/")
+            and request.url.path not in _GATEWAY_PUBLIC  # gateway uses device-token auth
             and request.method in ("POST", "PUT", "DELETE", "PATCH")):
         content_type = request.headers.get("content-type", "")
         # Multipart file uploads can't originate cross-site (browser file API restriction)
