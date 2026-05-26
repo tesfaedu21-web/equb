@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db, Member, MemberSpot, Payment, Week, Cycle, PotTransaction
+from database import get_db, Member, MemberSpot, Spot, Payment, Week, Cycle, PotTransaction
 
 router = APIRouter()
 
@@ -37,29 +37,37 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
     if not phone or len(phone.strip()) < 7:
         raise HTTPException(400, "Phone number too short")
 
-    variants = _normalize_phone(phone.strip())
-    member = None
-    for v in variants:
-        member = db.query(Member).filter(Member.phone == v).first()
-        if member:
-            break
-    if not member or member.status == "left":
-        raise HTTPException(404, "No member found with this phone number and spot number")
-
-    # Verify spot number belongs to this member in the active cycle
+    # Join Member → MemberSpot → Spot in one query so that:
+    # - a member with multiple spots can log in with any of their spot numbers
+    # - two different members sharing the same phone but different spots are
+    #   each resolved correctly (no .first() on phone alone)
     active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     cycle_id = active_cycle.id if active_cycle else None
-    spot_match = (
-        db.query(MemberSpot)
-        .join(MemberSpot.spot)
-        .filter(
-            MemberSpot.member_id == member.id,
-            MemberSpot.is_active == True,
-            *([MemberSpot.cycle_id == cycle_id] if cycle_id else []),
+
+    variants = _normalize_phone(phone.strip())
+    sa_found = None
+    for v in variants:
+        q = (
+            db.query(MemberSpot)
+            .join(MemberSpot.member)
+            .join(MemberSpot.spot)
+            .filter(
+                Member.phone == v,
+                Spot.number == spot_number,
+                MemberSpot.is_active == True,
+            )
         )
-        .all()
-    )
-    if not any(sa.spot and sa.spot.number == spot_number for sa in spot_match):
+        if cycle_id:
+            q = q.filter(MemberSpot.cycle_id == cycle_id)
+        sa_found = q.first()
+        if sa_found:
+            break
+
+    if not sa_found:
+        raise HTTPException(404, "No member found with this phone number and spot number")
+
+    member = sa_found.member
+    if member.status == "left":
         raise HTTPException(404, "No member found with this phone number and spot number")
 
     sas = [sa for sa in member.spot_assignments
