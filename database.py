@@ -490,8 +490,51 @@ class NotificationLog(Base):
     provider_response = Column(Text, nullable=True)
     batch_id = Column(String, nullable=True)
     sent_at = Column(DateTime, default=_utcnow)
+    message_id = Column(String, nullable=True)          # provider message ID for delivery tracking
+    delivery_status = Column(String, nullable=True)     # Success | Failed | Rejected | etc.
+    delivered_at = Column(DateTime, nullable=True)
 
     member = relationship("Member")
+
+
+# ── Debt Collection ───────────────────────────────────────────────────────────
+
+class DebtCase(Base):
+    """One open debt-collection case per member per cycle."""
+    __tablename__ = "debt_cases"
+    id         = Column(Integer, primary_key=True)
+    member_id  = Column(Integer, ForeignKey("members.id"), nullable=False)
+    cycle_id   = Column(Integer, ForeignKey("cycles.id"), nullable=True)
+    status     = Column(String, default="open")   # open | promise_to_pay | escalated | resolved | written_off
+    total_owed = Column(Float, default=0)
+    promise_date = Column(DateTime, nullable=True)
+    resolved_at  = Column(DateTime, nullable=True)
+    notes      = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    member   = relationship("Member")
+    cycle    = relationship("Cycle")
+    contacts = relationship("DebtContact", back_populates="case",
+                            order_by="DebtContact.contact_date")
+
+
+class DebtContact(Base):
+    """One contact-attempt log entry within a DebtCase."""
+    __tablename__ = "debt_contacts"
+    id             = Column(Integer, primary_key=True)
+    case_id        = Column(Integer, ForeignKey("debt_cases.id"), nullable=False)
+    contact_date   = Column(DateTime, default=_utcnow)
+    method         = Column(String, nullable=False)   # phone | in_person | sms | email | letter
+    outcome        = Column(String, nullable=False)   # contacted | no_answer | promise | refused | partial_payment
+    promised_amount = Column(Float, nullable=True)
+    promise_date   = Column(DateTime, nullable=True)
+    notes          = Column(Text, nullable=True)
+    logged_by_id   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at     = Column(DateTime, default=_utcnow)
+
+    case      = relationship("DebtCase", back_populates="contacts")
+    logged_by = relationship("User", foreign_keys=[logged_by_id])
 
 
 # ── Seed data ─────────────────────────────────────────────────────────────────
@@ -599,6 +642,9 @@ def _migrate(engine):
         "ALTER TABLE settings ADD COLUMN include_worker_slot INTEGER DEFAULT 1",
         "ALTER TABLE settings ADD COLUMN IF NOT EXISTS penalty_rate REAL DEFAULT 0",
         "ALTER TABLE settings ADD COLUMN IF NOT EXISTS penalty_grace_days INTEGER DEFAULT 0",
+        "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS message_id VARCHAR",
+        "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS delivery_status VARCHAR",
+        "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP",
         "ALTER TABLE weeks ADD COLUMN is_worker_week INTEGER DEFAULT 0",
         "ALTER TABLE pot_disbursements ADD COLUMN service_fee REAL DEFAULT 0",
         # Cycle-scoped memberships: track which cycle each member-spot assignment belongs to
@@ -715,6 +761,34 @@ def _migrate(engine):
         # Bilingual templates + language preference
         "ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS message_am TEXT",
         "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS sms_language VARCHAR DEFAULT 'en'",
+        # Debt collection workflow
+        """CREATE TABLE IF NOT EXISTS debt_cases (
+            id SERIAL PRIMARY KEY,
+            member_id INTEGER REFERENCES members(id) NOT NULL,
+            cycle_id INTEGER REFERENCES cycles(id),
+            status VARCHAR DEFAULT 'open',
+            total_owed REAL DEFAULT 0,
+            promise_date TIMESTAMP,
+            resolved_at TIMESTAMP,
+            notes TEXT,
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS debt_contacts (
+            id SERIAL PRIMARY KEY,
+            case_id INTEGER REFERENCES debt_cases(id) NOT NULL,
+            contact_date TIMESTAMP,
+            method VARCHAR NOT NULL,
+            outcome VARCHAR NOT NULL,
+            promised_amount REAL,
+            promise_date TIMESTAMP,
+            notes TEXT,
+            logged_by_id INTEGER REFERENCES users(id),
+            created_at TIMESTAMP
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_debt_cases_member ON debt_cases(member_id)",
+        "CREATE INDEX IF NOT EXISTS ix_debt_cases_status ON debt_cases(status)",
+        "CREATE INDEX IF NOT EXISTS ix_debt_contacts_case ON debt_contacts(case_id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

@@ -1,0 +1,441 @@
+{% extends "base.html" %}
+{% block title %}Collections — {{ group_name }}{% endblock %}
+{% block nav_collections %}active{% endblock %}
+
+{% block content %}
+<div x-data="collectionsPage()" x-init="init()" class="p-8 space-y-6 max-w-7xl mx-auto">
+
+  <!-- Header -->
+  <div class="flex items-start justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Debt Collection</h1>
+      <p class="text-sm text-gray-500 mt-0.5">Track overdue members, log contacts, and manage follow-ups</p>
+    </div>
+    <button @click="generateCases()" :disabled="generating" class="btn-primary flex items-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <span x-text="generating ? 'Scanning…' : 'Generate Cases'"></span>
+    </button>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-bold text-amber-600" x-text="summary.open || 0"></div>
+      <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Open</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-bold text-blue-600" x-text="summary.promise_to_pay || 0"></div>
+      <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Promised</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-bold text-red-600" x-text="summary.escalated || 0"></div>
+      <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Escalated</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-bold text-green-600" x-text="summary.resolved || 0"></div>
+      <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Resolved</div>
+    </div>
+    <div class="card p-4 text-center col-span-2 lg:col-span-1">
+      <div class="text-2xl font-bold text-gray-800" x-text="fmt(summary.total_owed || 0)"></div>
+      <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Total Owed</div>
+    </div>
+  </div>
+
+  <!-- Filter + search bar -->
+  <div class="flex flex-wrap gap-2 items-center">
+    <template x-for="f in [{v:'',l:'All'},{v:'open',l:'Open'},{v:'promise_to_pay',l:'Promised'},{v:'escalated',l:'Escalated'},{v:'resolved',l:'Resolved'},{v:'written_off',l:'Written Off'}]" :key="f.v">
+      <button @click="filterStatus = f.v"
+        :class="filterStatus === f.v ? 'btn-primary' : 'btn-secondary'"
+        class="text-xs px-3 py-1.5" x-text="f.l">
+      </button>
+    </template>
+    <div class="flex-1 min-w-[180px]">
+      <input x-model="search" type="text" placeholder="Search name or phone…"
+        class="w-full text-sm" style="padding: 7px 12px; border-radius: 10px;"/>
+    </div>
+  </div>
+
+  <!-- Cases table -->
+  <div class="card p-0 overflow-hidden">
+    <div x-show="loading" class="p-8 text-center text-gray-400 text-sm">Loading…</div>
+    <div x-show="!loading && filteredCases.length === 0" class="p-12 text-center">
+      <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+      </svg>
+      <p class="text-gray-400 text-sm" x-text="cases.length === 0 ? 'No cases yet — click Generate Cases to scan for overdue members.' : 'No cases match the current filter.'"></p>
+    </div>
+    <table x-show="!loading && filteredCases.length > 0" class="w-full">
+      <thead class="bg-gray-50" style="border-bottom: 1px solid var(--c-border);">
+        <tr>
+          <th class="px-4 py-3 text-left">Member</th>
+          <th class="px-4 py-3 text-left">Phone</th>
+          <th class="px-4 py-3 text-right">Owed (ETB)</th>
+          <th class="px-4 py-3 text-center">Status</th>
+          <th class="px-4 py-3 text-center">Contacts</th>
+          <th class="px-4 py-3 text-left">Promise Date</th>
+          <th class="px-4 py-3 text-left">Last Contact</th>
+          <th class="px-4 py-3 text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="c in filteredCases" :key="c.id">
+          <tr class="cursor-pointer" @click="openDetail(c.id)">
+            <td class="px-4 py-3 font-medium text-gray-900 amharic" x-text="c.member_name || '—'"></td>
+            <td class="px-4 py-3 text-gray-500 font-mono text-xs" x-text="c.phone || '—'"></td>
+            <td class="px-4 py-3 text-right font-bold" :class="c.total_owed > 0 ? 'text-red-600' : 'text-gray-400'"
+                x-text="c.total_owed > 0 ? new Intl.NumberFormat('en-ET').format(Math.round(c.total_owed)) : '—'"></td>
+            <td class="px-4 py-3 text-center">
+              <span :class="statusBadge(c.status)" class="badge" x-text="statusLabel(c.status)"></span>
+            </td>
+            <td class="px-4 py-3 text-center text-gray-500 text-sm" x-text="c.contact_count || 0"></td>
+            <td class="px-4 py-3 text-sm text-gray-500" x-text="c.promise_date ? fmtDate(c.promise_date) : '—'"></td>
+            <td class="px-4 py-3 text-sm text-gray-400" x-text="c.last_contact ? fmtDate(c.last_contact) : '—'"></td>
+            <td class="px-4 py-3 text-center" @click.stop>
+              <button @click="openDetail(c.id)"
+                class="text-xs px-3 py-1 rounded-lg font-medium text-equb-green hover:bg-green-50 border border-green-200 transition-colors">
+                View
+              </button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Case Detail Panel ────────────────────────────────────────────────────── -->
+  <div x-show="panel.open" x-cloak class="fixed inset-0 z-40 flex justify-end">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="panel.open=false"></div>
+
+    <!-- Slide-over -->
+    <div class="relative w-full max-w-lg flex flex-col shadow-2xl overflow-y-auto"
+         style="background: var(--bg-modal);"
+         x-transition:enter="transition ease-out duration-250"
+         x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
+
+      <!-- Panel header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color: var(--c-border);">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900 amharic" x-text="panel.case?.member_name || 'Case Detail'"></h2>
+          <div class="text-sm text-gray-500" x-text="panel.case?.phone || ''"></div>
+        </div>
+        <button @click="panel.open=false" class="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Amount + status -->
+      <div class="px-6 py-4 flex items-center gap-4 border-b" style="border-color: var(--c-border); background: rgba(0,0,0,0.02);">
+        <div class="flex-1">
+          <div class="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Amount Owed</div>
+          <div class="text-2xl font-bold text-red-600"
+               x-text="panel.case ? new Intl.NumberFormat('en-ET').format(Math.round(panel.case.total_owed)) + ' ETB' : '—'"></div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Status</div>
+          <select x-model="panel.newStatus" @change="updateStatus()"
+            class="text-sm font-semibold" style="width: auto; min-width: 140px; padding: 6px 32px 6px 12px;">
+            <option value="open">Open</option>
+            <option value="promise_to_pay">Promised to Pay</option>
+            <option value="escalated">Escalated</option>
+            <option value="resolved">Resolved</option>
+            <option value="written_off">Written Off</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Promise date -->
+      <div class="px-6 py-4 border-b" style="border-color: var(--c-border);">
+        <div class="flex items-end gap-3">
+          <div class="flex-1">
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Promise Date</label>
+            <input type="date" x-model="panel.promiseDate" class="text-sm"/>
+          </div>
+          <button @click="savePromiseDate()" class="btn-secondary text-xs px-3 py-2 flex-shrink-0">Save</button>
+        </div>
+        <div class="mt-2">
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Case Notes</label>
+          <textarea x-model="panel.notes" rows="2" class="text-sm resize-none" placeholder="Internal notes…"></textarea>
+          <button @click="saveNotes()" class="mt-1.5 text-xs text-equb-green font-medium hover:underline">Save notes</button>
+        </div>
+      </div>
+
+      <!-- Log Contact form -->
+      <div class="px-6 py-4 border-b" style="border-color: var(--c-border);">
+        <h3 class="text-sm font-bold text-gray-800 mb-3">Log Contact</h3>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Method</label>
+            <select x-model="newContact.method" class="text-sm">
+              <option value="phone">Phone Call</option>
+              <option value="in_person">In Person</option>
+              <option value="sms">SMS</option>
+              <option value="email">Email</option>
+              <option value="letter">Letter</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Outcome</label>
+            <select x-model="newContact.outcome" class="text-sm">
+              <option value="contacted">Contacted</option>
+              <option value="no_answer">No Answer</option>
+              <option value="promise">Made a Promise</option>
+              <option value="refused">Refused to Pay</option>
+              <option value="partial_payment">Partial Payment</option>
+            </select>
+          </div>
+        </div>
+        <div x-show="newContact.outcome === 'promise'" class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Promised Amount (ETB)</label>
+            <input type="number" x-model="newContact.promised_amount" placeholder="0" class="text-sm"/>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Promise Date</label>
+            <input type="date" x-model="newContact.promise_date" class="text-sm"/>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notes</label>
+          <textarea x-model="newContact.notes" rows="2" class="text-sm resize-none" placeholder="What was said…"></textarea>
+        </div>
+        <button @click="logContact()" :disabled="savingContact" class="btn-primary w-full text-sm">
+          <span x-text="savingContact ? 'Saving…' : 'Log Contact'"></span>
+        </button>
+      </div>
+
+      <!-- Contact history -->
+      <div class="px-6 py-4 flex-1">
+        <h3 class="text-sm font-bold text-gray-800 mb-3" x-text="`Contact History (${(panel.case?.contacts || []).length})`"></h3>
+        <div x-show="!panel.case?.contacts?.length" class="text-sm text-gray-400 text-center py-6">
+          No contacts logged yet.
+        </div>
+        <div class="space-y-3">
+          <template x-for="ct in (panel.case?.contacts || [])" :key="ct.id">
+            <div class="rounded-xl border p-3 text-sm relative group" style="border-color: var(--c-border); background: rgba(0,0,0,0.02);">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-semibold text-gray-700 capitalize" x-text="methodLabel(ct.method)"></span>
+                  <span :class="outcomeBadge(ct.outcome)" class="badge text-xs" x-text="outcomeLabel(ct.outcome)"></span>
+                </div>
+                <div class="flex items-center gap-1 flex-shrink-0">
+                  <span class="text-xs text-gray-400" x-text="ct.contact_date ? fmtDate(ct.contact_date) : ''"></span>
+                  <button @click="deleteContact(ct.id)"
+                    class="hidden group-hover:flex w-6 h-6 items-center justify-center rounded-lg text-red-400 hover:bg-red-50 transition-colors ml-1">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div x-show="ct.promised_amount || ct.promise_date" class="mt-1 text-xs text-blue-600 font-medium">
+                Promise: <span x-text="ct.promised_amount ? new Intl.NumberFormat('en-ET').format(ct.promised_amount) + ' ETB' : ''"></span>
+                <span x-text="ct.promise_date ? ' by ' + fmtDate(ct.promise_date) : ''"></span>
+              </div>
+              <div x-show="ct.notes" class="mt-1 text-gray-600 text-xs" x-text="ct.notes"></div>
+              <div x-show="ct.logged_by" class="mt-1 text-gray-400 text-xs" x-text="'by ' + ct.logged_by"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function collectionsPage() {
+  return {
+    cases: [],
+    summary: {},
+    loading: true,
+    generating: false,
+    filterStatus: '',
+    search: '',
+    panel: { open: false, case: null, newStatus: 'open', promiseDate: '', notes: '' },
+    newContact: { method: 'phone', outcome: 'contacted', promised_amount: '', promise_date: '', notes: '' },
+    savingContact: false,
+
+    get filteredCases() {
+      const s = this.search.toLowerCase();
+      return this.cases.filter(c => {
+        if (this.filterStatus && c.status !== this.filterStatus) return false;
+        if (s) {
+          return (c.member_name || '').toLowerCase().includes(s) ||
+                 (c.phone || '').includes(s);
+        }
+        return true;
+      });
+    },
+
+    async init() {
+      await Promise.all([this.loadCases(), this.loadSummary()]);
+      this.loading = false;
+    },
+
+    async loadCases() {
+      try {
+        this.cases = await this.api('GET', '/api/debts');
+      } catch(e) {
+        this.showToast('Failed to load cases', 'error');
+      }
+    },
+
+    async loadSummary() {
+      try {
+        this.summary = await this.api('GET', '/api/debts/summary');
+      } catch(e) {}
+    },
+
+    async generateCases() {
+      this.generating = true;
+      try {
+        const r = await this.api('POST', '/api/debts/generate');
+        this.showToast(`${r.created} new case(s) created, ${r.updated} updated`);
+        await Promise.all([this.loadCases(), this.loadSummary()]);
+      } catch(e) {
+        this.showToast(e.message || 'Failed to generate cases', 'error');
+      } finally {
+        this.generating = false;
+      }
+    },
+
+    async openDetail(id) {
+      try {
+        const c = await this.api('GET', `/api/debts/${id}`);
+        this.panel.case = c;
+        this.panel.newStatus = c.status;
+        this.panel.promiseDate = c.promise_date ? c.promise_date.slice(0, 10) : '';
+        this.panel.notes = c.notes || '';
+        this.newContact = { method: 'phone', outcome: 'contacted', promised_amount: '', promise_date: '', notes: '' };
+        this.panel.open = true;
+      } catch(e) {
+        this.showToast('Failed to load case', 'error');
+      }
+    },
+
+    async updateStatus() {
+      if (!this.panel.case) return;
+      try {
+        const updated = await this.api('PUT', `/api/debts/${this.panel.case.id}`, { status: this.panel.newStatus });
+        this.panel.case = { ...this.panel.case, ...updated };
+        const idx = this.cases.findIndex(c => c.id === updated.id);
+        if (idx !== -1) this.cases[idx] = { ...this.cases[idx], ...updated };
+        await this.loadSummary();
+        this.showToast('Status updated');
+      } catch(e) {
+        this.showToast(e.message || 'Failed to update status', 'error');
+      }
+    },
+
+    async savePromiseDate() {
+      if (!this.panel.case) return;
+      try {
+        const updated = await this.api('PUT', `/api/debts/${this.panel.case.id}`, {
+          promise_date: this.panel.promiseDate || null
+        });
+        this.panel.case = { ...this.panel.case, ...updated };
+        const idx = this.cases.findIndex(c => c.id === updated.id);
+        if (idx !== -1) this.cases[idx] = { ...this.cases[idx], ...updated };
+        this.showToast('Promise date saved');
+      } catch(e) {
+        this.showToast(e.message || 'Failed to save', 'error');
+      }
+    },
+
+    async saveNotes() {
+      if (!this.panel.case) return;
+      try {
+        await this.api('PUT', `/api/debts/${this.panel.case.id}`, { notes: this.panel.notes });
+        this.showToast('Notes saved');
+      } catch(e) {
+        this.showToast(e.message || 'Failed to save notes', 'error');
+      }
+    },
+
+    async logContact() {
+      if (!this.panel.case) return;
+      this.savingContact = true;
+      try {
+        const payload = {
+          method:           this.newContact.method,
+          outcome:          this.newContact.outcome,
+          promised_amount:  this.newContact.promised_amount ? parseFloat(this.newContact.promised_amount) : null,
+          promise_date:     this.newContact.promise_date || null,
+          notes:            this.newContact.notes || null,
+        };
+        const ct = await this.api('POST', `/api/debts/${this.panel.case.id}/contacts`, payload);
+        // Reload full case to get updated status + contacts
+        const c = await this.api('GET', `/api/debts/${this.panel.case.id}`);
+        this.panel.case = c;
+        this.panel.newStatus = c.status;
+        const idx = this.cases.findIndex(x => x.id === c.id);
+        if (idx !== -1) this.cases[idx] = { ...this.cases[idx], contact_count: c.contacts.length, last_contact: c.contacts[c.contacts.length-1]?.contact_date };
+        this.newContact = { method: 'phone', outcome: 'contacted', promised_amount: '', promise_date: '', notes: '' };
+        await this.loadSummary();
+        this.showToast('Contact logged');
+      } catch(e) {
+        this.showToast(e.message || 'Failed to log contact', 'error');
+      } finally {
+        this.savingContact = false;
+      }
+    },
+
+    async deleteContact(contactId) {
+      if (!this.panel.case) return;
+      if (!confirm('Remove this contact log?')) return;
+      try {
+        await this.api('DELETE', `/api/debts/${this.panel.case.id}/contacts/${contactId}`);
+        const c = await this.api('GET', `/api/debts/${this.panel.case.id}`);
+        this.panel.case = c;
+        this.showToast('Contact removed');
+      } catch(e) {
+        this.showToast(e.message || 'Failed to delete', 'error');
+      }
+    },
+
+    statusLabel(s) {
+      return {open:'Open', promise_to_pay:'Promised', escalated:'Escalated', resolved:'Resolved', written_off:'Written Off'}[s] || s;
+    },
+
+    statusBadge(s) {
+      return {
+        open:           'badge-pending',
+        promise_to_pay: 'badge-drawn',
+        escalated:      'badge-missed',
+        resolved:       'badge-paid',
+        written_off:    'badge-left',
+      }[s] || 'badge-pending';
+    },
+
+    methodLabel(m) {
+      return {phone:'Phone Call', in_person:'In Person', sms:'SMS', email:'Email', letter:'Letter'}[m] || m;
+    },
+
+    outcomeLabel(o) {
+      return {contacted:'Contacted', no_answer:'No Answer', promise:'Promised', refused:'Refused', partial_payment:'Partial'}[o] || o;
+    },
+
+    outcomeBadge(o) {
+      return {
+        contacted:       'badge-active',
+        no_answer:       'badge-left',
+        promise:         'badge-drawn',
+        refused:         'badge-missed',
+        partial_payment: 'badge-late',
+      }[o] || 'badge-pending';
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -18,6 +18,7 @@ from routers import auth as auth_router
 from routers import settings as settings_router
 from routers import disbursements as disbursements_router
 from routers import sms_gateway as sms_gateway_router
+from routers import debts as debts_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -98,6 +99,7 @@ app.include_router(auth_router.router,          prefix="/api/auth",          tag
 app.include_router(settings_router.router,      prefix="/api/settings",      tags=["settings"])
 app.include_router(disbursements_router.router, prefix="/api/disbursements", tags=["disbursements"])
 app.include_router(sms_gateway_router.router,   prefix="/api/sms-gateway",   tags=["sms-gateway"])
+app.include_router(debts_router.router,         prefix="/api/debts",         tags=["debts"])
 
 
 # ── Nightly scheduler jobs ────────────────────────────────────────────────────
@@ -466,6 +468,10 @@ async def settings_page(request: Request):
     if getattr(request.state, "user_role", "") not in ("admin", "superadmin"):
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "settings.html", _ctx(request))
+
+@app.get("/collections", response_class=HTMLResponse)
+async def collections_page(request: Request):
+    return templates.TemplateResponse(request, "debts.html", _ctx(request))
 
 
 

@@ -116,6 +116,16 @@ def _send_africastalking(phone: str, message: str, cfg: NotificationSettings) ->
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             body = resp.read().decode()
+            # Extract messageId for delivery tracking
+            try:
+                import json as _json
+                parsed = _json.loads(body)
+                recipients = parsed.get("SMSMessageData", {}).get("Recipients", [])
+                if recipients:
+                    msg_id = recipients[0].get("messageId", "")
+                    return "sent", f"{msg_id}|{body}"
+            except Exception:
+                pass
             return "sent", body
     except Exception as e:
         return "failed", str(e)
