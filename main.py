@@ -174,6 +174,102 @@ async def send_pre_draw_reminders():
     finally:
         db.close()
 
+async def run_daily_backup():
+    """Daily at 02:00 UTC: pg_dump → /tmp/equb_backups/, keep last 7."""
+    import subprocess
+    from urllib.parse import urlparse
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url:
+        logger.warning("backup: DATABASE_URL not set")
+        return
+    try:
+        p = urlparse(db_url)
+        backup_dir = "/tmp/equb_backups"
+        os.makedirs(backup_dir, exist_ok=True)
+        timestamp = _utcnow().strftime("%Y%m%d_%H%M%S")
+        out_file = os.path.join(backup_dir, f"equb_{timestamp}.sql")
+        env = os.environ.copy()
+        env["PGPASSWORD"] = p.password or ""
+        cmd = [
+            "pg_dump",
+            "-h", p.hostname or "localhost",
+            "-p", str(p.port or 5432),
+            "-U", p.username or "",
+            "-d", p.path.lstrip("/"),
+            "--no-password", "--format=plain", "--encoding=UTF8",
+            "-f", out_file,
+        ]
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            logger.error("backup: pg_dump failed: %s", r.stderr[:300])
+            return
+        size = os.path.getsize(out_file)
+        logger.info("backup: saved %s (%d bytes)", out_file, size)
+        # Prune to last 7 backups
+        all_bk = sorted(
+            [f for f in os.listdir(backup_dir) if f.startswith("equb_") and f.endswith(".sql")],
+            reverse=True,
+        )
+        for old in all_bk[7:]:
+            os.remove(os.path.join(backup_dir, old))
+    except FileNotFoundError:
+        logger.warning("backup: pg_dump not found on this host")
+    except Exception as e:
+        logger.error("backup: error: %s", e)
+
+
+async def send_weekly_report():
+    """Monday 08:00 UTC: email weekly summary to admin."""
+    db = next(get_db())
+    try:
+        from database import Settings, Cycle, Week, Member, Payment
+        cfg = db.query(Settings).first()
+        if not cfg or not cfg.smtp_host or not cfg.smtp_user or not cfg.smtp_password:
+            return
+        admin_email = getattr(cfg, "email_from", None) or cfg.smtp_user
+        group_name  = cfg.group_name or "Equb"
+        now         = _utcnow()
+        week_ago    = now - timedelta(days=7)
+
+        active_cycles = db.query(Cycle).filter(Cycle.status == "active").all()
+        sections = []
+        for cycle in active_cycles:
+            week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle.id).all()]
+            paid_wk  = db.query(Payment).filter(
+                Payment.week_id.in_(week_ids),
+                Payment.status == "paid",
+                Payment.paid_date >= week_ago,
+            ).count() if week_ids else 0
+            outstanding = db.query(Payment).filter(
+                Payment.week_id.in_(week_ids),
+                Payment.status.in_(["late", "missed"]),
+            ).count() if week_ids else 0
+            members_ct = db.query(Member).filter(Member.status == "active").count()
+            sections.append(
+                f"Cycle: {cycle.name}\n"
+                f"  - Payments collected this week : {paid_wk}\n"
+                f"  - Outstanding (late/missed)    : {outstanding}\n"
+                f"  - Active members               : {members_ct}\n"
+            )
+
+        body = (
+            f"Weekly Report — {now.strftime('%d %B %Y')}\n"
+            f"{'='*40}\n\n"
+            + ("\n".join(sections) if sections else "No active cycles this week.\n")
+            + "\n\nThis report is sent every Monday automatically by your Equb system."
+        )
+        from routers.notifications import _send_email
+        status, detail = _send_email(admin_email, f"{group_name} — Weekly Report", body, cfg)
+        if status == "sent":
+            logger.info("weekly report: sent to %s", admin_email)
+        else:
+            logger.warning("weekly report: %s", detail)
+    except Exception as e:
+        logger.error("weekly report error: %s", e)
+    finally:
+        db.close()
+
+
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -189,8 +285,10 @@ async def lifespan(app: FastAPI):
         scheduler.add_job(auto_close_past_weeks,        CronTrigger(hour=21, minute=0))
         scheduler.add_job(send_pre_draw_reminders,      CronTrigger(hour=18, minute=0))
         scheduler.add_job(fire_scheduled_notifications, IntervalTrigger(minutes=5))
+        scheduler.add_job(run_daily_backup,             CronTrigger(hour=2, minute=0))
+        scheduler.add_job(send_weekly_report,           CronTrigger(day_of_week="mon", hour=8, minute=0))
         scheduler.start()
-        logger.info("scheduler: auto-close at 21:00 UTC, reminders at 18:00 UTC, notifications every 5 min")
+        logger.info("scheduler: jobs registered — auto-close 21:00, reminders 18:00, backup 02:00, weekly-report Mon 08:00")
     except ImportError:
         logger.warning("scheduler: APScheduler not installed — skipping scheduled jobs")
     yield
@@ -201,9 +299,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Equb Management System",
     lifespan=lifespan,
-    docs_url=None  if IS_PRODUCTION else "/api/docs",
-    redoc_url=None if IS_PRODUCTION else "/api/redoc",
-    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/openapi.json",
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

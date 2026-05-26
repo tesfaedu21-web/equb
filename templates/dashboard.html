@@ -10,7 +10,13 @@
   <div class="flex items-center justify-between flex-wrap gap-3">
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
-      <p class="text-sm text-gray-500 mt-0.5" x-text="stats.cycle ? stats.cycle.name : 'No active cycle'"></p>
+      <div class="flex items-center gap-2 mt-0.5">
+        <p class="text-sm text-gray-500" x-text="stats.cycle ? stats.cycle.name : 'No active cycle'"></p>
+        <span class="flex items-center gap-1 text-xs text-green-600 font-medium" x-show="lastRefresh" x-cloak>
+          <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block"></span>
+          Live · <span x-text="lastRefreshLabel"></span>
+        </span>
+      </div>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
       <!-- Cycle selector -->
@@ -473,6 +479,8 @@ function dashboard() {
     selectedCycleId: '',
     trendMode: 'compliance',
     loading: true,
+    lastRefresh: null,
+    lastRefreshLabel: 'just now',
 
     async init() {
       try {
@@ -481,6 +489,14 @@ function dashboard() {
         if (active) this.selectedCycleId = active.id;
       } catch(e) { this.showToast('Failed to load cycles', 'error'); }
       await this.loadStats();
+      this.startAutoRefresh(() => this.load());
+      setInterval(() => this._updateRefreshLabel(), 30000);
+    },
+
+    _updateRefreshLabel() {
+      if (!this.lastRefresh) return;
+      const mins = Math.floor((Date.now() - this.lastRefresh) / 60000);
+      this.lastRefreshLabel = mins < 1 ? 'just now' : `${mins}m ago`;
     },
 
     async load() {
@@ -501,6 +517,8 @@ function dashboard() {
         this.showToast('Failed to load stats', 'error');
       } finally {
         this.loading = false;
+        this.lastRefresh = Date.now();
+        this.lastRefreshLabel = 'just now';
         await this.$nextTick();
         this._drawChart();
       }

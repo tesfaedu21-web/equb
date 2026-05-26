@@ -12,6 +12,12 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{% block title %}{{ group_name }} — Equb{% endblock %}</title>
+  <link rel="manifest" href="/static/manifest.json"/>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml"/>
+  <meta name="theme-color" content="#078930"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Equb"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -713,6 +719,13 @@
             </svg>
             <span class="nav-label">Settings</span>
           </a>
+          <a href="/api/docs" target="_blank" @click="sidebarOpen = false" x-show="isSuperAdmin" class="nav-link" title="API Docs">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
+                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+            </svg>
+            <span class="nav-label">API Docs</span>
+          </a>
         </div>
       </template>
     </nav>
@@ -905,6 +918,13 @@ function app() {
 
     _loadingCount: 0,
 
+    startAutoRefresh(fn, intervalMs = 60000) {
+      setInterval(() => {
+        const modalOpen = !!document.querySelector('.modal-backdrop:not([style*="display: none"])');
+        if (!modalOpen && !document.hidden) fn();
+      }, intervalMs);
+    },
+
     async api(method, url, body) {
       const loader = document.getElementById('global-loader');
       this._loadingCount++;
@@ -933,6 +953,12 @@ function app() {
 </script>
 
 {% block scripts %}{% endblock %}
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+}
+</script>
 
 <script>
 // ── ARIA modal focus management ───────────────────────────────────────────
