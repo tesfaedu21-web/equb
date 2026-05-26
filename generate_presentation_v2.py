@@ -170,7 +170,7 @@ def slide_title():
         ("113+", "Member Spots",    GREEN),
         ("6",    "SMS Templates",   GOLD),
         ("3",    "Access Roles",    BLUE),
-        ("v3.0", "Live on Railway", RED),
+        ("v3.1", "Live on Railway", RED),
     ]
     sx = Inches(0.55)
     for i, (val, label, color) in enumerate(stats):
@@ -569,7 +569,7 @@ def slide_closing():
         px += pw + pg
 
     # App info
-    txt(slide, "Equb Management Platform  ·  v3.0  ·  FastAPI + PostgreSQL + Railway",
+    txt(slide, "Equb Management Platform  ·  v3.1  ·  FastAPI + PostgreSQL + Railway",
         Inches(0.5), Inches(6.85), Inches(12.33), Inches(0.45),
         11, color=RGBColor(0x44, 0x68, 0x90), align=PP_ALIGN.CENTER)
 

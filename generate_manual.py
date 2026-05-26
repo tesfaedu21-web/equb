@@ -215,7 +215,7 @@ def s_cover():
       13, color=RGBColor(0x88, 0xA4, 0xCC))
     # Stat chips (v1 style)
     chips_data = [
-        ("v3.0", GREEN), ("FastAPI + PostgreSQL", BLUE),
+        ("v3.1", GREEN), ("FastAPI + PostgreSQL", BLUE),
         ("Railway.app", RED), ("30 Slides", GOLD),
     ]
     bx = Inches(0.58)
@@ -1106,7 +1106,7 @@ def s_back_cover():
     R(sl, Inches(3.5), Inches(3.6), Inches(6.33), Inches(0.055), GOLD)
 
     for i, (label, value) in enumerate([
-        ("Version",  "v3.0  |  FastAPI · PostgreSQL · Railway.app"),
+        ("Version",  "v3.1  |  FastAPI · PostgreSQL · Railway.app"),
         ("Coverage", "All roles: Superadmin · Admin · Cashier"),
         ("Support",  "Contact your Superadmin for account or access issues"),
     ]):
