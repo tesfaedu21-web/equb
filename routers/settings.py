@@ -18,6 +18,8 @@ class SettingsUpdate(BaseModel):
     group_name: Optional[str] = None
     group_tagline: Optional[str] = None
     logo_url: Optional[str] = None
+    penalty_rate: Optional[float] = Field(None, ge=0, le=100)
+    penalty_grace_days: Optional[int] = Field(None, ge=0)
 
     @field_validator("logo_url", mode="before")
     @classmethod
@@ -55,6 +57,8 @@ def get_settings(db: Session = Depends(get_db)):
         "group_name": s.group_name,
         "group_tagline": s.group_tagline,
         "logo_url": s.logo_url,
+        "penalty_rate": s.penalty_rate or 0,
+        "penalty_grace_days": s.penalty_grace_days or 0,
     }
 
 

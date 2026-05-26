@@ -5,7 +5,8 @@ from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
 from datetime import datetime, date as _date, timezone
 from collections import defaultdict
-from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle
+from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle, Settings
+from datetime import timedelta
 from routers.notifications import send_payment_confirmed
 
 
@@ -15,6 +16,24 @@ def _utcnow():
 router = APIRouter()
 
 METHODS = {"cash", "bank_transfer", "cheque"}
+
+
+def _calc_penalty(payment: Payment, paid_date: datetime, db: Session) -> float:
+    """Return auto-calculated penalty ETB, or 0 if not applicable."""
+    try:
+        gs = db.query(Settings).first()
+        if not gs or not gs.penalty_rate:
+            return 0.0
+        week = payment.week
+        if not week or not week.draw_date:
+            return 0.0
+        grace = gs.penalty_grace_days or 0
+        due = week.draw_date.date() + timedelta(days=grace)
+        if paid_date.date() > due:
+            return round(payment.amount * gs.penalty_rate / 100, 2)
+    except Exception:
+        pass
+    return 0.0
 
 
 class PaymentUpdate(BaseModel):
@@ -275,6 +294,8 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
         p.reference = data.reference
         p.batch_id = batch.id
         p.collected_by_id = cashier_id
+        if data.penalty_amount is None:
+            p.penalty_amount = _calc_penalty(p, pay_date, db)
 
     db.commit()
     db.refresh(batch)
@@ -304,6 +325,8 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
         p.notes = data.notes
     if data.penalty_amount is not None:
         p.penalty_amount = data.penalty_amount
+    elif data.status == "paid" and was_unpaid:
+        p.penalty_amount = _calc_penalty(p, p.paid_date or _utcnow(), db)
     if data.status == "paid" and was_unpaid:
         p.collected_by_id = getattr(request.state, "user_id", None)
     db.commit()
@@ -340,6 +363,7 @@ def bulk_update(data: BulkPayment, request: Request, db: Session = Depends(get_d
             if data.status == "paid":
                 p.paid_date = paid_date
                 p.collected_by_id = cashier_id
+                p.penalty_amount = _calc_penalty(p, paid_date, db)
                 try:
                     send_payment_confirmed(p, db)
                 except Exception:

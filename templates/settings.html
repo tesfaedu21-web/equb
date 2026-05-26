@@ -112,6 +112,44 @@
     </div>
   </div>
 
+  <!-- Late Payment Penalty -->
+  <div class="card space-y-4">
+    <h2 class="text-base font-semibold text-gray-800 flex items-center gap-2">
+      <svg class="w-4 h-4 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      Late Payment Penalty
+    </h2>
+    <p class="text-sm text-gray-500">Automatically add a penalty when a payment is recorded after the draw date. Set rate to 0 to disable.</p>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Penalty Rate (%)</label>
+        <div class="relative">
+          <input x-model.number="form.penalty_rate" type="number" min="0" max="100" step="0.1"
+                 placeholder="0" class="w-full border rounded-lg px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-equb-green/30"/>
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">%</span>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">e.g. 5 = 5% of payment amount</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Grace Period (days)</label>
+        <div class="relative">
+          <input x-model.number="form.penalty_grace_days" type="number" min="0" step="1"
+                 placeholder="0" class="w-full border rounded-lg px-3 py-2 text-sm pr-12 focus:outline-none focus:ring-2 focus:ring-equb-green/30"/>
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">days</span>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Days after draw date before penalty applies</p>
+      </div>
+    </div>
+    <div x-show="form.penalty_rate > 0" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
+      Payments recorded more than <strong x-text="form.penalty_grace_days || 0"></strong> day(s) after the draw date will incur a <strong x-text="form.penalty_rate + '%'"></strong> penalty automatically.
+    </div>
+    <div class="flex justify-end">
+      <button @click="savePenalty()" :disabled="savingPenalty" class="btn-primary text-sm"
+              x-text="savingPenalty ? 'Saving…' : 'Save Penalty Settings'"></button>
+    </div>
+  </div>
+
   <!-- User accounts -->
   <div class="card space-y-4">
     <div class="flex items-center justify-between">
@@ -534,6 +572,7 @@ function settings() {
     form: {},
     users: [],
     saving: false,
+    savingPenalty: false,
     isSuperAdmin: (window._equbCtx || {}).userRole === 'superadmin',
     showUserModal: false,
     editUserId: null,
@@ -559,6 +598,18 @@ function settings() {
         this.showToast('Settings saved — reload to see branding changes');
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.saving = false; }
+    },
+
+    async savePenalty() {
+      this.savingPenalty = true;
+      try {
+        await this.api('PUT', '/api/settings', {
+          penalty_rate: this.form.penalty_rate ?? 0,
+          penalty_grace_days: this.form.penalty_grace_days ?? 0,
+        });
+        this.showToast('Penalty settings saved');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.savingPenalty = false; }
     },
 
     openAddUser() {

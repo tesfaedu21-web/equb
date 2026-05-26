@@ -90,6 +90,9 @@ class Settings(Base):
     # Vouchers deducted from winner's pot at disbursement
     full_spot_voucher = Column(Float, default=80)
     half_spot_voucher = Column(Float, default=40)
+    # Late payment penalty
+    penalty_rate       = Column(Float, default=0)   # % of payment amount; 0 = disabled
+    penalty_grace_days = Column(Integer, default=0) # days after draw_date before penalty applies
     # Branding
     group_name = Column(String, default="እቁብ")
     group_tagline = Column(String, default="Equb Manager")
@@ -594,6 +597,8 @@ def _migrate(engine):
         "ALTER TABLE settings ADD COLUMN full_spot_voucher REAL DEFAULT 80",
         "ALTER TABLE settings ADD COLUMN half_spot_voucher REAL DEFAULT 40",
         "ALTER TABLE settings ADD COLUMN include_worker_slot INTEGER DEFAULT 1",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS penalty_rate REAL DEFAULT 0",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS penalty_grace_days INTEGER DEFAULT 0",
         "ALTER TABLE weeks ADD COLUMN is_worker_week INTEGER DEFAULT 0",
         "ALTER TABLE pot_disbursements ADD COLUMN service_fee REAL DEFAULT 0",
         # Cycle-scoped memberships: track which cycle each member-spot assignment belongs to
