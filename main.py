@@ -251,7 +251,7 @@ async def security_headers(request: Request, call_next):
 # ── Auth middleware ───────────────────────────────────────────────────────────
 # Android SMS gateway endpoints use device-token auth, not session auth
 _GATEWAY_PUBLIC = {"/api/sms-gateway/pending", "/api/sms-gateway/ack"}
-_PUBLIC = {"/login", "/favicon.ico", "/portal"}
+_PUBLIC = {"/login", "/favicon.ico", "/portal", "/health"}
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
