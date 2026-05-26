@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
-from datetime import datetime, date as _date, timezone
+from datetime import datetime, date as _date, timezone, timedelta
 from collections import defaultdict
 from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle, Settings
-from datetime import timedelta
 from routers.notifications import send_payment_confirmed
 
 
@@ -549,3 +549,104 @@ def member_payment_balance(member_id: int, up_to_week_number: int = 9999,
         "unpaid_amount": sum(p.amount for p in unpaid),
         "unpaid_weeks": sorted([p.week.week_number for p in unpaid]),
     }
+
+
+# ── Payment Receipt ───────────────────────────────────────────────────────────
+
+@router.get("/{payment_id}/receipt", response_class=HTMLResponse)
+def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
+    p = db.query(Payment).filter(Payment.id == payment_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    gs = db.query(Settings).first()
+    m = p.member
+    w = p.week
+    cycle = w.cycle if w else None
+    group_name  = (gs.group_name  or "እቁብ") if gs else "እቁብ"
+    group_tag   = (gs.group_tagline or "Equb Manager") if gs else "Equb Manager"
+
+    paid_date_str  = p.paid_date.strftime("%d %b %Y") if p.paid_date else "—"
+    draw_date_str  = w.draw_date.strftime("%d %b %Y") if w and w.draw_date else "—"
+    amount_str     = f"{int(p.amount):,} ETB"
+    penalty_str    = f"{int(p.penalty_amount):,} ETB" if p.penalty_amount else None
+    total_str      = f"{int((p.amount or 0) + (p.penalty_amount or 0)):,} ETB"
+    method_labels  = {"cash": "Cash", "bank_transfer": "Bank Transfer", "cheque": "Cheque"}
+    method_str     = method_labels.get(p.payment_method or "", p.payment_method or "—")
+    receipt_no     = f"RCP-{p.id:06d}"
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Payment Receipt – {receipt_no}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: 'Inter', sans-serif; background: #fff; color: #111; }}
+  .page {{ max-width: 480px; margin: 40px auto; padding: 40px 32px; border: 1px solid #e5e7eb; border-radius: 16px; }}
+  .header {{ text-align: center; margin-bottom: 28px; }}
+  .logo {{ width: 56px; height: 56px; background: #078930; border-radius: 14px;
+           display: inline-flex; align-items: center; justify-content: center;
+           color: #fff; font-size: 26px; font-weight: 700; margin-bottom: 10px; }}
+  .org {{ font-size: 20px; font-weight: 700; color: #111; }}
+  .tag {{ font-size: 12px; color: #6b7280; margin-top: 2px; }}
+  .badge {{ display: inline-block; background: #d1fae5; color: #065f46;
+            font-size: 11px; font-weight: 600; border-radius: 20px;
+            padding: 3px 12px; margin-top: 10px; letter-spacing: .4px; }}
+  h2 {{ font-size: 15px; font-weight: 600; color: #374151; margin: 24px 0 12px; border-bottom: 1px solid #f3f4f6; padding-bottom: 8px; }}
+  .row {{ display: flex; justify-content: space-between; padding: 7px 0; font-size: 14px; border-bottom: 1px solid #f9fafb; }}
+  .row span:first-child {{ color: #6b7280; }}
+  .row span:last-child {{ font-weight: 500; text-align: right; }}
+  .total-row {{ display: flex; justify-content: space-between; padding: 10px 0 0; font-size: 15px; font-weight: 700; }}
+  .penalty {{ color: #dc2626; font-size: 13px; }}
+  .footer {{ text-align: center; font-size: 11px; color: #9ca3af; margin-top: 28px; border-top: 1px dashed #e5e7eb; padding-top: 16px; }}
+  @media print {{
+    body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    .no-print {{ display: none; }}
+    .page {{ border: none; margin: 0; padding: 24px 20px; }}
+  }}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="logo">እ</div>
+    <div class="org">{group_name}</div>
+    <div class="tag">{group_tag}</div>
+    <div class="badge">✓ Payment Received</div>
+  </div>
+
+  <h2>Receipt Details</h2>
+  <div class="row"><span>Receipt #</span><span>{receipt_no}</span></div>
+  <div class="row"><span>Date Paid</span><span>{paid_date_str}</span></div>
+  <div class="row"><span>Payment Method</span><span>{method_str}</span></div>
+  {"<div class='row'><span>Reference</span><span>" + p.reference + "</span></div>" if p.reference else ""}
+
+  <h2>Member</h2>
+  <div class="row"><span>Name</span><span>{m.name if m else "—"}</span></div>
+  <div class="row"><span>Phone</span><span>{m.phone if m and m.phone else "—"}</span></div>
+
+  <h2>Equb Details</h2>
+  <div class="row"><span>Cycle</span><span>{cycle.name if cycle else "—"}</span></div>
+  <div class="row"><span>Week #</span><span>{w.week_number if w else "—"}</span></div>
+  <div class="row"><span>Draw Date</span><span>{draw_date_str}</span></div>
+
+  <h2>Amount</h2>
+  <div class="row"><span>Contribution</span><span>{amount_str}</span></div>
+  {f'<div class="row penalty"><span>Late Penalty</span><span>{penalty_str}</span></div>' if penalty_str else ""}
+  <div class="total-row"><span>Total</span><span>{total_str}</span></div>
+
+  <div class="footer">
+    This receipt was generated by {group_name} · {group_tag}<br/>
+    Generated on {datetime.utcnow().strftime("%d %b %Y %H:%M")} UTC
+  </div>
+</div>
+<div class="no-print" style="text-align:center;margin:20px">
+  <button onclick="window.print()"
+    style="background:#078930;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600;">
+    🖨 Print / Save as PDF
+  </button>
+</div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)

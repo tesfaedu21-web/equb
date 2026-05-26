@@ -468,6 +468,8 @@ async def settings_page(request: Request):
     return templates.TemplateResponse(request, "settings.html", _ctx(request))
 
 
+
+
 # ── ONE-TIME SETUP (permanently disabled once any user exists) ────────────────
 @app.get("/setup-admin-equb2024", response_class=HTMLResponse)
 async def setup_admin(token: str = ""):
