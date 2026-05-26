@@ -125,20 +125,26 @@ def list_members(search: str = "", status: str = "",
                  db: Session = Depends(get_db)):
     q = db.query(Member)
     if search:
-        try:
-            # Numeric input → exact spot number match only (no name/phone mixing)
-            spot_num = int(search.strip())
-            spot_match = db.query(Spot).filter(Spot.number == spot_num).first()
-            spot_member_ids = []
-            if spot_match:
-                spot_member_ids = [
-                    ms.member_id for ms in spot_match.spot_assignments
-                    if ms.is_active and (cycle_id is None or ms.cycle_id == cycle_id)
-                ]
-            q = q.filter(Member.id.in_(spot_member_ids)) if spot_member_ids else q.filter(Member.id == -1)
-        except ValueError:
-            # Text input → name or phone search
-            q = q.filter(or_(Member.name.ilike(f"%{search}%"), Member.phone.ilike(f"%{search}%")))
+        s = search.strip()
+        # Phone numbers start with 0 or + or are 7+ digits — never a spot number
+        is_phone_like = s.startswith("0") or s.startswith("+") or (s.isdigit() and len(s) >= 7)
+        if is_phone_like:
+            q = q.filter(or_(Member.name.ilike(f"%{s}%"), Member.phone.ilike(f"%{s}%")))
+        else:
+            try:
+                # Short integer → spot number search
+                spot_num = int(s)
+                spot_match = db.query(Spot).filter(Spot.number == spot_num).first()
+                spot_member_ids = []
+                if spot_match:
+                    spot_member_ids = [
+                        ms.member_id for ms in spot_match.spot_assignments
+                        if ms.is_active and (cycle_id is None or ms.cycle_id == cycle_id)
+                    ]
+                q = q.filter(Member.id.in_(spot_member_ids)) if spot_member_ids else q.filter(Member.id == -1)
+            except ValueError:
+                # Text input → name or phone search
+                q = q.filter(or_(Member.name.ilike(f"%{s}%"), Member.phone.ilike(f"%{s}%")))
     if status:
         q = q.filter(Member.status == status)
     if cycle_id:
