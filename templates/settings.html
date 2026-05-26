@@ -332,6 +332,35 @@
     </div>
   </div>
 
+  <!-- Database Backup — superadmin only -->
+  <div x-show="isSuperAdmin" class="card space-y-3">
+    <h2 class="text-base font-semibold text-gray-800 flex items-center gap-2">
+      <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+      </svg>
+      Database Backup
+    </h2>
+    <div class="flex items-start justify-between gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+      <div>
+        <p class="text-sm font-semibold text-gray-800">Download SQL Backup</p>
+        <p class="text-xs text-gray-500 mt-0.5">
+          Exports a full pg_dump of the database as a plain-SQL file. Store it securely offline.
+        </p>
+        <div x-show="backupStatus" class="text-xs mt-1"
+             :class="backupStatus==='checking' ? 'text-gray-400' : backupStatus==='ready' ? 'text-green-600' : 'text-red-500'"
+             x-text="backupStatus==='checking' ? 'Checking…' : backupStatus==='ready' ? '✓ pg_dump available' : '✗ ' + backupStatus"></div>
+      </div>
+      <div class="flex flex-col gap-2 flex-shrink-0">
+        <a href="/api/backup/download" target="_blank"
+           @click="backupStatus='checking'; checkBackupStatus()"
+           class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-center">
+          Download Backup
+        </a>
+      </div>
+    </div>
+  </div>
+
   <!-- Danger Zone — superadmin only -->
   <div x-show="isSuperAdmin" class="card border border-red-200 space-y-3">
     <h2 class="text-base font-semibold text-red-700 flex items-center gap-2">
@@ -573,6 +602,7 @@ function settings() {
     users: [],
     saving: false,
     savingPenalty: false,
+    backupStatus: '',
     isSuperAdmin: (window._equbCtx || {}).userRole === 'superadmin',
     showUserModal: false,
     editUserId: null,
@@ -657,6 +687,13 @@ function settings() {
         this.pwd = { current:'', new:'' };
         this.showToast('Password updated');
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async checkBackupStatus() {
+      try {
+        const s = await this.api('GET', '/api/backup/status');
+        this.backupStatus = s.pg_dump_available ? 'ready' : 'pg_dump not available on this server';
+      } catch(e) { this.backupStatus = e.message; }
     },
 
     async confirmReset() {
