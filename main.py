@@ -299,8 +299,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Equb Management System",
     lifespan=lifespan,
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
+    docs_url=None,
+    redoc_url=None,
     openapi_url="/openapi.json",
 )
 
@@ -589,6 +589,12 @@ async def settings_page(request: Request):
     if getattr(request.state, "user_role", "") not in ("admin", "superadmin"):
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "settings.html", _ctx(request))
+
+@app.get("/api-docs",      response_class=HTMLResponse)
+async def api_docs_page(request: Request):
+    if getattr(request.state, "user_role", "") != "superadmin":
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse(request, "api_docs.html", _ctx(request))
 
 @app.get("/collections",   response_class=HTMLResponse)
 async def collections_page(request: Request):

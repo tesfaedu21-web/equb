@@ -719,7 +719,7 @@
             </svg>
             <span class="nav-label">Settings</span>
           </a>
-          <a href="/api/docs" target="_blank" @click="sidebarOpen = false" x-show="isSuperAdmin" class="nav-link" title="API Docs">
+          <a href="/api-docs" @click="sidebarOpen = false" x-show="isSuperAdmin" class="nav-link {% block nav_api_docs %}{% endblock %}" title="API Docs">
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
                 d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
