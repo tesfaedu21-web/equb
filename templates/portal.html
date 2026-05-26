@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Equb — Member Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { theme: { extend: { colors: { equb: { green: '#078930', gold: '#FCDD09', red: '#DA121A' } } } } }</script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .status-paid    { background:#dcfce7; color:#15803d; }
+    .status-pending { background:#fef9c3; color:#854d0e; }
+    .status-late    { background:#ffedd5; color:#c2410c; }
+    .status-missed  { background:#fee2e2; color:#b91c1c; }
+  </style>
+</head>
+<body class="min-h-screen bg-gray-50 font-sans" x-data="portal()" x-init="init()">
+
+  <!-- Header -->
+  <header class="bg-equb-green text-white px-4 py-4 shadow-md">
+    <div class="max-w-lg mx-auto flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg flex-shrink-0"
+           style="background:linear-gradient(135deg,#078930 33%,#FCDD09 33% 66%,#DA121A 66%)"></div>
+      <div>
+        <div class="font-bold text-base leading-tight">My Equb</div>
+        <div class="text-equb-gold text-xs font-medium">Member Self-Service Portal</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-lg mx-auto px-4 py-8">
+
+    <!-- Phone lookup form -->
+    <div x-show="!member" class="bg-white rounded-2xl shadow-sm border p-6 space-y-5">
+      <div class="text-center">
+        <div class="text-2xl font-bold text-gray-900 mb-1">Welcome</div>
+        <div class="text-sm text-gray-500">Enter your phone number to view your payment status and schedule.</div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">Your Phone Number</label>
+        <input x-model="phone" @keydown.enter="lookup()" type="tel"
+               placeholder="09… or +251…"
+               class="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-equb-green/30"
+               :disabled="loading"/>
+      </div>
+      <div x-show="error" class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3" x-text="error"></div>
+      <button @click="lookup()" :disabled="loading || !phone.trim()"
+              class="w-full bg-equb-green text-white py-3 rounded-xl font-semibold text-sm disabled:opacity-50 transition"
+              x-text="loading ? 'Looking up…' : 'View My Status'"></button>
+      <p class="text-center text-xs text-gray-400">Your data is private — only you can see this with your phone number.</p>
+    </div>
+
+    <!-- Member dashboard -->
+    <template x-if="member">
+      <div class="space-y-4" x-cloak>
+
+        <!-- Profile card -->
+        <div class="bg-white rounded-2xl shadow-sm border p-5 flex items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-equb-green/10 flex items-center justify-center text-equb-green font-bold text-xl flex-shrink-0"
+               x-text="member.member_name.charAt(0)"></div>
+          <div class="flex-1 min-w-0">
+            <div class="font-bold text-gray-900 text-base" x-text="member.member_name"></div>
+            <div class="text-xs text-gray-400 mt-0.5" x-text="member.cycle_name ? 'Cycle: ' + member.cycle_name : 'No active cycle'"></div>
+            <div class="flex flex-wrap gap-1 mt-1">
+              <template x-for="s in member.spots" :key="s.number">
+                <span class="inline-flex items-center px-2 py-0.5 bg-equb-green/10 text-equb-green rounded-full text-xs font-semibold">
+                  Spot #<span x-text="s.number"></span>
+                  <span x-show="s.share==='half'" class="ml-0.5">½</span>
+                </span>
+              </template>
+            </div>
+          </div>
+          <button @click="member=null; phone=''; error=''"
+                  class="text-xs text-gray-400 hover:text-gray-600">Sign out</button>
+        </div>
+
+        <!-- Summary cards -->
+        <div class="grid grid-cols-3 gap-3">
+          <div class="bg-white rounded-2xl border p-4 text-center shadow-sm">
+            <div class="text-2xl font-bold text-equb-green" x-text="member.summary.paid_weeks"></div>
+            <div class="text-xs text-gray-400 mt-0.5">Paid</div>
+          </div>
+          <div class="bg-white rounded-2xl border p-4 text-center shadow-sm"
+               :class="member.summary.outstanding_count > 0 ? 'border-red-200 bg-red-50' : ''">
+            <div class="text-2xl font-bold" :class="member.summary.outstanding_count > 0 ? 'text-red-600' : 'text-gray-300'"
+                 x-text="member.summary.outstanding_count"></div>
+            <div class="text-xs mt-0.5" :class="member.summary.outstanding_count > 0 ? 'text-red-500' : 'text-gray-400'">Overdue</div>
+          </div>
+          <div class="bg-white rounded-2xl border p-4 text-center shadow-sm">
+            <div class="text-lg font-bold text-orange-500" x-text="fmt(member.summary.total_paid_amount)"></div>
+            <div class="text-xs text-gray-400 mt-0.5">Paid ETB</div>
+          </div>
+        </div>
+
+        <!-- Outstanding alert -->
+        <div x-show="member.summary.outstanding_count > 0"
+             class="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">
+          <div class="font-semibold mb-1">⚠ You have overdue payments</div>
+          <div><span x-text="member.summary.outstanding_count"></span> week(s) totaling
+               <strong x-text="fmt(member.summary.outstanding_amount)"></strong> are past due.
+               Please contact your group admin to settle.</div>
+        </div>
+
+        <!-- Pot wins -->
+        <div x-show="member.wins.length > 0" class="bg-white rounded-2xl border shadow-sm overflow-hidden">
+          <div class="px-5 py-3 bg-blue-50 border-b">
+            <div class="font-semibold text-blue-800 text-sm">Your Pot Win(s) 🎉</div>
+          </div>
+          <div class="divide-y">
+            <template x-for="w in member.wins" :key="w.week_number">
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-sm text-gray-900">Week <span x-text="w.week_number"></span></div>
+                  <div class="text-xs text-gray-400" x-text="fmt_date(w.draw_date)"></div>
+                </div>
+                <div class="text-equb-green font-bold" x-text="fmt(w.buyer_receives)"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Upcoming draws -->
+        <div x-show="member.upcoming.length > 0" class="bg-white rounded-2xl border shadow-sm overflow-hidden">
+          <div class="px-5 py-3 border-b">
+            <div class="font-semibold text-gray-800 text-sm">Upcoming Draw Dates</div>
+          </div>
+          <div class="divide-y">
+            <template x-for="w in member.upcoming" :key="w.week_number">
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-sm text-gray-900">Week <span x-text="w.week_number"></span>
+                    <span x-show="w.is_group_week" class="ml-1 text-purple-600 text-xs">Group Week</span>
+                  </div>
+                  <div class="text-xs text-gray-400" x-text="fmt_date(w.draw_date)"></div>
+                </div>
+                <span class="text-xs font-medium text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">Upcoming</span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Payment history -->
+        <div class="bg-white rounded-2xl border shadow-sm overflow-hidden">
+          <div class="px-5 py-3 border-b flex items-center justify-between">
+            <div class="font-semibold text-gray-800 text-sm">Payment History</div>
+            <div class="text-xs text-gray-400" x-text="member.payments.length + ' weeks'"></div>
+          </div>
+          <div class="divide-y max-h-96 overflow-y-auto">
+            <template x-for="p in member.payments.slice().reverse()" :key="p.week_number">
+              <div class="px-5 py-3 flex items-center justify-between"
+                   :class="!p.is_past && p.status==='pending' ? 'opacity-50' : ''">
+                <div>
+                  <div class="font-semibold text-sm text-gray-900">Week <span x-text="p.week_number"></span></div>
+                  <div class="text-xs text-gray-400" x-text="fmt_date(p.draw_date)"></div>
+                  <div x-show="p.paid_date" class="text-xs text-gray-400">
+                    Paid: <span x-text="fmt_date(p.paid_date)"></span>
+                    <span x-show="p.payment_method" x-text="' · ' + p.payment_method"></span>
+                  </div>
+                </div>
+                <div class="flex flex-col items-end gap-1">
+                  <span class="text-sm font-bold text-gray-700" x-text="fmt(p.amount)"></span>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                        :class="'status-' + p.status" x-text="p.status"></span>
+                </div>
+              </div>
+            </template>
+            <div x-show="!member.payments.length" class="px-5 py-8 text-center text-sm text-gray-400">
+              No payment records in the active cycle.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </template>
+
+  </main>
+
+  <footer class="text-center text-xs text-gray-400 py-6">
+    Equb Management System &mdash; Member Portal
+  </footer>
+
+<script>
+function portal() {
+  return {
+    phone: '',
+    loading: false,
+    error: '',
+    member: null,
+
+    async init() {},
+
+    async lookup() {
+      const p = this.phone.trim();
+      if (!p) return;
+      this.loading = true;
+      this.error = '';
+      this.member = null;
+      try {
+        const res = await fetch('/api/portal/lookup?phone=' + encodeURIComponent(p));
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          this.error = body.detail || 'No member found with this phone number.';
+          return;
+        }
+        this.member = await res.json();
+      } catch(e) {
+        this.error = 'Network error — please try again.';
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    fmt(n) {
+      if (n == null) return '—';
+      return Number(n).toLocaleString('en-ET', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ETB';
+    },
+
+    fmt_date(d) {
+      if (!d) return '—';
+      try {
+        return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      } catch { return d; }
+    },
+  };
+}
+</script>
+</body>
+</html>

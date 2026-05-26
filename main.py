@@ -20,6 +20,7 @@ from routers import disbursements as disbursements_router
 from routers import sms_gateway as sms_gateway_router
 from routers import debts as debts_router
 from routers import marketplace as marketplace_router
+from routers import portal as portal_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -102,6 +103,7 @@ app.include_router(disbursements_router.router, prefix="/api/disbursements", tag
 app.include_router(sms_gateway_router.router,   prefix="/api/sms-gateway",   tags=["sms-gateway"])
 app.include_router(debts_router.router,         prefix="/api/debts",         tags=["debts"])
 app.include_router(marketplace_router.router,   prefix="/api/marketplace",   tags=["marketplace"])
+app.include_router(portal_router.router,        prefix="/api/portal",        tags=["portal"])
 
 
 # ── Nightly scheduler jobs ────────────────────────────────────────────────────
@@ -478,6 +480,10 @@ async def collections_page(request: Request):
 @app.get("/marketplace", response_class=HTMLResponse)
 async def marketplace_page(request: Request):
     return templates.TemplateResponse(request, "marketplace.html", _ctx(request))
+
+@app.get("/portal", response_class=HTMLResponse)
+async def portal_page(request: Request):
+    return templates.TemplateResponse(request, "portal.html", {"request": request})
 
 
 
