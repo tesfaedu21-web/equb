@@ -28,9 +28,10 @@ def _normalize_phone(phone: str) -> list[str]:
 
 
 @router.get("/lookup")
-def portal_lookup(phone: str, db: Session = Depends(get_db)):
+def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
     """
-    Public endpoint — returns read-only member data by phone number.
+    Public endpoint — returns read-only member data.
+    Requires phone number + spot number for identification.
     No auth required; only non-sensitive data is exposed.
     """
     if not phone or len(phone.strip()) < 7:
@@ -42,14 +43,24 @@ def portal_lookup(phone: str, db: Session = Depends(get_db)):
         member = db.query(Member).filter(Member.phone == v).first()
         if member:
             break
-    if not member:
-        raise HTTPException(404, "No member found with this phone number")
-    if member.status == "left":
-        raise HTTPException(404, "Member has left the group")
+    if not member or member.status == "left":
+        raise HTTPException(404, "No member found with this phone number and spot number")
 
-    # Active cycle participation
+    # Verify spot number belongs to this member in the active cycle
     active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
     cycle_id = active_cycle.id if active_cycle else None
+    spot_match = (
+        db.query(MemberSpot)
+        .join(MemberSpot.spot)
+        .filter(
+            MemberSpot.member_id == member.id,
+            MemberSpot.is_active == True,
+            *([MemberSpot.cycle_id == cycle_id] if cycle_id else []),
+        )
+        .all()
+    )
+    if not any(sa.spot and sa.spot.number == spot_number for sa in spot_match):
+        raise HTTPException(404, "No member found with this phone number and spot number")
 
     sas = [sa for sa in member.spot_assignments
            if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)]
