@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
-from database import init_db, get_db, User, Settings, Payment, Week, _pwd
+from database import init_db, get_db, User, Settings, Payment, Week, _pwd, log_action
 from routers.deps import _get_permissions
 from sqlalchemy.orm import Session
 from routers import members, draws, payments, reports, notifications
@@ -208,11 +208,15 @@ async def lifespan(app: FastAPI):
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
         scheduler = AsyncIOScheduler()
-        scheduler.add_job(auto_close_past_weeks,   CronTrigger(hour=21, minute=0))
-        scheduler.add_job(send_pre_draw_reminders, CronTrigger(hour=18, minute=0))
+        from apscheduler.triggers.interval import IntervalTrigger
+        from routers.notifications import fire_scheduled_notifications
+        scheduler.add_job(auto_close_past_weeks,        CronTrigger(hour=21, minute=0))
+        scheduler.add_job(send_pre_draw_reminders,      CronTrigger(hour=18, minute=0))
+        scheduler.add_job(fire_scheduled_notifications, IntervalTrigger(minutes=5))
         scheduler.start()
         logger.info("scheduler: nightly auto-close scheduled (21:00 UTC)")
         logger.info("scheduler: pre-draw reminders scheduled (18:00 UTC)")
+        logger.info("scheduler: scheduled notification runner started (every 5 min)")
     except ImportError:
         logger.warning("scheduler: APScheduler not installed — skipping scheduled jobs")
     yield
@@ -350,6 +354,9 @@ async def login_submit(request: Request,
             msg = "Invalid username or password."
             if remaining <= 2:
                 msg += f" {remaining} attempt(s) remaining before lockout."
+            log_action(db, user=None, action="login_failed", table="users",
+                       description=f"Failed login for '{username}' from {ip}")
+            db.commit()
             return templates.TemplateResponse(
                 request, "login.html",
                 {"error": msg, "locked": False},
@@ -363,12 +370,17 @@ async def login_submit(request: Request,
             request.session["pending_2fa_user_id"] = user.id
             request.session["pending_2fa_role"]    = user.role
             request.session["pending_2fa_name"]    = user.full_name
+            log_action(db, user=user, action="login", table="users", record_id=user.id,
+                       description=f"{user.username} passed password check, awaiting 2FA from {ip}")
         else:
             token = secrets.token_hex(16)
             request.session["_token"]    = token
             request.session["user_id"]   = user.id
             request.session["user_role"] = user.role
             request.session["user_name"] = user.full_name
+            log_action(db, user=user, action="login", table="users", record_id=user.id,
+                       description=f"{user.username} logged in from {ip}")
+        db.commit()
     finally:
         db.close()
     if request.session.get("pending_2fa_user_id"):
@@ -415,6 +427,10 @@ async def totp_submit(request: Request, totp_code: str = Form(...)):
         request.session["user_id"]   = user.id
         request.session["user_role"] = role
         request.session["user_name"] = name
+        ip = _get_client_ip(request)
+        log_action(db, user=user, action="login", table="users", record_id=user.id,
+                   description=f"{user.username} completed 2FA login from {ip}")
+        db.commit()
     finally:
         db.close()
     return RedirectResponse("/", status_code=302)
@@ -423,9 +439,20 @@ async def totp_submit(request: Request, totp_code: str = Form(...)):
 @app.get("/logout")
 async def logout(request: Request):
     token = request.session.get("_token")
+    uid  = request.session.get("user_id")
+    uname = request.session.get("user_name", "")
     if token:
         _invalidate_session(token)
     request.session.clear()
+    if uid:
+        db: Session = next(get_db())
+        try:
+            user = db.query(User).filter(User.id == uid).first()
+            log_action(db, user=user, action="logout", table="users", record_id=uid,
+                       description=f"{uname} logged out")
+            db.commit()
+        finally:
+            db.close()
     return RedirectResponse("/login", status_code=302)
 
 

@@ -1160,7 +1160,7 @@ ${d.unpaid.length > 0 ? `
       this.transferTarget = m;
       this.transferForm = { spot_id: null, to_member_id: null, effective_week_id: null, reason: '' };
       // Pre-select first spot if member has only one
-      if (m.spots && m.spots.length === 1) this.transferForm.spot_id = m.spots[0].id;
+      if (m.spots && m.spots.length === 1) this.transferForm.spot_id = m.spots[0].spot_id;
       // Load pending/future weeks
       try {
         if (this.selectedCycle) {

@@ -87,6 +87,84 @@
         </div>
       </div>
 
+      <!-- Scheduled Notifications -->
+      <div class="card">
+        <h3 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+          <svg class="w-4 h-4 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Scheduled Broadcasts
+        </h3>
+
+        <!-- New schedule form -->
+        <div class="border rounded-xl p-4 space-y-3 mb-4">
+          <div class="font-medium text-gray-800 text-sm">Schedule a Broadcast</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Template</label>
+              <select x-model="schedForm.template_key" class="w-full text-sm">
+                <option value="">— Select template —</option>
+                <template x-for="t in templates" :key="t.key">
+                  <option :value="t.key" x-text="t.title"></option>
+                </template>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Recipients</label>
+              <select x-model="schedForm.target" class="w-full text-sm">
+                <option value="all">All active members</option>
+                <option value="missed">Members with missed/late payments</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Week (optional)</label>
+              <select x-model.number="schedForm.week_id" class="w-full text-sm">
+                <option :value="null">— No specific week —</option>
+                <template x-for="w in weeks" :key="w.id">
+                  <option :value="w.id" x-text="'Week ' + w.week_number + ' — ' + fmtDate(w.draw_date)"></option>
+                </template>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Send At</label>
+              <input x-model="schedForm.scheduled_at" type="datetime-local" class="w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-equb-green/30"/>
+            </div>
+          </div>
+          <button @click="createSchedule()"
+                  :disabled="!schedForm.template_key || !schedForm.scheduled_at || schedSaving"
+                  class="btn-primary text-sm"
+                  x-text="schedSaving ? 'Scheduling…' : 'Schedule Broadcast'"></button>
+        </div>
+
+        <!-- Upcoming/recent schedules -->
+        <div x-show="schedules.length === 0" class="text-sm text-gray-400 text-center py-4">No scheduled broadcasts</div>
+        <div class="space-y-2" x-show="schedules.length > 0">
+          <template x-for="s in schedules" :key="s.id">
+            <div class="flex items-center justify-between border rounded-xl px-4 py-3 text-sm"
+                 :class="s.status === 'pending' ? 'border-blue-100 bg-blue-50' : s.status === 'fired' ? 'border-green-100 bg-green-50' : 'bg-gray-50 opacity-60'">
+              <div>
+                <div class="font-medium text-gray-800" x-text="fmtLabel(s.template_key)"></div>
+                <div class="text-xs text-gray-400 mt-0.5">
+                  <span x-text="s.target === 'missed' ? 'Missed payments' : 'All active'"></span>
+                  · <span x-text="fmtDateTime(s.scheduled_at)"></span>
+                </div>
+                <div x-show="s.result" class="text-xs mt-0.5"
+                     :class="s.status === 'fired' ? 'text-green-600' : 'text-gray-400'"
+                     x-text="s.result ? `Sent ${s.result.sent}, failed ${s.result.failed}` : ''"></div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      :class="s.status === 'pending' ? 'bg-blue-100 text-blue-700' : s.status === 'fired' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'"
+                      x-text="s.status"></span>
+                <button x-show="s.status === 'pending'" @click="cancelSchedule(s.id)"
+                        class="text-xs text-red-400 hover:text-red-600">Cancel</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
       <!-- SMS Templates -->
       <div class="card">
         <h3 class="font-semibold text-gray-700 mb-4">Message Templates</h3>
@@ -116,6 +194,69 @@
               </div>
             </div>
           </template>
+        </div>
+      </div>
+
+      <!-- Delivery Stats Dashboard -->
+      <div class="card p-0 overflow-hidden" x-show="deliveryStats">
+        <div class="px-6 py-4 border-b flex items-center justify-between">
+          <h3 class="font-semibold text-gray-700">Delivery Stats</h3>
+          <span class="text-xs text-gray-400">Last 7 days / All time</span>
+        </div>
+        <div class="p-5 space-y-4">
+          <!-- Overall cards -->
+          <div class="grid grid-cols-4 gap-3" x-show="deliveryStats?.overall">
+            <div class="rounded-xl border p-3 text-center">
+              <div class="text-xl font-bold text-gray-800" x-text="deliveryStats?.overall?.total ?? '—'"></div>
+              <div class="text-xs text-gray-400 mt-0.5">Total</div>
+              <div class="text-xs text-blue-500 mt-0.5" x-text="(deliveryStats?.last_7_days?.total ?? 0) + ' this week'"></div>
+            </div>
+            <div class="rounded-xl border p-3 text-center">
+              <div class="text-xl font-bold text-green-600" x-text="deliveryStats?.overall?.sent ?? '—'"></div>
+              <div class="text-xs text-gray-400 mt-0.5">Sent</div>
+              <div class="text-xs text-green-500 mt-0.5" x-text="(deliveryStats?.last_7_days?.sent ?? 0) + ' this week'"></div>
+            </div>
+            <div class="rounded-xl border p-3 text-center">
+              <div class="text-xl font-bold text-red-500" x-text="deliveryStats?.overall?.failed ?? '—'"></div>
+              <div class="text-xs text-gray-400 mt-0.5">Failed</div>
+              <div class="text-xs text-red-400 mt-0.5" x-text="(deliveryStats?.last_7_days?.failed ?? 0) + ' this week'"></div>
+            </div>
+            <div class="rounded-xl border p-3 text-center">
+              <div class="text-xl font-bold text-equb-green"
+                   x-text="deliveryStats?.overall?.success_rate != null ? deliveryStats.overall.success_rate + '%' : 'N/A'"></div>
+              <div class="text-xs text-gray-400 mt-0.5">Success Rate</div>
+              <div class="text-xs text-gray-300 mt-0.5">live sends only</div>
+            </div>
+          </div>
+
+          <!-- By template table -->
+          <div x-show="deliveryStats?.by_template?.length">
+            <div class="text-xs font-semibold text-gray-400 uppercase mb-2">By Template</div>
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 border-y">
+                <tr>
+                  <th class="text-left px-3 py-2 text-xs font-semibold text-gray-400">Template</th>
+                  <th class="text-right px-3 py-2 text-xs font-semibold text-gray-400">Total</th>
+                  <th class="text-right px-3 py-2 text-xs font-semibold text-gray-400">Sent</th>
+                  <th class="text-right px-3 py-2 text-xs font-semibold text-gray-400">Failed</th>
+                  <th class="text-right px-3 py-2 text-xs font-semibold text-gray-400">Rate</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y">
+                <template x-for="t in deliveryStats.by_template" :key="t.template_key">
+                  <tr>
+                    <td class="px-3 py-2 font-medium text-gray-700" x-text="fmtLabel(t.template_key)"></td>
+                    <td class="px-3 py-2 text-right text-gray-500" x-text="t.total"></td>
+                    <td class="px-3 py-2 text-right text-green-600 font-medium" x-text="t.sent"></td>
+                    <td class="px-3 py-2 text-right text-red-500" x-text="t.failed"></td>
+                    <td class="px-3 py-2 text-right font-semibold"
+                        :class="t.success_rate === null ? 'text-gray-300' : t.success_rate >= 90 ? 'text-green-600' : t.success_rate >= 70 ? 'text-yellow-600' : 'text-red-500'"
+                        x-text="t.success_rate != null ? t.success_rate + '%' : '—'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -557,7 +698,9 @@ function notifications() {
   return {
     cfg: { provider: 'africastalking', username: '', api_key: null, api_key_input: '', sender_id: '', is_active: false, has_device_token: false, newToken: '', sms_language: 'en',
            email_enabled: false, smtp_host: '', smtp_port: 587, smtp_user: '', smtp_password: '', smtp_password_input: '', smtp_use_tls: true, email_from: '' },
-    templates: [], logBatches: [], logIndividuals: [], expandedBatch: null,
+    templates: [], logBatches: [], logIndividuals: [], expandedBatch: null, deliveryStats: null,
+    schedules: [], schedSaving: false,
+    schedForm: { template_key: '', target: 'all', week_id: null, scheduled_at: '' },
     weeks: [], allMembers: [],
     savingEmail: false, emailTesting: false,
     emailRecipients: [], emailMemberSearch: '', emailMemberResults: [], emailMemberTimer: null,
@@ -572,12 +715,16 @@ function notifications() {
 
     async load() {
       try {
-        const [s, t, l, cycles] = await Promise.all([
+        const [s, t, l, stats, scheds, cycles] = await Promise.all([
           this.api('GET', '/api/notifications/settings'),
           this.api('GET', '/api/notifications/templates'),
           this.api('GET', '/api/notifications/logs'),
+          this.api('GET', '/api/notifications/stats'),
+          this.api('GET', '/api/notifications/schedule'),
           this.api('GET', '/api/draws/cycles'),
         ]);
+        this.deliveryStats = stats;
+        this.schedules = scheds || [];
         this.cfg = { ...s, api_key_input: '', smtp_password_input: '', newToken: '' };
         this.templates = t;
         this.logBatches = l.batches || [];
@@ -598,9 +745,44 @@ function notifications() {
     },
 
     async loadLogs() {
-      const l = await this.api('GET', '/api/notifications/logs').catch(() => ({}));
+      const [l, stats] = await Promise.all([
+        this.api('GET', '/api/notifications/logs').catch(() => ({})),
+        this.api('GET', '/api/notifications/stats').catch(() => null),
+      ]);
       this.logBatches = l.batches || [];
       this.logIndividuals = l.individuals || [];
+      if (stats) this.deliveryStats = stats;
+    },
+
+    async createSchedule() {
+      if (!this.schedForm.template_key || !this.schedForm.scheduled_at) return;
+      this.schedSaving = true;
+      try {
+        const res = await this.api('POST', '/api/notifications/schedule', {
+          template_key: this.schedForm.template_key,
+          target: this.schedForm.target,
+          week_id: this.schedForm.week_id || null,
+          scheduled_at: new Date(this.schedForm.scheduled_at).toISOString().replace('Z', ''),
+        });
+        this.schedules = [res, ...this.schedules];
+        this.schedForm = { template_key: '', target: 'all', week_id: null, scheduled_at: '' };
+        this.showToast('Broadcast scheduled');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.schedSaving = false; }
+    },
+
+    async cancelSchedule(id) {
+      try {
+        await this.api('DELETE', `/api/notifications/schedule/${id}`);
+        this.schedules = this.schedules.map(s => s.id === id ? {...s, status: 'cancelled'} : s);
+        this.showToast('Scheduled broadcast cancelled');
+      } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    fmtDateTime(dt) {
+      if (!dt) return '—';
+      try { return new Date(dt).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); }
+      catch { return dt; }
     },
 
     fmtLabel(key) {

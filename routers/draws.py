@@ -1175,6 +1175,28 @@ def delete_cycle(cycle_id: int, request: Request, db: Session = Depends(get_db))
     return {"ok": True, "deleted": cycle_name}
 
 
+@router.get("/cycles/{cycle_id}/clone-settings")
+def clone_settings(cycle_id: int, request: Request, db: Session = Depends(get_db)):
+    """Return the financial settings of a cycle so the UI can pre-fill the New Cycle form."""
+    _require_feature(request, db, "run_draws")
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+    gs = db.query(Settings).first()
+    cfg = cycle_cfg(cycle, gs)
+    return {
+        "source_name": cycle.name,
+        "frequency": getattr(cycle, "frequency", "weekly") or "weekly",
+        "full_spot_amount": cfg.full_spot_amount,
+        "half_spot_amount": cfg.half_spot_amount,
+        "association_deduction": cfg.association_deduction,
+        "full_spot_voucher": cfg.full_spot_voucher,
+        "half_spot_voucher": cfg.half_spot_voucher,
+        "total_member_spots": getattr(cycle, "total_member_spots", None) or (gs.total_member_spots if gs else None),
+        "group_week_interval": getattr(cycle, "group_week_interval", None) or getattr(gs, "group_week_interval", 4),
+    }
+
+
 def _assoc_fund_data(db: Session, cycle_id: Optional[int]) -> dict:
     """Shared computation for association fund totals — used by both summary and settlement endpoints."""
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first() if cycle_id else None

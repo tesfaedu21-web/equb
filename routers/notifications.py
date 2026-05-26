@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from database import (get_db, Member, Payment, Week, Cycle, MemberSpot,
-                      NotificationSettings, NotificationTemplate, NotificationLog, SmsQueue)
+                      NotificationSettings, NotificationTemplate, NotificationLog, SmsQueue,
+                      ScheduledNotification)
 from routers.deps import _require_feature
 
 router = APIRouter()
@@ -773,6 +774,52 @@ def notification_logs(request: Request, db: Session = Depends(get_db)):
     return {"batches": batches, "individuals": individuals_sorted[:50]}
 
 
+# ── Delivery stats ───────────────────────────────────────────────────────────
+
+@router.get("/stats")
+def delivery_stats(request: Request, db: Session = Depends(get_db)):
+    """Aggregate SMS/email delivery statistics by template and overall."""
+    _require_feature(request, db, "notifications")
+    from sqlalchemy import func
+    from datetime import datetime, timezone, timedelta
+
+    all_logs = db.query(NotificationLog).all()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    week_ago = now - timedelta(days=7)
+
+    overall = {"total": 0, "sent": 0, "failed": 0, "mock": 0}
+    last7   = {"total": 0, "sent": 0, "failed": 0, "mock": 0}
+    by_template: dict = {}
+
+    for l in all_logs:
+        overall["total"] += 1
+        overall[l.status if l.status in ("sent","failed","mock") else "mock"] += 1
+
+        if l.sent_at and l.sent_at >= week_ago:
+            last7["total"] += 1
+            last7[l.status if l.status in ("sent","failed","mock") else "mock"] += 1
+
+        key = l.template_key or "unknown"
+        if key not in by_template:
+            by_template[key] = {"template_key": key, "total": 0, "sent": 0, "failed": 0, "mock": 0}
+        t = by_template[key]
+        t["total"] += 1
+        t[l.status if l.status in ("sent","failed","mock") else "mock"] += 1
+
+    for t in by_template.values():
+        live = t["sent"] + t["failed"]
+        t["success_rate"] = round(t["sent"] / live * 100, 1) if live else None
+
+    live_total = overall["sent"] + overall["failed"]
+    overall["success_rate"] = round(overall["sent"] / live_total * 100, 1) if live_total else None
+
+    return {
+        "overall": overall,
+        "last_7_days": last7,
+        "by_template": sorted(by_template.values(), key=lambda x: x["total"], reverse=True),
+    }
+
+
 # ── Email endpoints ───────────────────────────────────────────────────────────
 
 @router.post("/email/send")
@@ -824,3 +871,154 @@ def test_email(request: Request, db: Session = Depends(get_db)):
         cfg,
     )
     return {"status": status, "detail": detail, "sent_to": target}
+
+
+# ── Scheduled notifications ───────────────────────────────────────────────────
+
+class ScheduleCreate(BaseModel):
+    template_key: str
+    target: str = "all"               # all | missed | custom
+    member_ids: Optional[List[int]] = None
+    week_id: Optional[int] = None
+    scheduled_at: str                 # ISO datetime string
+
+
+@router.post("/schedule")
+def create_schedule(data: ScheduleCreate, request: Request, db: Session = Depends(get_db)):
+    _require_feature(request, db, "notifications")
+    from datetime import datetime
+    from routers.deps import _get_current_user
+    sched_at = datetime.fromisoformat(data.scheduled_at)
+    now = datetime.now()
+    if sched_at <= now:
+        raise HTTPException(400, "scheduled_at must be in the future")
+    user = _get_current_user(request, db)
+    sn = ScheduledNotification(
+        template_key=data.template_key,
+        target=data.target,
+        member_ids=data.member_ids,
+        week_id=data.week_id,
+        scheduled_at=sched_at,
+        status="pending",
+        created_by_id=getattr(user, "id", None),
+    )
+    db.add(sn)
+    db.commit()
+    db.refresh(sn)
+    return _sched_dict(sn)
+
+
+@router.get("/schedule")
+def list_schedules(request: Request, db: Session = Depends(get_db)):
+    _require_feature(request, db, "notifications")
+    from datetime import datetime, timedelta
+    cutoff = datetime.now() - timedelta(days=7)
+    rows = (db.query(ScheduledNotification)
+            .filter((ScheduledNotification.status == "pending") |
+                    (ScheduledNotification.fired_at >= cutoff))
+            .order_by(ScheduledNotification.scheduled_at.desc())
+            .limit(50).all())
+    return [_sched_dict(r) for r in rows]
+
+
+@router.delete("/schedule/{sched_id}")
+def cancel_schedule(sched_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_feature(request, db, "notifications")
+    sn = db.query(ScheduledNotification).filter(ScheduledNotification.id == sched_id).first()
+    if not sn:
+        raise HTTPException(404, "Scheduled notification not found")
+    if sn.status != "pending":
+        raise HTTPException(400, f"Cannot cancel a {sn.status} notification")
+    sn.status = "cancelled"
+    db.commit()
+    return {"ok": True}
+
+
+def _sched_dict(sn: ScheduledNotification) -> dict:
+    return {
+        "id": sn.id,
+        "template_key": sn.template_key,
+        "target": sn.target,
+        "member_ids": sn.member_ids,
+        "week_id": sn.week_id,
+        "scheduled_at": sn.scheduled_at.isoformat(),
+        "status": sn.status,
+        "created_by": sn.created_by.full_name if sn.created_by else None,
+        "created_at": sn.created_at.isoformat() if sn.created_at else None,
+        "fired_at": sn.fired_at.isoformat() if sn.fired_at else None,
+        "result": sn.result,
+    }
+
+
+def fire_scheduled_notifications(db=None):
+    """Called by APScheduler every 5 minutes. Fires any pending scheduled notifications."""
+    from datetime import datetime, timezone
+    close_db = db is None
+    if db is None:
+        from database import SessionLocal
+        db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        pending = (db.query(ScheduledNotification)
+                   .filter(ScheduledNotification.status == "pending",
+                           ScheduledNotification.scheduled_at <= now)
+                   .all())
+        for sn in pending:
+            try:
+                result = _fire_one(sn, db)
+                sn.status = "fired"
+                sn.fired_at = now
+                sn.result = result
+            except Exception as e:
+                sn.status = "fired"
+                sn.fired_at = now
+                sn.result = {"error": str(e)}
+        if pending:
+            db.commit()
+    except Exception as e:
+        logger.error("scheduled notification runner error: %s", e)
+        db.rollback()
+    finally:
+        if close_db:
+            db.close()
+
+
+def _fire_one(sn: ScheduledNotification, db) -> dict:
+    """Execute one scheduled notification. Returns result summary dict."""
+    cfg = db.query(NotificationSettings).first()
+    tmpl = db.query(NotificationTemplate).filter_by(key=sn.template_key).first()
+    if not tmpl or not tmpl.is_active:
+        return {"skipped": "template inactive"}
+
+    active = db.query(Cycle).filter(Cycle.status == "active").first()
+    active_cycle_id = active.id if active else None
+
+    # Resolve member list
+    if sn.target == "custom" and sn.member_ids:
+        members = db.query(Member).filter(Member.id.in_(sn.member_ids)).all()
+    elif sn.target == "missed":
+        missed_ids = {p.member_id for p in
+                      db.query(Payment).filter(Payment.status.in_(["missed", "late"])).all()}
+        members = db.query(Member).filter(Member.id.in_(missed_ids), Member.status == "active").all()
+    else:
+        members = db.query(Member).filter(Member.status == "active").all()
+
+    bid = _batch_id()
+    sent = failed = skipped = 0
+    for m in members:
+        if not m.phone:
+            skipped += 1
+            continue
+        vars_ = _member_vars(m, db, cycle_id=active_cycle_id)
+        msg = _pick_message(tmpl, cfg, vars_)
+        status, response = _send_sms(m.phone, msg, cfg, db=db,
+                                     template_key=sn.template_key, member_id=m.id)
+        db.add(NotificationLog(member_id=m.id, phone=m.phone,
+                               template_key=sn.template_key, message=msg,
+                               status=status, provider_response=response, batch_id=bid))
+        if status in ("sent", "mock"):
+            sent += 1
+        else:
+            failed += 1
+
+    return {"sent": sent, "failed": failed, "skipped": skipped, "total": len(members)}

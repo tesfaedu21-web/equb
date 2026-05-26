@@ -478,6 +478,25 @@ class SmsQueue(Base):
     member = relationship("Member")
 
 
+class ScheduledNotification(Base):
+    __tablename__ = "scheduled_notifications"
+    id = Column(Integer, primary_key=True)
+    template_key = Column(String, nullable=False)
+    target = Column(String, nullable=False, default="all")  # all | missed | custom
+    member_ids = Column(JSON, nullable=True)                # null = all active
+    week_id = Column(Integer, ForeignKey("weeks.id"), nullable=True)
+    extra = Column(JSON, nullable=True)
+    scheduled_at = Column(DateTime, nullable=False)
+    status = Column(String, default="pending")              # pending | fired | cancelled
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+    fired_at = Column(DateTime, nullable=True)
+    result = Column(JSON, nullable=True)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    week = relationship("Week", foreign_keys=[week_id])
+
+
 class NotificationTemplate(Base):
     __tablename__ = "notification_templates"
     id = Column(Integer, primary_key=True)
@@ -857,6 +876,21 @@ def _migrate(engine):
         "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS smtp_use_tls BOOLEAN DEFAULT TRUE",
         "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS email_from VARCHAR",
         "ALTER TABLE members ADD COLUMN IF NOT EXISTS email VARCHAR",
+        """CREATE TABLE IF NOT EXISTS scheduled_notifications (
+            id SERIAL PRIMARY KEY,
+            template_key VARCHAR NOT NULL,
+            target VARCHAR NOT NULL DEFAULT 'all',
+            member_ids JSONB,
+            week_id INTEGER REFERENCES weeks(id),
+            extra JSONB,
+            scheduled_at TIMESTAMP NOT NULL,
+            status VARCHAR DEFAULT 'pending',
+            created_by_id INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT now(),
+            fired_at TIMESTAMP,
+            result JSONB
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_scheduled_notifications_status ON scheduled_notifications(status, scheduled_at)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
