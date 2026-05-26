@@ -170,6 +170,7 @@ class Member(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     phone = Column(String)
+    email = Column(String, nullable=True)
     status = Column(String, default="active")             # active | received | left
     notes = Column(Text)
     created_at = Column(DateTime, default=_utcnow)
@@ -451,6 +452,14 @@ class NotificationSettings(Base):
     is_active = Column(Boolean, default=False)
     device_token = Column(String, nullable=True)
     sms_language = Column(String, default="en")    # en | am | both
+    # Email / SMTP
+    email_enabled = Column(Boolean, default=False)
+    smtp_host = Column(String, nullable=True)
+    smtp_port = Column(Integer, default=587)
+    smtp_user = Column(String, nullable=True)
+    smtp_password = Column(String, nullable=True)
+    smtp_use_tls = Column(Boolean, default=True)
+    email_from = Column(String, nullable=True)     # "From" display address
 
 
 class SmsQueue(Base):
@@ -839,6 +848,15 @@ def _migrate(engine):
         "CREATE INDEX IF NOT EXISTS ix_debt_cases_member ON debt_cases(member_id)",
         "CREATE INDEX IF NOT EXISTS ix_debt_cases_status ON debt_cases(status)",
         "CREATE INDEX IF NOT EXISTS ix_debt_contacts_case ON debt_contacts(case_id)",
+        # Email notifications: SMTP config on notification_settings, email on members
+        "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS email_enabled BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS smtp_host VARCHAR",
+        "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS smtp_port INTEGER DEFAULT 587",
+        "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS smtp_user VARCHAR",
+        "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS smtp_password VARCHAR",
+        "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS smtp_use_tls BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS email_from VARCHAR",
+        "ALTER TABLE members ADD COLUMN IF NOT EXISTS email VARCHAR",
     ]
     with engine.connect() as conn:
         for sql in migrations:

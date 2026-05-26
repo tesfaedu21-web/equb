@@ -29,6 +29,21 @@ class SettingsUpdate(BaseModel):
     sender_id: Optional[str] = None
     is_active: Optional[bool] = None
     sms_language: Optional[str] = None   # en | am | both
+    # Email / SMTP
+    email_enabled: Optional[bool] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+    email_from: Optional[str] = None
+
+
+class EmailSendRequest(BaseModel):
+    member_ids: List[int]
+    subject: str
+    body: str                    # plain-text body
+    body_html: Optional[str] = None  # optional HTML version
 
 
 class TemplateUpdate(BaseModel):
@@ -127,6 +142,43 @@ def _send_africastalking(phone: str, message: str, cfg: NotificationSettings) ->
             except Exception:
                 pass
             return "sent", body
+    except Exception as e:
+        return "failed", str(e)
+
+
+def _send_email(to_address: str, subject: str, body: str, cfg, body_html: str = None) -> tuple[str, str]:
+    """Send email via SMTP. Returns (status, detail)."""
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    if not cfg.email_enabled:
+        return "mock", f"[MOCK EMAIL] To: {to_address} Subject: {subject}"
+    if not cfg.smtp_host or not cfg.smtp_user or not cfg.smtp_password:
+        return "failed", "SMTP not fully configured (host/user/password required)"
+    try:
+        from_addr = cfg.email_from or cfg.smtp_user
+        if body_html:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = from_addr
+            msg["To"] = to_address
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+            msg.attach(MIMEText(body_html, "html", "utf-8"))
+        else:
+            msg = MIMEText(body, "plain", "utf-8")
+            msg["Subject"] = subject
+            msg["From"] = from_addr
+            msg["To"] = to_address
+        port = cfg.smtp_port or 587
+        if cfg.smtp_use_tls:
+            server = smtplib.SMTP(cfg.smtp_host, port, timeout=15)
+            server.starttls()
+        else:
+            server = smtplib.SMTP_SSL(cfg.smtp_host, port, timeout=15)
+        server.login(cfg.smtp_user, cfg.smtp_password)
+        server.sendmail(from_addr, [to_address], msg.as_bytes())
+        server.quit()
+        return "sent", f"Delivered to {to_address}"
     except Exception as e:
         return "failed", str(e)
 
@@ -429,6 +481,13 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
         "is_active": cfg.is_active,
         "has_device_token": bool(cfg.device_token),
         "sms_language": cfg.sms_language or "en",
+        "email_enabled": bool(cfg.email_enabled),
+        "smtp_host": cfg.smtp_host or "",
+        "smtp_port": cfg.smtp_port or 587,
+        "smtp_user": cfg.smtp_user or "",
+        "smtp_password": "***" if cfg.smtp_password else "",
+        "smtp_use_tls": cfg.smtp_use_tls if cfg.smtp_use_tls is not None else True,
+        "email_from": cfg.email_from or "",
     }
 
 
@@ -448,6 +507,20 @@ def update_settings(data: SettingsUpdate, request: Request, db: Session = Depend
         cfg.is_active = data.is_active
     if data.sms_language is not None:
         cfg.sms_language = data.sms_language
+    if data.email_enabled is not None:
+        cfg.email_enabled = data.email_enabled
+    if data.smtp_host is not None:
+        cfg.smtp_host = data.smtp_host
+    if data.smtp_port is not None:
+        cfg.smtp_port = data.smtp_port
+    if data.smtp_user is not None:
+        cfg.smtp_user = data.smtp_user
+    if data.smtp_password is not None and data.smtp_password != "***":
+        cfg.smtp_password = data.smtp_password
+    if data.smtp_use_tls is not None:
+        cfg.smtp_use_tls = data.smtp_use_tls
+    if data.email_from is not None:
+        cfg.email_from = data.email_from
     db.commit()
     return {"ok": True}
 
@@ -698,3 +771,56 @@ def notification_logs(request: Request, db: Session = Depends(get_db)):
     batches = sorted(all_batches, key=lambda b: b["sent_at"], reverse=True)
     individuals_sorted = sorted(individuals, key=lambda l: l["sent_at"], reverse=True)
     return {"batches": batches, "individuals": individuals_sorted[:50]}
+
+
+# ── Email endpoints ───────────────────────────────────────────────────────────
+
+@router.post("/email/send")
+def send_email_to_members(data: EmailSendRequest, request: Request,
+                          db: Session = Depends(get_db)):
+    """Send a custom email to selected members (those with an email address)."""
+    _require_feature(request, db, "notifications")
+    cfg = db.query(NotificationSettings).first()
+    if not cfg:
+        raise HTTPException(500, "Notification settings not configured")
+
+    bid = _batch_id() if len(data.member_ids) > 1 else None
+    results = []
+    for mid in data.member_ids:
+        m = db.query(Member).filter(Member.id == mid).first()
+        if not m:
+            results.append({"member_id": mid, "status": "skipped", "reason": "not found"})
+            continue
+        if not m.email:
+            results.append({"member_id": mid, "name": m.name, "status": "skipped", "reason": "no email"})
+            continue
+        status, detail = _send_email(m.email, data.subject, data.body, cfg, body_html=data.body_html)
+        db.add(NotificationLog(
+            member_id=m.id, phone=m.email,
+            template_key="email_custom", message=data.subject,
+            status=status, provider_response=detail, batch_id=bid,
+        ))
+        results.append({"member_id": mid, "name": m.name, "email": m.email, "status": status})
+
+    db.commit()
+    sent = sum(1 for r in results if r["status"] in ("sent", "mock"))
+    return {"sent": sent, "total": len(data.member_ids), "results": results}
+
+
+@router.post("/email/test")
+def test_email(request: Request, db: Session = Depends(get_db)):
+    """Send a test email to the configured smtp_user address."""
+    _require_feature(request, db, "notifications")
+    cfg = db.query(NotificationSettings).first()
+    if not cfg:
+        raise HTTPException(500, "Notification settings not configured")
+    target = cfg.email_from or cfg.smtp_user
+    if not target:
+        raise HTTPException(400, "No email_from or smtp_user configured")
+    status, detail = _send_email(
+        target,
+        "Equb — Email Test",
+        "This is a test email from your Equb system. Email notifications are working correctly.",
+        cfg,
+    )
+    return {"status": status, "detail": detail, "sent_to": target}

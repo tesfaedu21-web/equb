@@ -346,6 +346,103 @@
       </div>
     </div>
   </div>
+
+  <!-- ── EMAIL NOTIFICATIONS SECTION ──────────────────────────────────────── -->
+  <div class="card mt-4">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-bold text-gray-900 text-sm flex items-center gap-2">
+        <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        Email Notifications (SMTP)
+      </h3>
+      <div class="flex items-center gap-2">
+        <span :class="cfg.email_enabled ? 'badge badge-active' : 'badge badge-left'"
+              x-text="cfg.email_enabled ? 'Enabled' : 'Disabled'"></span>
+        <button @click="testEmail()" :disabled="emailTesting"
+                class="text-xs px-3 py-1 rounded-lg border border-blue-400 text-blue-600 hover:bg-blue-50"
+                x-text="emailTesting ? 'Sending…' : 'Send Test'"></button>
+      </div>
+    </div>
+    <form @submit.prevent="saveEmailSettings()" class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">SMTP Host</label>
+          <input x-model="cfg.smtp_host" type="text" placeholder="smtp.gmail.com" class="text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Port</label>
+          <input x-model="cfg.smtp_port" type="number" placeholder="587" class="text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Username / Email</label>
+          <input x-model="cfg.smtp_user" type="email" placeholder="you@gmail.com" class="text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Password / App Password</label>
+          <input x-model="cfg.smtp_password_input" type="password" placeholder="leave blank to keep current" class="text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">From Address (display)</label>
+          <input x-model="cfg.email_from" type="email" placeholder="Equb System <you@gmail.com>" class="text-sm"/>
+        </div>
+        <div class="flex flex-col justify-end gap-2">
+          <div class="flex items-center gap-2">
+            <input type="checkbox" x-model="cfg.smtp_use_tls" id="smtpTls" class="w-auto rounded"/>
+            <label for="smtpTls" class="text-sm text-gray-700">Use STARTTLS</label>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" x-model="cfg.email_enabled" id="emailEnabled" class="w-auto rounded"/>
+            <label for="emailEnabled" class="text-sm text-gray-700">Enable email sending</label>
+          </div>
+        </div>
+      </div>
+      <button type="submit" :disabled="savingEmail" class="btn-primary text-sm w-full"
+              x-text="savingEmail ? 'Saving…' : 'Save Email Settings'"></button>
+    </form>
+
+    <!-- Send custom email panel -->
+    <div class="mt-5 border-t pt-4">
+      <h4 class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Send Custom Email</h4>
+      <div class="space-y-2">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Recipients</label>
+          <div class="flex flex-wrap gap-1 mb-1">
+            <template x-for="m in emailRecipients" :key="m.id">
+              <span class="inline-flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">
+                <span x-text="m.name"></span>
+                <button @click="emailRecipients=emailRecipients.filter(x=>x.id!==m.id)" class="text-blue-400 hover:text-red-500 font-bold leading-none">×</button>
+              </span>
+            </template>
+          </div>
+          <div class="relative">
+            <input x-model="emailMemberSearch" @input="searchEmailMembers()" type="text"
+                   placeholder="Add member by name…" class="text-sm"/>
+            <div x-show="emailMemberResults.length"
+                 class="absolute left-0 top-full mt-1 z-30 bg-white border rounded-xl shadow-lg w-72 max-h-48 overflow-y-auto">
+              <template x-for="m in emailMemberResults" :key="m.id">
+                <button @click="addEmailRecipient(m)"
+                        class="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-0"
+                        x-text="m.name + (m.email ? ' (' + m.email + ')' : ' — no email')"></button>
+              </template>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Subject</label>
+          <input x-model="emailSubject" type="text" placeholder="e.g. Payment Reminder — Week 5" class="text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Body</label>
+          <textarea x-model="emailBody" rows="4" placeholder="Message body…" class="text-sm resize-y"></textarea>
+        </div>
+        <button @click="sendCustomEmail()" :disabled="sendingEmail || !emailRecipients.length || !emailSubject || !emailBody"
+                class="btn-primary text-sm w-full" x-text="sendingEmail ? 'Sending…' : 'Send Email'"></button>
+        <div x-show="emailResult" class="text-xs p-2 rounded bg-green-50 text-green-700" x-text="emailResult"></div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- end inner p-8 -->
 
 <!-- Edit Template Modal -->
@@ -458,9 +555,13 @@
 <script>
 function notifications() {
   return {
-    cfg: { provider: 'africastalking', username: '', api_key: null, api_key_input: '', sender_id: '', is_active: false, has_device_token: false, newToken: '', sms_language: 'en' },
+    cfg: { provider: 'africastalking', username: '', api_key: null, api_key_input: '', sender_id: '', is_active: false, has_device_token: false, newToken: '', sms_language: 'en',
+           email_enabled: false, smtp_host: '', smtp_port: 587, smtp_user: '', smtp_password: '', smtp_password_input: '', smtp_use_tls: true, email_from: '' },
     templates: [], logBatches: [], logIndividuals: [], expandedBatch: null,
     weeks: [], allMembers: [],
+    savingEmail: false, emailTesting: false,
+    emailRecipients: [], emailMemberSearch: '', emailMemberResults: [], emailMemberTimer: null,
+    emailSubject: '', emailBody: '', sendingEmail: false, emailResult: '',
     reminderWeekId: '',
     sending: { reminder: false, missed: false, custom: false },
     savingCfg: false, savingTmpl: false, generatingToken: false,
@@ -477,7 +578,7 @@ function notifications() {
           this.api('GET', '/api/notifications/logs'),
           this.api('GET', '/api/draws/cycles'),
         ]);
-        this.cfg = { ...s, api_key_input: '' };
+        this.cfg = { ...s, api_key_input: '', smtp_password_input: '', newToken: '' };
         this.templates = t;
         this.logBatches = l.batches || [];
         this.logIndividuals = l.individuals || [];
@@ -541,6 +642,68 @@ function notifications() {
         this.showToast('New device token generated — copy it now!', 'success');
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.generatingToken = false; }
+    },
+
+    async saveEmailSettings() {
+      this.savingEmail = true;
+      try {
+        const payload = {
+          email_enabled: this.cfg.email_enabled,
+          smtp_host: this.cfg.smtp_host,
+          smtp_port: parseInt(this.cfg.smtp_port) || 587,
+          smtp_user: this.cfg.smtp_user,
+          smtp_use_tls: this.cfg.smtp_use_tls,
+          email_from: this.cfg.email_from,
+        };
+        if (this.cfg.smtp_password_input) payload.smtp_password = this.cfg.smtp_password_input;
+        await this.api('PUT', '/api/notifications/settings', payload);
+        this.cfg.smtp_password_input = '';
+        this.showToast('Email settings saved');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.savingEmail = false; }
+    },
+
+    async testEmail() {
+      this.emailTesting = true;
+      try {
+        const res = await this.api('POST', '/api/notifications/email/test');
+        this.showToast(`Test email ${res.status} → ${res.sent_to}`, res.status === 'sent' ? 'success' : 'error');
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.emailTesting = false; }
+    },
+
+    searchEmailMembers() {
+      clearTimeout(this.emailMemberTimer);
+      const q = (this.emailMemberSearch || '').trim();
+      if (!q) { this.emailMemberResults = []; return; }
+      this.emailMemberTimer = setTimeout(async () => {
+        const members = await this.api('GET', `/api/members?search=${encodeURIComponent(q)}`).catch(() => []);
+        this.emailMemberResults = (members || []).slice(0, 8);
+      }, 280);
+    },
+
+    addEmailRecipient(m) {
+      if (!this.emailRecipients.find(x => x.id === m.id)) this.emailRecipients.push(m);
+      this.emailMemberSearch = '';
+      this.emailMemberResults = [];
+    },
+
+    async sendCustomEmail() {
+      if (!this.emailRecipients.length || !this.emailSubject || !this.emailBody) return;
+      const withEmail = this.emailRecipients.filter(m => m.email);
+      if (!withEmail.length) { this.showToast('No selected members have email addresses', 'error'); return; }
+      this.sendingEmail = true;
+      this.emailResult = '';
+      try {
+        const res = await this.api('POST', '/api/notifications/email/send', {
+          member_ids: withEmail.map(m => m.id),
+          subject: this.emailSubject,
+          body: this.emailBody,
+        });
+        this.emailResult = `Sent ${res.sent} of ${res.total} emails.`;
+        this.showToast(`Sent ${res.sent} emails`);
+      } catch(e) { this.showToast(e.message, 'error'); }
+      finally { this.sendingEmail = false; }
     },
 
     copyToken() {

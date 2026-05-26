@@ -38,6 +38,7 @@ def _validate_phone(v: Optional[str]) -> Optional[str]:
 class MemberCreate(BaseModel):
     name: str
     phone: Optional[str] = None
+    email: Optional[str] = None
     spots: List[SpotAssignment] = []
     notes: Optional[str] = None
 
@@ -51,6 +52,7 @@ class MemberCreate(BaseModel):
 class MemberUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
 
@@ -102,6 +104,7 @@ def _member_dict(m: Member, cycle_id: Optional[int] = None) -> dict:
         "id": m.id,
         "name": m.name,
         "phone": m.phone,
+        "email": getattr(m, "email", None),
         "status": m.status,
         "spots": assignments,
         "spot_numbers": spot_numbers,
@@ -605,7 +608,7 @@ def create_member(data: MemberCreate, request: Request, db: Session = Depends(ge
     gs    = db.query(Settings).first()
     cfg   = cycle_cfg(cycle, gs)
     try:
-        m = Member(name=data.name, phone=data.phone, notes=data.notes)
+        m = Member(name=data.name, phone=data.phone, email=getattr(data, "email", None), notes=data.notes)
         db.add(m)
         db.flush()
 
