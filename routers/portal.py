@@ -211,6 +211,7 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
 
 @router.get("/payments/{payment_id}/receipt", response_class=HTMLResponse)
 def portal_payment_receipt(payment_id: int, phone: str, spot_number: int,
+                           print: Optional[bool] = False,
                            db: Session = Depends(get_db)):
     """
     Public receipt endpoint for the member portal.
@@ -248,4 +249,8 @@ def portal_payment_receipt(payment_id: int, phone: str, spot_number: int,
 
     # Delegate to the shared receipt generator in payments router
     from routers.payments import payment_receipt
-    return payment_receipt(payment_id=payment_id, db=db)
+    html = payment_receipt(payment_id=payment_id, db=db)
+    # Auto-trigger print dialog when opened from the portal
+    if print:
+        html = html.replace("</body>", "<script>window.onload=()=>window.print();</script></body>", 1)
+    return html
