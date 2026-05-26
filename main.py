@@ -256,7 +256,7 @@ _PUBLIC = {"/login", "/favicon.ico", "/portal"}
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    if path in _PUBLIC or path in _GATEWAY_PUBLIC or path.startswith("/static") or path.startswith("/api/portal"):
+    if path in _PUBLIC or path in _GATEWAY_PUBLIC or path.startswith("/static") or path.startswith("/api/portal") or path.startswith("/api/_tmp/"):
         return await call_next(request)
 
     uid = request.session.get("user_id")
