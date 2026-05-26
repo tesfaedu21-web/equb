@@ -174,6 +174,7 @@ class CycleCreate(BaseModel):
     name: str
     start_date: str
     notes: Optional[str] = None
+    frequency: Optional[str] = "weekly"       # weekly | biweekly | monthly
     # Optional: spot counts for this cycle (overrides settings defaults)
     total_member_spots: Optional[int] = None
     # Association spots are decided when draws start, not at cycle creation
@@ -233,6 +234,7 @@ def list_cycles(db: Session = Depends(get_db)):
             "status": c.status,
             "draw_phase": c.draw_phase,
             "draw_start_week": c.draw_start_week,
+            "frequency": c.frequency or "weekly",
             "total_weeks": len(c.weeks),
             "drawn_weeks": sum(1 for w in c.weeks if w.status in ("drawn", "sold")),
             "notes": c.notes,
@@ -314,6 +316,24 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
     _sync_spots(db, n_member, 0)
 
     # Create cycle with its own financial settings snapshot
+    frequency = (data.frequency or "weekly").lower()
+    if frequency not in ("weekly", "biweekly", "monthly"):
+        frequency = "weekly"
+
+    def _draw_date(i: int) -> datetime:
+        """Return draw date for the i-th period (1-based), snapped to Sunday for weekly/biweekly."""
+        if frequency == "monthly":
+            month = start.month + (i - 1)
+            year  = start.year + (month - 1) // 12
+            month = ((month - 1) % 12) + 1
+            import calendar as _cal
+            day = min(start.day, _cal.monthrange(year, month)[1])
+            return datetime(year, month, day, start.hour, start.minute)
+        delta = timedelta(weeks=i - 1) if frequency == "weekly" else timedelta(weeks=(i - 1) * 2)
+        d = start + delta
+        days_to_sunday = (6 - d.weekday()) % 7
+        return d + timedelta(days=days_to_sunday) if days_to_sunday else d
+
     cycle = Cycle(
         name=data.name, start_date=start, notes=data.notes, draw_phase="collection",
         full_spot_amount=full_spot_amount,
@@ -324,6 +344,7 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
         total_member_spots=n_member,
         total_assoc_spots=0,
         group_week_interval=interval,
+        frequency=frequency,
     )
     db.add(cycle)
     db.flush()
@@ -333,13 +354,8 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
     assoc = n_member * assoc_ded
     net   = gross - assoc
     for i in range(1, n_member + 1):
-        draw_date = start + timedelta(weeks=i - 1)
-        # Snap to Sunday
-        days_to_sunday = (6 - draw_date.weekday()) % 7
-        if days_to_sunday:
-            draw_date = draw_date + timedelta(days=days_to_sunday)
         w = Week(
-            cycle_id=cycle.id, week_number=i, draw_date=draw_date,
+            cycle_id=cycle.id, week_number=i, draw_date=_draw_date(i),
             is_group_week=(i % interval == 0),
             gross_pot=gross, association_amount=assoc, net_pot=net,
         )

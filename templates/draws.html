@@ -34,7 +34,7 @@
       <select x-model="selectedCycle" @change="loadCycleAndWeeks()" class="w-56">
         <option value="">— Select Cycle —</option>
         <template x-for="c in cycles" :key="c.id">
-          <option :value="c.id" x-text="`${c.name} (${c.drawn_weeks}/${c.total_weeks})`"></option>
+          <option :value="c.id" x-text="`${c.name} · ${c.frequency||'weekly'} (${c.drawn_weeks}/${c.total_weeks})`"></option>
         </template>
       </select>
       <!-- Closure Checklist (admin only) -->
@@ -1402,6 +1402,23 @@
         </div>
       </div>
 
+      <!-- Frequency -->
+      <div class="mt-3">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Collection Frequency <span class="text-red-500">*</span></label>
+        <div class="grid grid-cols-3 gap-2">
+          <template x-for="opt in [{v:'weekly',label:'Weekly',sub:'Every 7 days'},{v:'biweekly',label:'Biweekly',sub:'Every 14 days'},{v:'monthly',label:'Monthly',sub:'Same day each month'}]" :key="opt.v">
+            <label :class="newCycle.frequency === opt.v
+                    ? 'border-2 border-equb-green bg-green-50 text-equb-green'
+                    : 'border border-gray-200 text-gray-600 hover:border-gray-300'"
+                   class="flex flex-col items-center gap-0.5 px-2 py-2.5 rounded-xl cursor-pointer transition-all text-center">
+              <input type="radio" :value="opt.v" x-model="newCycle.frequency" class="sr-only"/>
+              <span class="text-sm font-semibold" x-text="opt.label"></span>
+              <span class="text-xs opacity-70" x-text="opt.sub"></span>
+            </label>
+          </template>
+        </div>
+      </div>
+
       <div x-show="cycleError" x-cloak
            class="mt-3 flex items-center gap-2 bg-red-50 border border-red-300 rounded-lg px-3 py-2 text-sm text-red-700">
         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1594,7 +1611,7 @@ function draws() {
     showNewCycle: false,
     cycleError: '',
     newCycle: {
-      name: '', start_date: '', notes: '',
+      name: '', start_date: '', notes: '', frequency: 'weekly',
       total_member_spots: null, total_assoc_spots: null,
       full_spot_amount: null, half_spot_amount: null,
       association_deduction: null, full_spot_voucher: null, half_spot_voucher: null,
@@ -2195,7 +2212,7 @@ function draws() {
       const s = this.appSettings || {};
       this.cycleError = '';
       this.newCycle = {
-        name: '', start_date: '', notes: '',
+        name: '', start_date: '', notes: '', frequency: 'weekly',
         total_member_spots: s.total_member_spots || null,
         full_spot_amount: null, half_spot_amount: null,
         association_deduction: null, full_spot_voucher: null, half_spot_voucher: null,
@@ -2213,6 +2230,7 @@ function draws() {
           name: this.newCycle.name.trim(),
           start_date: this.newCycle.start_date,
           notes: this.newCycle.notes || null,
+          frequency: this.newCycle.frequency || 'weekly',
         };
         if (this.newCycle.total_member_spots) payload.total_member_spots = this.newCycle.total_member_spots;
         if (this.newCycle.full_spot_amount)   payload.full_spot_amount   = this.newCycle.full_spot_amount;

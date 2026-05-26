@@ -137,6 +137,7 @@ class Cycle(Base):
     total_member_spots   = Column(Integer, nullable=True)
     total_assoc_spots    = Column(Integer, nullable=True)
     group_week_interval  = Column(Integer, nullable=True)
+    frequency            = Column(String, default="weekly")  # weekly | biweekly | monthly
     weeks = relationship("Week", back_populates="cycle", order_by="Week.week_number")
     memberships = relationship("MemberSpot", back_populates="cycle")
 
@@ -614,6 +615,7 @@ def _migrate(engine):
         "ALTER TABLE cycles ADD COLUMN total_assoc_spots INTEGER",
         "ALTER TABLE cycles ADD COLUMN group_week_interval INTEGER",
         "ALTER TABLE cycles ADD COLUMN include_worker_slot INTEGER",
+        "ALTER TABLE cycles ADD COLUMN IF NOT EXISTS frequency VARCHAR DEFAULT 'weekly'",
         # Performance indexes
         "CREATE INDEX IF NOT EXISTS ix_weeks_cycle_status ON weeks(cycle_id, status)",
         "CREATE INDEX IF NOT EXISTS ix_payments_week_status ON payments(week_id, status)",
