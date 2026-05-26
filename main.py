@@ -488,6 +488,27 @@ async def portal_page(request: Request):
     return templates.TemplateResponse(request, "portal.html", {"request": request})
 
 
+# ── TEMP: one-shot member email seeder (remove after use) ──────────────────
+@app.get("/api/_tmp/seed-email")
+async def seed_member_email(token: str = "", member_id: int = 0, email: str = ""):
+    if token != "equb-seed-2026":
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    if not member_id or not email:
+        return JSONResponse({"error": "member_id and email required"}, status_code=400)
+    db: Session = next(get_db())
+    try:
+        from database import Member as _Mem
+        from sqlalchemy import text as _text
+        m = db.query(_Mem).filter(_Mem.id == member_id).first()
+        if not m:
+            return JSONResponse({"error": "member not found"}, status_code=404)
+        m.email = email
+        db.commit()
+        return JSONResponse({"ok": True, "member_id": m.id, "name": m.name, "email": m.email})
+    finally:
+        db.close()
+
+
 
 
 # ── ONE-TIME SETUP (permanently disabled once any user exists) ────────────────
