@@ -93,7 +93,7 @@ def list_cases(status: Optional[str] = None, db: Session = Depends(get_db)):
 @router.post("/generate")
 def generate_cases(request: Request, db: Session = Depends(get_db)):
     """Auto-create debt cases for every member with missed/late payments in the active cycle."""
-    active = db.query(Cycle).filter(Cycle.status == "active").first()
+    active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     if not active:
         raise HTTPException(400, "No active cycle")
 

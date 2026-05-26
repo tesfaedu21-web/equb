@@ -97,7 +97,7 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
     if cycle_id:
         cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     else:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     settings = gs  # kept for the association_fund_detail check below
 
     # Spot counts — scoped to the active cycle's configured range so stale rows
@@ -321,7 +321,7 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
 @router.get("/transactions")
 def recent_transactions(limit: int = 20, cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
     q = db.query(PotTransaction)
     if cycle_id:
@@ -349,7 +349,7 @@ def recent_transactions(limit: int = 20, cycle_id: Optional[int] = None, db: Ses
 def ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Chronological ledger: disbursements for a cycle."""
     if not cycle_id:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = cycle.id if cycle else None
     if not cycle_id:
         return []
@@ -446,7 +446,7 @@ def association_fund_detail(cycle_id: Optional[int] = None, db: Session = Depend
     if cycle_id:
         cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     else:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     if not cycle:
         return {"total": 0, "expenses_total": 0, "balance": 0, "events": []}
 
@@ -505,7 +505,7 @@ def association_fund_detail(cycle_id: Optional[int] = None, db: Session = Depend
 def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Full financial position for a cycle."""
     if not cycle_id:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         if not cycle:
             return {}
         cycle_id = cycle.id
@@ -587,7 +587,7 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
 def voucher_tracker(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """List all completed weeks (drawn + sold/group) with voucher issued/returned counts."""
     if not cycle_id:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         if not cycle:
             return []
         cycle_id = cycle.id
@@ -778,7 +778,7 @@ class ExpenseCreate(BaseModel):
 @router.get("/association-expenses")
 def list_expenses(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     if not cycle_id:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = cycle.id if cycle else None
     if not cycle_id:
         return []
@@ -794,7 +794,7 @@ def list_expenses(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
 @router.post("/association-expenses")
 def add_expense(data: ExpenseCreate, request: Request, db: Session = Depends(get_db)):
     _require_feature(request, db, "view_reports")
-    cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     if not cycle:
         raise HTTPException(404, "No active cycle")
     exp = AssociationExpense(
@@ -829,7 +829,7 @@ def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session
     _require_feature(request, db, "view_reports")
     """Chronological ledger of every financial event for a cycle."""
     if not cycle_id:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         if not cycle:
             return []
         cycle_id = cycle.id
@@ -927,7 +927,7 @@ def cycle_distribution(cycle_id: Optional[int] = None, db: Session = Depends(get
     Split by spot weight: full spot = 1.0, half spot = 0.5.
     """
     if not cycle_id:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         if not cycle:
             return {"total_distributable": 0, "breakdown": {}, "per_unit_amount": 0, "members": []}
         cycle_id = cycle.id
@@ -1030,7 +1030,7 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
     """Week-by-week actual cash collected, using the same paid_date windowing as the General Ledger."""
     from datetime import timedelta as _td
     if not cycle_id:
-        c = db.query(Cycle).filter(Cycle.status == "active").first()
+        c = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         if not c:
             return []
         cycle_id = c.id
@@ -1142,7 +1142,7 @@ def member_ranking(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
     """Members ranked by payment consistency (on-time rate)."""
     from collections import defaultdict
     if not cycle_id:
-        c = db.query(Cycle).filter(Cycle.status == "active").first()
+        c = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         if not c:
             return []
         cycle_id = c.id
@@ -1427,7 +1427,7 @@ class ChequeCreate(BaseModel):
 @router.get("/distribution-cheques")
 def list_distribution_cheques(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     if not cycle_id:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = cycle.id if cycle else None
     if not cycle_id:
         return []
@@ -1506,7 +1506,7 @@ def cycle_closure_report(cycle_id: Optional[int] = None, db: Session = Depends(g
     Suitable for presenting to committee at cycle close.
     """
     if not cycle_id:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         if not cycle:
             return {}
         cycle_id = cycle.id

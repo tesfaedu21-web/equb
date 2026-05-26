@@ -200,7 +200,7 @@ def member_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
 @router.get("/available-spots")
 def available_spots(db: Session = Depends(get_db)):
     # Scope availability to the active cycle's memberships
-    cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     gs = db.query(Settings).first()
     cfg = cycle_cfg(cycle, gs)
     n_total = (cfg.total_member_spots or 0) + (cfg.total_assoc_spots or 0) if cycle else 99999
@@ -246,7 +246,7 @@ def apply_settings_to_cycle(request: Request, db: Session = Depends(get_db)):
     settings = db.query(Settings).first()
     if not settings:
         raise HTTPException(status_code=500, detail="Settings not configured")
-    cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="No active cycle")
 
@@ -442,7 +442,7 @@ async def import_members(request: Request, file: UploadFile = File(...), db: Ses
         return ""
 
     # Get active cycle for spot assignments
-    active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    active_cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     if active_cycle and active_cycle.draw_phase == "active":
         raise HTTPException(status_code=400,
             detail="Draws have already started — importing members mid-cycle is not allowed.")
@@ -607,7 +607,7 @@ def delete_member_permanent(member_id: int, request: Request, db: Session = Depe
 @router.post("")
 def create_member(data: MemberCreate, request: Request, db: Session = Depends(get_db)):
     _require_feature(request, db, "manage_members")
-    cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     if cycle and cycle.draw_phase == "active":
         raise HTTPException(status_code=400,
             detail="Draws have already started — new members cannot be added mid-cycle.")
@@ -689,7 +689,7 @@ def add_spot(member_id: int, data: SpotAdd, request: Request, db: Session = Depe
     if not spot:
         raise HTTPException(status_code=404, detail="Spot not found")
 
-    cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     if cycle and cycle.draw_phase == "active":
         raise HTTPException(status_code=400,
             detail="Draws have already started — spot assignments cannot be changed mid-cycle.")
@@ -738,7 +738,7 @@ def add_spot(member_id: int, data: SpotAdd, request: Request, db: Session = Depe
 @router.delete("/{member_id}/spots/{spot_id}")
 def remove_spot(member_id: int, spot_id: int, request: Request, db: Session = Depends(get_db)):
     _require_feature(request, db, "manage_members")
-    active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    active_cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     cycle_id = active_cycle.id if active_cycle else None
     # Prefer the active-cycle-scoped assignment; fall back to any matching row (legacy data)
     sa = (

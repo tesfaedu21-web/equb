@@ -38,29 +38,24 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
     if not phone or len(phone.strip()) < 7:
         raise HTTPException(400, "Phone number too short")
 
-    # Join Member → MemberSpot → Spot in one query so that:
-    # - a member with multiple spots can log in with any of their spot numbers
-    # - two different members sharing the same phone but different spots are
-    #   each resolved correctly (no .first() on phone alone)
-    active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
-    cycle_id = active_cycle.id if active_cycle else None
-
+    # Search across ALL active cycles — works for multiple simultaneous groups.
+    # The cycle is derived from the found spot assignment, not pre-selected.
     variants = _normalize_phone(phone.strip())
     sa_found = None
     for v in variants:
-        q = (
+        sa_found = (
             db.query(MemberSpot)
             .join(MemberSpot.member)
             .join(MemberSpot.spot)
+            .join(MemberSpot.cycle)
             .filter(
                 Member.phone == v,
                 Spot.number == spot_number,
                 MemberSpot.is_active == True,
+                Cycle.status == "active",
             )
+            .first()
         )
-        if cycle_id:
-            q = q.filter(MemberSpot.cycle_id == cycle_id)
-        sa_found = q.first()
         if sa_found:
             break
 
@@ -71,8 +66,12 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
     if member.status == "left":
         raise HTTPException(404, "No member found with this phone number and spot number")
 
+    # Use the cycle from the found spot assignment — correct for multiple active cycles
+    active_cycle = sa_found.cycle
+    cycle_id = sa_found.cycle_id
+
     sas = [sa for sa in member.spot_assignments
-           if sa.is_active and (cycle_id is None or sa.cycle_id == cycle_id)]
+           if sa.is_active and sa.cycle_id == cycle_id]
     spots = [{"number": sa.spot.number, "share": sa.share,
               "spot_type": sa.spot.spot_type if sa.spot else "member"}
              for sa in sas if sa.spot]
@@ -217,22 +216,23 @@ def portal_payment_receipt(payment_id: int, phone: str, spot_number: int,
     Public receipt endpoint for the member portal.
     Verifies phone + spot_number ownership before serving the receipt HTML.
     """
-    # Verify the requesting member owns this payment
+    # Verify the requesting member owns this payment (across all active cycles)
     variants = _normalize_phone(phone.strip())
-    active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
-    cycle_id = active_cycle.id if active_cycle else None
-
     sa_found = None
     for v in variants:
-        q = (
+        sa_found = (
             db.query(MemberSpot)
             .join(MemberSpot.member)
             .join(MemberSpot.spot)
-            .filter(Member.phone == v, Spot.number == spot_number, MemberSpot.is_active == True)
+            .join(MemberSpot.cycle)
+            .filter(
+                Member.phone == v,
+                Spot.number == spot_number,
+                MemberSpot.is_active == True,
+                Cycle.status == "active",
+            )
+            .first()
         )
-        if cycle_id:
-            q = q.filter(MemberSpot.cycle_id == cycle_id)
-        sa_found = q.first()
         if sa_found:
             break
 

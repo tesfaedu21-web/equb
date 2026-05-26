@@ -87,7 +87,7 @@ def _to_dict(d: PotDisbursement) -> dict:
 @router.get("")
 def list_disbursements(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
     q = db.query(PotDisbursement).join(Week).options(
         joinedload(PotDisbursement.winner_spot).joinedload(Spot.spot_assignments).joinedload(MemberSpot.member),

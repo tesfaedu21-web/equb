@@ -170,7 +170,7 @@ def payments_for_week(week_id: int, db: Session = Depends(get_db)):
 def payments_for_member(member_id: int, cycle_id: Optional[int] = None,
                         db: Session = Depends(get_db)):
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
     q = db.query(Payment).filter(Payment.member_id == member_id).join(Week)
     if cycle_id:
@@ -195,7 +195,7 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
         raise HTTPException(status_code=404, detail="Member not found")
 
     # Use active-cycle-specific contribution amount
-    active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    active_cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     cycle_id = active_cycle.id if active_cycle else None
     amount = sum(
         sa.weekly_contribution for sa in member.spot_assignments
@@ -389,7 +389,7 @@ def outstanding_members(cycle_id: Optional[int] = None, db: Session = Depends(ge
     now = _utcnow()
 
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
 
     q = (
@@ -533,7 +533,7 @@ def member_payment_balance(member_id: int, up_to_week_number: int = 9999,
                            cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Check if a member is fully paid up to a given week number within the active cycle."""
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
     q = (db.query(Payment)
          .join(Week)

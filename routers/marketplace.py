@@ -118,7 +118,7 @@ def list_listings(status: Optional[str] = None, cycle_id: Optional[int] = None,
 @router.get("/summary")
 def summary(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
 
     q = db.query(SpotListing)
@@ -370,7 +370,7 @@ def cancel_listing(listing_id: int, request: Request, db: Session = Depends(get_
 def buyers_list(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Active members eligible to buy (status=active, in-cycle)."""
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
     if cycle_id:
         member_ids = [r[0] for r in db.query(MemberSpot.member_id).filter(
@@ -397,7 +397,7 @@ def buyers_list(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
 def sellers_list(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Members who have a drawn/received spot (eligible to sell)."""
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
     if cycle_id:
         member_ids = [r[0] for r in db.query(MemberSpot.member_id).filter(

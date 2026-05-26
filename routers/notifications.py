@@ -561,7 +561,7 @@ def send_to_members(data: SendRequest, request: Request, db: Session = Depends(g
         raise HTTPException(status_code=404, detail="Template not found")
     cfg = db.query(NotificationSettings).first()
 
-    active = db.query(Cycle).filter(Cycle.status == "active").first()
+    active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     active_cycle_id = active.id if active else None
 
     bid = _batch_id() if len(data.member_ids) > 1 else None
@@ -652,7 +652,7 @@ def broadcast_missed_payments(request: Request, db: Session = Depends(get_db)):
     if not cfg:
         raise HTTPException(status_code=500, detail="Notification settings not configured")
 
-    active = db.query(Cycle).filter(Cycle.status == "active").first()
+    active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     cycle_id = active.id if active else None
 
     if cycle_id:
@@ -990,7 +990,7 @@ def _fire_one(sn: ScheduledNotification, db) -> dict:
     if not tmpl or not tmpl.is_active:
         return {"skipped": "template inactive"}
 
-    active = db.query(Cycle).filter(Cycle.status == "active").first()
+    active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     active_cycle_id = active.id if active else None
 
     # Resolve member list

@@ -296,11 +296,6 @@ def create_cycle(data: CycleCreate, request: Request, db: Session = Depends(get_
     half_voucher         = data.half_spot_voucher    if data.half_spot_voucher    is not None else getattr(gs, 'half_spot_voucher', 40)
     interval             = getattr(gs, "group_week_interval", 4)
 
-    existing = db.query(Cycle).filter(Cycle.status == "active").first()
-    if existing:
-        existing.status = "completed"
-        existing.end_date = _utcnow()
-
     # ── Fresh start: reset spot statuses for the new cycle ───────────────────
     db.query(Spot).update({"status": "active"}, synchronize_session=False)
     db.query(Member).filter(Member.status == "received").update(
@@ -952,7 +947,7 @@ def assoc_spots_list(db: Session = Depends(get_db)):
 @router.get("/active-members")
 def active_members_for_sale(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
 
     if cycle_id:
@@ -1086,11 +1081,6 @@ def reactivate_cycle(cycle_id: int, request: Request, db: Session = Depends(get_
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
-    # Close any currently active cycle first
-    other = db.query(Cycle).filter(Cycle.status == "active", Cycle.id != cycle_id).first()
-    if other:
-        other.status = "completed"
-        other.end_date = _utcnow()
     cycle.status = "active"
     cycle.end_date = None
     db.commit()
@@ -1266,7 +1256,7 @@ def association_fund(cycle_id: Optional[int] = None, db: Session = Depends(get_d
       per_half_return     = per_full_return / 2
     """
     if not cycle_id:
-        active = db.query(Cycle).filter(Cycle.status == "active").first()
+        active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
 
     d = _assoc_fund_data(db, cycle_id)
