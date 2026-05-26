@@ -36,7 +36,7 @@ def download_backup(request: Request, db: Session = Depends(get_db)):
     Stream a pg_dump SQL backup of the database.
     Requires superadmin role.
     """
-    _require_superadmin(request, db)
+    _require_superadmin(request)
 
     db_url = os.environ.get("DATABASE_URL", "")
     if not db_url:
@@ -91,7 +91,7 @@ def download_backup(request: Request, db: Session = Depends(get_db)):
 @router.get("/status")
 def backup_status(request: Request, db: Session = Depends(get_db)):
     """Returns whether pg_dump is available and basic DB info."""
-    _require_superadmin(request, db)
+    _require_superadmin(request)
     db_url = os.environ.get("DATABASE_URL", "")
     has_url = bool(db_url)
     pg_dump_available = False
