@@ -53,6 +53,7 @@ class BatchPaymentRecord(BaseModel):
     payment_method: str = "cash"
     reference: Optional[str] = None
     notes: Optional[str] = None
+    penalty_amount: Optional[float] = None
 
     @model_validator(mode="after")
     def week_ids_not_empty(self):
