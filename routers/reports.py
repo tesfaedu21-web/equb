@@ -1285,6 +1285,119 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
     }
 
 
+@router.get("/member/{member_id}/history")
+def member_history(member_id: int, db: Session = Depends(get_db)):
+    """Cross-cycle participation history for a single member."""
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    # All cycles this member participated in
+    cycle_ids = [
+        r[0] for r in db.query(MemberSpot.cycle_id)
+        .filter(MemberSpot.member_id == member_id)
+        .distinct().all()
+    ]
+    cycles = db.query(Cycle).filter(Cycle.id.in_(cycle_ids)).order_by(Cycle.id).all()
+
+    cycle_rows = []
+    for cycle in cycles:
+        # Spots in this cycle
+        sas = [sa for sa in member.spot_assignments
+               if sa.cycle_id == cycle.id and sa.is_active]
+        spot_numbers = [sa.spot.number for sa in sas if sa.spot]
+        shares = list({sa.share for sa in sas})
+
+        # Payments in this cycle
+        week_ids = [w.id for w in db.query(Week.id).filter(Week.cycle_id == cycle.id)]
+        payments = db.query(Payment).filter(
+            Payment.member_id == member_id,
+            Payment.week_id.in_(week_ids),
+        ).all() if week_ids else []
+
+        total_weeks = len(week_ids)
+        paid_count   = sum(1 for p in payments if p.status == "paid")
+        missed_count = sum(1 for p in payments if p.status == "missed")
+        late_count   = sum(1 for p in payments if p.status == "late")
+        total_paid_amount = float(sum(p.amount for p in payments if p.status == "paid"))
+
+        # Pot wins (PotTransaction where buyer_id = member)
+        wins = db.query(PotTransaction).filter(
+            PotTransaction.week_id.in_(week_ids),
+            PotTransaction.buyer_id == member_id,
+        ).all() if week_ids else []
+        # Also direct wins (winner_spot is member's spot)
+        direct_wins = []
+        if week_ids:
+            member_spot_ids = [sa.spot_id for sa in sas if sa.spot_id]
+            direct_wins = db.query(Week).filter(
+                Week.id.in_(week_ids),
+                Week.winner_spot_id.in_(member_spot_ids),
+                Week.status.in_(["drawn", "sold"]),
+            ).all() if member_spot_ids else []
+
+        pot_wins = []
+        for w in direct_wins:
+            tx = next((t for t in wins if t.week_id == w.id), None)
+            pot_wins.append({
+                "week_number":   w.week_number,
+                "draw_date":     w.draw_date.isoformat(),
+                "week_status":   w.status,
+                "buyer_receives": float(tx.buyer_receives) if tx else float(w.net_pot or 0),
+                "via_sale":      bool(tx),
+            })
+
+        # Marketplace sales where member was buyer (no direct spot win)
+        marketplace_buys = []
+        if week_ids:
+            mkt_txs = db.query(PotTransaction).filter(
+                PotTransaction.week_id.in_(week_ids),
+                PotTransaction.buyer_id == member_id,
+                PotTransaction.transaction_type.in_(["member_sale", "group_week_sale", "assoc_spot_sale"]),
+            ).all()
+            direct_win_week_ids = {w.id for w in direct_wins}
+            for tx in mkt_txs:
+                if tx.week_id not in direct_win_week_ids:
+                    w = next((wk for wk in db.query(Week).filter(Week.id == tx.week_id).all()), None)
+                    marketplace_buys.append({
+                        "week_number":   w.week_number if w else None,
+                        "draw_date":     w.draw_date.isoformat() if w else None,
+                        "buyer_receives": float(tx.buyer_receives),
+                        "transaction_type": tx.transaction_type,
+                    })
+
+        cycle_rows.append({
+            "cycle_id":      cycle.id,
+            "cycle_name":    cycle.name,
+            "cycle_status":  cycle.status,
+            "start_date":    cycle.start_date.isoformat() if cycle.start_date else None,
+            "end_date":      cycle.end_date.isoformat() if cycle.end_date else None,
+            "spot_numbers":  spot_numbers,
+            "shares":        shares,
+            "total_weeks":   total_weeks,
+            "paid_weeks":    paid_count,
+            "missed_weeks":  missed_count,
+            "late_weeks":    late_count,
+            "payment_rate":  round(paid_count / total_weeks * 100, 1) if total_weeks else 0,
+            "total_paid_amount": total_paid_amount,
+            "pot_wins":      pot_wins,
+            "marketplace_buys": marketplace_buys,
+        })
+
+    return {
+        "member_id":   member.id,
+        "member_name": member.name,
+        "phone":       member.phone,
+        "status":      member.status,
+        "cycles":      cycle_rows,
+        "totals": {
+            "cycles_participated": len(cycle_rows),
+            "total_paid_amount":   sum(r["total_paid_amount"] for r in cycle_rows),
+            "total_pot_wins":      sum(len(r["pot_wins"]) for r in cycle_rows),
+        },
+    }
+
+
 # ── Distribution Cheques ──────────────────────────────────────────────────────
 
 def _fmt_cheque(c: DistributionCheque) -> dict:
