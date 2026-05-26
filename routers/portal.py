@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db, Member, MemberSpot, Spot, Payment, Week, Cycle, PotTransaction
+from database import get_db, Member, MemberSpot, Spot, Payment, Week, Cycle, PotTransaction, Settings
 
 router = APIRouter()
 
@@ -93,6 +93,7 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
                 if not w:
                     continue
                 payments.append({
+                    "id": p.id,
                     "week_number": w.week_number,
                     "draw_date": w.draw_date.isoformat(),
                     "amount": float(p.amount),
@@ -147,6 +148,43 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
     total_paid_amount = sum(p["amount"] for p in payments if p["status"] == "paid")
     outstanding = [p for p in payments if p["status"] in ("pending", "late", "missed") and p["is_past"]]
 
+    # Next payment due: earliest overdue first, then next upcoming unpaid
+    next_due = None
+    overdue_payments = sorted(
+        [p for p in payments if p["status"] in ("late", "missed") and p["is_past"]],
+        key=lambda x: x["draw_date"],
+    )
+    if overdue_payments:
+        next_due = overdue_payments[0]
+    else:
+        upcoming_unpaid = sorted(
+            [p for p in payments if p["status"] == "pending" and not p["is_past"]],
+            key=lambda x: x["draw_date"],
+        )
+        if upcoming_unpaid:
+            next_due = upcoming_unpaid[0]
+
+    # Scheduled pot week: a future week assigned to this member's spot (not yet drawn)
+    pot_week = None
+    member_spot_ids = [sa.spot_id for sa in sas if sa.spot_id]
+    if member_spot_ids and cycle_id:
+        pw = (db.query(Week)
+              .filter(Week.cycle_id == cycle_id,
+                      Week.winner_spot_id.in_(member_spot_ids),
+                      Week.status == "pending")
+              .order_by(Week.draw_date)
+              .first())
+        if pw:
+            pot_week = {
+                "week_number": pw.week_number,
+                "draw_date": pw.draw_date.isoformat(),
+                "net_pot": float(pw.net_pot or 0),
+            }
+
+    # Admin contact phone from group settings
+    gs = db.query(Settings).first()
+    admin_contact = getattr(gs, "admin_phone", None) if gs else None
+
     return {
         "member_id": member.id,
         "member_name": member.name,
@@ -156,6 +194,9 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
         "payments": payments,
         "upcoming": upcoming,
         "wins": wins,
+        "next_due": next_due,
+        "pot_week": pot_week,
+        "admin_contact": admin_contact,
         "summary": {
             "total_weeks": len(payments),
             "paid_weeks": paid_count,

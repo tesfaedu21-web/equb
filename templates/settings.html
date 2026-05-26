@@ -89,6 +89,11 @@
       <input x-model="form.logo_url" type="url" placeholder="https://… or leave blank for Ethiopian flag logo"/>
       <p class="text-xs text-gray-400 mt-1">External image URL. Leave blank to use the default Ethiopian flag icon.</p>
     </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Admin Contact Phone</label>
+      <input x-model="form.admin_phone" type="tel" placeholder="09… or +251…"/>
+      <p class="text-xs text-gray-400 mt-1">Shown on the member portal as a "Contact Admin" button. Leave blank to hide it.</p>
+    </div>
     <!-- Preview -->
     <div class="flex items-center gap-3 bg-gray-900 rounded-xl px-4 py-3">
       <template x-if="!form.logo_url">

@@ -97,6 +97,7 @@ class Settings(Base):
     group_name = Column(String, default="እቁብ")
     group_tagline = Column(String, default="Equb Manager")
     logo_url = Column(String, nullable=True)
+    admin_phone = Column(String, nullable=True)   # contact number shown on member portal
     # Role permissions matrix — JSON dict of {role: {feature: bool}}
     permissions = Column(JSON, nullable=True)
 
@@ -891,6 +892,7 @@ def _migrate(engine):
             result JSONB
         )""",
         "CREATE INDEX IF NOT EXISTS ix_scheduled_notifications_status ON scheduled_notifications(status, scheduled_at)",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS admin_phone VARCHAR",
     ]
     with engine.connect() as conn:
         for sql in migrations:
