@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from database import get_db, Member, MemberSpot, Spot, Payment, Week, Cycle, PotTransaction, Settings
 
@@ -206,3 +207,45 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
             "outstanding_amount": sum(p["amount"] for p in outstanding),
         },
     }
+
+
+@router.get("/payments/{payment_id}/receipt", response_class=HTMLResponse)
+def portal_payment_receipt(payment_id: int, phone: str, spot_number: int,
+                           db: Session = Depends(get_db)):
+    """
+    Public receipt endpoint for the member portal.
+    Verifies phone + spot_number ownership before serving the receipt HTML.
+    """
+    # Verify the requesting member owns this payment
+    variants = _normalize_phone(phone.strip())
+    active_cycle = db.query(Cycle).filter(Cycle.status == "active").first()
+    cycle_id = active_cycle.id if active_cycle else None
+
+    sa_found = None
+    for v in variants:
+        q = (
+            db.query(MemberSpot)
+            .join(MemberSpot.member)
+            .join(MemberSpot.spot)
+            .filter(Member.phone == v, Spot.number == spot_number, MemberSpot.is_active == True)
+        )
+        if cycle_id:
+            q = q.filter(MemberSpot.cycle_id == cycle_id)
+        sa_found = q.first()
+        if sa_found:
+            break
+
+    if not sa_found:
+        raise HTTPException(403, "Access denied")
+
+    member = sa_found.member
+    payment = db.query(Payment).filter(
+        Payment.id == payment_id,
+        Payment.member_id == member.id,
+    ).first()
+    if not payment:
+        raise HTTPException(404, "Receipt not found")
+
+    # Delegate to the shared receipt generator in payments router
+    from routers.payments import payment_receipt
+    return payment_receipt(payment_id=payment_id, db=db)
