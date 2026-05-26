@@ -497,6 +497,37 @@ class NotificationLog(Base):
     member = relationship("Member")
 
 
+# ── Pot Sale Marketplace ──────────────────────────────────────────────────────
+
+class SpotListing(Base):
+    """
+    A spot available for purchase — pre-sale coordination record.
+    listing_type: member_sale | group_week_sale | assoc_spot_sale
+    status:       open | sold | cancelled
+    """
+    __tablename__ = "spot_listings"
+    id              = Column(Integer, primary_key=True)
+    cycle_id        = Column(Integer, ForeignKey("cycles.id"), nullable=False)
+    week_id         = Column(Integer, ForeignKey("weeks.id"), nullable=True)
+    spot_id         = Column(Integer, ForeignKey("spots.id"), nullable=True)
+    seller_id       = Column(Integer, ForeignKey("members.id"), nullable=True)
+    listing_type    = Column(String, nullable=False, default="member_sale")
+    asking_price    = Column(Float, nullable=True)
+    percentage      = Column(Float, nullable=True)     # seller's cut % (member_sale)
+    status          = Column(String, default="open")
+    notes           = Column(Text, nullable=True)
+    buyer_id        = Column(Integer, ForeignKey("members.id"), nullable=True)
+    sold_price      = Column(Float, nullable=True)
+    listed_at       = Column(DateTime, default=_utcnow)
+    sold_at         = Column(DateTime, nullable=True)
+
+    cycle  = relationship("Cycle")
+    week   = relationship("Week")
+    spot   = relationship("Spot", foreign_keys=[spot_id])
+    seller = relationship("Member", foreign_keys=[seller_id])
+    buyer  = relationship("Member", foreign_keys=[buyer_id])
+
+
 # ── Debt Collection ───────────────────────────────────────────────────────────
 
 class DebtCase(Base):
@@ -761,6 +792,25 @@ def _migrate(engine):
         # Bilingual templates + language preference
         "ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS message_am TEXT",
         "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS sms_language VARCHAR DEFAULT 'en'",
+        # Pot sale marketplace
+        """CREATE TABLE IF NOT EXISTS spot_listings (
+            id SERIAL PRIMARY KEY,
+            cycle_id INTEGER REFERENCES cycles(id) NOT NULL,
+            week_id INTEGER REFERENCES weeks(id),
+            spot_id INTEGER REFERENCES spots(id),
+            seller_id INTEGER REFERENCES members(id),
+            listing_type VARCHAR NOT NULL DEFAULT 'member_sale',
+            asking_price REAL,
+            percentage REAL,
+            status VARCHAR DEFAULT 'open',
+            notes TEXT,
+            buyer_id INTEGER REFERENCES members(id),
+            sold_price REAL,
+            listed_at TIMESTAMP,
+            sold_at TIMESTAMP
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_spot_listings_cycle ON spot_listings(cycle_id)",
+        "CREATE INDEX IF NOT EXISTS ix_spot_listings_status ON spot_listings(status)",
         # Debt collection workflow
         """CREATE TABLE IF NOT EXISTS debt_cases (
             id SERIAL PRIMARY KEY,

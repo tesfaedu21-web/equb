@@ -1,0 +1,469 @@
+{% extends "base.html" %}
+{% block title %}Marketplace — {{ group_name }}{% endblock %}
+{% block nav_marketplace %}active{% endblock %}
+
+{% block content %}
+<div x-data="marketplacePage()" x-init="init()" class="p-8 space-y-6 max-w-7xl mx-auto">
+
+  <!-- Header -->
+  <div class="flex items-start justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Pot Sale Marketplace</h1>
+      <p class="text-sm text-gray-500 mt-0.5">List available pots, match buyers, and record sales</p>
+    </div>
+    <button @click="openCreate()" class="btn-primary flex items-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      New Listing
+    </button>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-bold text-amber-600" x-text="summary.open || 0"></div>
+      <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Open Listings</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-bold text-green-600" x-text="summary.sold || 0"></div>
+      <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Completed Sales</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-bold text-gray-500" x-text="summary.cancelled || 0"></div>
+      <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Cancelled</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-xl font-bold text-gray-800" x-text="fmt(summary.total_sold_value || 0)"></div>
+      <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Total Sold Value</div>
+    </div>
+  </div>
+
+  <!-- Available Weeks (auto-detected) -->
+  <template x-if="(summary.available_weeks || []).length > 0">
+    <div class="card">
+      <h2 class="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">Weeks Available for Sale</h2>
+      <div class="space-y-2">
+        <template x-for="w in (summary.available_weeks || [])" :key="w.id">
+          <div class="flex items-center justify-between p-3 rounded-xl border" style="border-color: var(--c-border);">
+            <div class="flex items-center gap-3">
+              <span class="text-sm font-bold text-gray-700" x-text="`Week ${w.week_number}`"></span>
+              <span :class="w.is_group_week ? 'badge-group' : 'badge-drawn'" class="badge"
+                    x-text="w.is_group_week ? 'Group Week' : 'Drawn'"></span>
+              <span class="text-xs text-gray-400" x-text="fmtDate(w.draw_date)"></span>
+              <span class="text-sm font-medium text-gray-600" x-text="fmt(w.net_pot || 0)"></span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span x-show="w.has_listing" class="text-xs text-green-600 font-medium">Listed ✓</span>
+              <button x-show="!w.has_listing" @click="quickList(w)"
+                class="text-xs px-3 py-1.5 rounded-lg border border-green-300 text-green-700 hover:bg-green-50 font-medium transition-colors">
+                Create Listing
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </template>
+
+  <!-- Filter tabs + search -->
+  <div class="flex flex-wrap gap-2 items-center">
+    <template x-for="f in [{v:'',l:'All'},{v:'open',l:'Open'},{v:'sold',l:'Sold'},{v:'cancelled',l:'Cancelled'}]" :key="f.v">
+      <button @click="filterStatus = f.v"
+        :class="filterStatus === f.v ? 'btn-primary' : 'btn-secondary'"
+        class="text-xs px-3 py-1.5" x-text="f.l">
+      </button>
+    </template>
+    <div class="flex-1 min-w-[180px]">
+      <input x-model="search" type="text" placeholder="Search seller, buyer, spot…"
+        class="w-full text-sm" style="padding: 7px 12px; border-radius: 10px;"/>
+    </div>
+  </div>
+
+  <!-- Listings table -->
+  <div class="card p-0 overflow-hidden">
+    <div x-show="loading" class="p-8 text-center text-gray-400 text-sm">Loading…</div>
+    <div x-show="!loading && filteredListings.length === 0" class="p-12 text-center">
+      <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+      </svg>
+      <p class="text-gray-400 text-sm">No listings yet — create one using the button above.</p>
+    </div>
+    <table x-show="!loading && filteredListings.length > 0" class="w-full">
+      <thead class="bg-gray-50" style="border-bottom: 1px solid var(--c-border);">
+        <tr>
+          <th class="px-4 py-3 text-left">Type</th>
+          <th class="px-4 py-3 text-left">Week / Spot</th>
+          <th class="px-4 py-3 text-left">Seller</th>
+          <th class="px-4 py-3 text-right">Net Pot</th>
+          <th class="px-4 py-3 text-right">Asking</th>
+          <th class="px-4 py-3 text-center">Status</th>
+          <th class="px-4 py-3 text-left">Buyer</th>
+          <th class="px-4 py-3 text-left">Listed</th>
+          <th class="px-4 py-3 text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="l in filteredListings" :key="l.id">
+          <tr>
+            <td class="px-4 py-3">
+              <span :class="typeBadge(l.listing_type)" class="badge" x-text="typeLabel(l.listing_type)"></span>
+            </td>
+            <td class="px-4 py-3">
+              <div class="font-medium text-gray-800 text-sm" x-text="l.week_number ? `Week ${l.week_number}` : '—'"></div>
+              <div class="text-xs text-gray-400" x-text="l.spot_number ? `Spot #${l.spot_number}` : ''"></div>
+            </td>
+            <td class="px-4 py-3 amharic text-sm text-gray-700" x-text="l.seller_name || '—'"></td>
+            <td class="px-4 py-3 text-right text-sm font-medium text-gray-700"
+                x-text="l.net_pot ? new Intl.NumberFormat('en-ET').format(Math.round(l.net_pot)) : '—'"></td>
+            <td class="px-4 py-3 text-right text-sm"
+                x-text="l.asking_price ? new Intl.NumberFormat('en-ET').format(Math.round(l.asking_price)) : 'Open'"></td>
+            <td class="px-4 py-3 text-center">
+              <span :class="statusBadge(l.status)" class="badge" x-text="statusLabel(l.status)"></span>
+            </td>
+            <td class="px-4 py-3 amharic text-sm text-gray-500" x-text="l.buyer_name || '—'"></td>
+            <td class="px-4 py-3 text-xs text-gray-400" x-text="fmtDate(l.listed_at)"></td>
+            <td class="px-4 py-3 text-center">
+              <div x-show="l.status === 'open'" class="flex items-center justify-center gap-1">
+                <button @click="openSale(l)"
+                  class="text-xs px-2.5 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 font-medium transition-colors">
+                  Complete Sale
+                </button>
+                <button @click="cancelListing(l.id)"
+                  class="text-xs px-2 py-1 rounded-lg text-red-400 hover:bg-red-50 transition-colors">
+                  ✕
+                </button>
+              </div>
+              <span x-show="l.status !== 'open'" class="text-xs text-gray-400" x-text="l.sold_at ? fmtDate(l.sold_at) : ''"></span>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Create Listing Modal ─────────────────────────────────────────────────── -->
+  <div x-show="createOpen" x-cloak class="modal-backdrop" @keydown.escape.window="createOpen=false">
+    <div class="modal-box p-6" @click.stop>
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-bold text-gray-900">New Listing</h2>
+        <button @click="createOpen=false" class="text-gray-400 hover:text-gray-700 text-xl leading-none">✕</button>
+      </div>
+
+      <!-- Type -->
+      <div class="mb-4">
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Listing Type</label>
+        <div class="grid grid-cols-3 gap-2">
+          <template x-for="t in [{v:'member_sale',l:'Member Sale'},{v:'group_week_sale',l:'Group Week'},{v:'assoc_spot_sale',l:'Assoc Spot'}]" :key="t.v">
+            <label :class="newListing.listing_type === t.v ? 'border-equb-green bg-green-50 text-equb-green' : 'border-gray-200 text-gray-600'"
+              class="flex flex-col items-center justify-center p-3 rounded-xl border-2 cursor-pointer text-xs font-semibold transition-all text-center">
+              <input type="radio" :value="t.v" x-model="newListing.listing_type" class="sr-only"/>
+              <span x-text="t.l"></span>
+            </label>
+          </template>
+        </div>
+      </div>
+
+      <!-- Week -->
+      <div class="mb-4">
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Week</label>
+        <select x-model="newListing.week_id" class="text-sm">
+          <option value="">— Select week —</option>
+          <template x-for="w in availableWeeks" :key="w.id">
+            <option :value="w.id" x-text="`Week ${w.week_number} — ${fmtDate(w.draw_date)} (${w.status})`"></option>
+          </template>
+        </select>
+      </div>
+
+      <!-- Seller (for member_sale) -->
+      <div class="mb-4" x-show="newListing.listing_type === 'member_sale'">
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Seller (Winner)</label>
+        <select x-model="newListing.seller_id" class="text-sm">
+          <option value="">— Select seller —</option>
+          <template x-for="m in sellers" :key="m.id">
+            <option :value="m.id"
+              x-text="`${m.name} — Spot(s): ${m.spots.map(s=>s.number).join(', ') || '?'}`">
+            </option>
+          </template>
+        </select>
+      </div>
+
+      <!-- Asking price + % -->
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Asking Price (ETB)</label>
+          <input type="number" x-model="newListing.asking_price" placeholder="Leave blank = open"/>
+        </div>
+        <div x-show="newListing.listing_type === 'member_sale'">
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Seller's Cut (%)</label>
+          <input type="number" x-model="newListing.percentage" placeholder="e.g. 10" min="0" max="100"/>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="mb-5">
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notes</label>
+        <textarea x-model="newListing.notes" rows="2" class="text-sm resize-none" placeholder="Any details…"></textarea>
+      </div>
+
+      <div class="flex gap-3">
+        <button @click="createOpen=false" class="btn-secondary flex-1">Cancel</button>
+        <button @click="saveListing()" :disabled="savingCreate" class="btn-primary flex-1">
+          <span x-text="savingCreate ? 'Saving…' : 'Create Listing'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Complete Sale Modal ──────────────────────────────────────────────────── -->
+  <div x-show="saleOpen" x-cloak class="modal-backdrop" @keydown.escape.window="saleOpen=false">
+    <div class="modal-box p-6" @click.stop>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-gray-900">Complete Sale</h2>
+        <button @click="saleOpen=false" class="text-gray-400 hover:text-gray-700 text-xl leading-none">✕</button>
+      </div>
+
+      <!-- Listing summary -->
+      <template x-if="saleTarget">
+        <div class="rounded-xl p-3 mb-4 text-sm" style="background: rgba(7,137,48,0.06); border: 1px solid rgba(7,137,48,0.15);">
+          <div class="font-semibold text-gray-800"
+               x-text="`Week ${saleTarget.week_number} — ${typeLabel(saleTarget.listing_type)}`"></div>
+          <div class="text-gray-500 mt-0.5">
+            <span x-show="saleTarget.seller_name" x-text="`Seller: ${saleTarget.seller_name}`"></span>
+            <span class="mx-2">·</span>
+            <span x-text="`Net Pot: ${fmt(saleTarget.net_pot || 0)}`"></span>
+          </div>
+        </div>
+      </template>
+
+      <!-- Buyer -->
+      <div class="mb-4">
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Buyer</label>
+        <input x-model="buyerSearch" type="text" placeholder="Search buyer name…" class="text-sm mb-2"/>
+        <select x-model="saleData.buyer_id" class="text-sm" size="5" style="height: auto; border-radius: 12px;">
+          <template x-for="m in filteredBuyers" :key="m.id">
+            <option :value="m.id"
+              x-text="`${m.name}  (Spot ${m.spots.join(', ') || '?'})`">
+            </option>
+          </template>
+        </select>
+      </div>
+
+      <!-- Seller % (member_sale) -->
+      <div class="mb-4" x-show="saleTarget && saleTarget.listing_type === 'member_sale'">
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Seller's Cut (%)</label>
+        <input type="number" x-model="saleData.percentage" :placeholder="saleTarget?.percentage || 0" min="0" max="100"/>
+      </div>
+
+      <!-- Notes -->
+      <div class="mb-5">
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notes</label>
+        <textarea x-model="saleData.notes" rows="2" class="text-sm resize-none" placeholder="Transaction notes…"></textarea>
+      </div>
+
+      <!-- Buyer receives estimate -->
+      <div x-show="saleTarget" class="rounded-xl p-3 mb-4 text-xs text-gray-500"
+           style="background: rgba(0,0,0,0.03); border: 1px solid var(--c-border);">
+        Buyer receives ≈ Net Pot − service fee − voucher deductions
+        <span x-show="saleData.percentage > 0"> − seller's cut</span>
+        (exact amount calculated at confirmation)
+      </div>
+
+      <div class="flex gap-3">
+        <button @click="saleOpen=false" class="btn-secondary flex-1">Cancel</button>
+        <button @click="confirmSale()" :disabled="savingSale || !saleData.buyer_id" class="btn-primary flex-1">
+          <span x-text="savingSale ? 'Processing…' : 'Confirm Sale'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function marketplacePage() {
+  return {
+    listings: [],
+    summary: {},
+    availableWeeks: [],
+    sellers: [],
+    buyers: [],
+    loading: true,
+    filterStatus: 'open',
+    search: '',
+    createOpen: false,
+    saleOpen: false,
+    savingCreate: false,
+    savingSale: false,
+    buyerSearch: '',
+    saleTarget: null,
+    newListing: { listing_type: 'member_sale', week_id: '', seller_id: '', asking_price: '', percentage: '', notes: '' },
+    saleData: { buyer_id: '', percentage: '', spot_id: null, notes: '' },
+
+    get filteredListings() {
+      const s = this.search.toLowerCase();
+      return this.listings.filter(l => {
+        if (this.filterStatus && l.status !== this.filterStatus) return false;
+        if (s) {
+          return (l.seller_name || '').toLowerCase().includes(s) ||
+                 (l.buyer_name || '').toLowerCase().includes(s) ||
+                 String(l.spot_number || '').includes(s) ||
+                 String(l.week_number || '').includes(s);
+        }
+        return true;
+      });
+    },
+
+    get filteredBuyers() {
+      if (!this.buyerSearch) return this.buyers;
+      const s = this.buyerSearch.toLowerCase();
+      return this.buyers.filter(m => m.name.toLowerCase().includes(s));
+    },
+
+    async init() {
+      await Promise.all([this.loadListings(), this.loadSummary()]);
+      this.loading = false;
+    },
+
+    async loadListings() {
+      try {
+        this.listings = await this.api('GET', '/api/marketplace/listings');
+      } catch(e) { this.showToast('Failed to load listings', 'error'); }
+    },
+
+    async loadSummary() {
+      try {
+        this.summary = await this.api('GET', '/api/marketplace/summary');
+      } catch(e) {}
+    },
+
+    async loadSellersBuyers() {
+      try {
+        [this.sellers, this.buyers] = await Promise.all([
+          this.api('GET', '/api/marketplace/sellers'),
+          this.api('GET', '/api/marketplace/active-members'),
+        ]);
+      } catch(e) {}
+    },
+
+    async loadWeeks() {
+      try {
+        const active = await this.api('GET', '/api/draws/cycles').then(cs => cs.find(c => c.status === 'active'));
+        if (!active) { this.availableWeeks = []; return; }
+        const weeks = await this.api('GET', `/api/draws/cycles/${active.id}/weeks`);
+        this.availableWeeks = weeks.filter(w => w.status === 'pending' || w.status === 'drawn');
+      } catch(e) {}
+    },
+
+    async openCreate() {
+      await Promise.all([this.loadSellersBuyers(), this.loadWeeks()]);
+      this.newListing = { listing_type: 'member_sale', week_id: '', seller_id: '', asking_price: '', percentage: '', notes: '' };
+      this.createOpen = true;
+    },
+
+    async quickList(w) {
+      await Promise.all([this.loadSellersBuyers(), this.loadWeeks()]);
+      this.newListing = {
+        listing_type: w.is_group_week ? 'group_week_sale' : 'member_sale',
+        week_id: String(w.id),
+        seller_id: '', asking_price: '', percentage: '', notes: '',
+      };
+      this.createOpen = true;
+    },
+
+    async saveListing() {
+      this.savingCreate = true;
+      try {
+        // Need active cycle_id
+        const cycles = await this.api('GET', '/api/draws/cycles');
+        const active = cycles.find(c => c.status === 'active');
+        if (!active) { this.showToast('No active cycle', 'error'); return; }
+
+        const payload = {
+          cycle_id: active.id,
+          week_id: this.newListing.week_id ? parseInt(this.newListing.week_id) : null,
+          seller_id: this.newListing.seller_id ? parseInt(this.newListing.seller_id) : null,
+          listing_type: this.newListing.listing_type,
+          asking_price: this.newListing.asking_price ? parseFloat(this.newListing.asking_price) : null,
+          percentage: this.newListing.percentage ? parseFloat(this.newListing.percentage) : null,
+          notes: this.newListing.notes || null,
+        };
+        const l = await this.api('POST', '/api/marketplace/listings', payload);
+        this.listings.unshift(l);
+        this.createOpen = false;
+        await this.loadSummary();
+        this.showToast('Listing created');
+      } catch(e) {
+        this.showToast(e.message || 'Failed to create listing', 'error');
+      } finally {
+        this.savingCreate = false;
+      }
+    },
+
+    async openSale(listing) {
+      await this.loadSellersBuyers();
+      this.saleTarget = listing;
+      this.saleData = {
+        buyer_id: '',
+        percentage: listing.percentage || '',
+        spot_id: null,
+        notes: '',
+      };
+      this.buyerSearch = '';
+      this.saleOpen = true;
+    },
+
+    async confirmSale() {
+      if (!this.saleData.buyer_id || !this.saleTarget) return;
+      this.savingSale = true;
+      try {
+        const payload = {
+          buyer_id: parseInt(this.saleData.buyer_id),
+          percentage: this.saleData.percentage ? parseFloat(this.saleData.percentage) : null,
+          spot_id: this.saleData.spot_id,
+          notes: this.saleData.notes || null,
+        };
+        const result = await this.api('POST', `/api/marketplace/listings/${this.saleTarget.id}/complete`, payload);
+        this.saleOpen = false;
+        await Promise.all([this.loadListings(), this.loadSummary()]);
+        this.filterStatus = 'sold';
+        this.showToast(`Sale complete — ${result.buyer} receives ${this.fmt(result.buyer_receives)}`);
+      } catch(e) {
+        this.showToast(e.message || 'Failed to complete sale', 'error');
+      } finally {
+        this.savingSale = false;
+      }
+    },
+
+    async cancelListing(id) {
+      if (!confirm('Cancel this listing?')) return;
+      try {
+        await this.api('DELETE', `/api/marketplace/listings/${id}`);
+        const idx = this.listings.findIndex(l => l.id === id);
+        if (idx !== -1) this.listings[idx].status = 'cancelled';
+        await this.loadSummary();
+        this.showToast('Listing cancelled');
+      } catch(e) {
+        this.showToast(e.message || 'Failed to cancel', 'error');
+      }
+    },
+
+    typeLabel(t) {
+      return { member_sale: 'Member Sale', group_week_sale: 'Group Week', assoc_spot_sale: 'Assoc Spot' }[t] || t;
+    },
+    typeBadge(t) {
+      return { member_sale: 'badge-drawn', group_week_sale: 'badge-group', assoc_spot_sale: 'badge-sold' }[t] || 'badge-pending';
+    },
+    statusLabel(s) {
+      return { open: 'Open', sold: 'Sold', cancelled: 'Cancelled' }[s] || s;
+    },
+    statusBadge(s) {
+      return { open: 'badge-pending', sold: 'badge-paid', cancelled: 'badge-left' }[s] || 'badge-pending';
+    },
+  };
+}
+</script>
+{% endblock %}
