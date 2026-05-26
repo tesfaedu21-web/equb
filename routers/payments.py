@@ -575,6 +575,22 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     method_str     = method_labels.get(p.payment_method or "", p.payment_method or "—")
     receipt_no     = f"RCP-{p.id:06d}"
 
+    # Spot number(s) for this member in this cycle
+    if m and cycle:
+        spot_rows = (db.query(MemberSpot)
+                     .filter(MemberSpot.member_id == m.id,
+                             MemberSpot.cycle_id == cycle.id,
+                             MemberSpot.is_active == True).all())
+        spot_labels = []
+        for sa in spot_rows:
+            lbl = f"#{sa.spot.number}" if sa.spot else "?"
+            if sa.share == "half":
+                lbl += " (½)"
+            spot_labels.append(lbl)
+        spot_str = ", ".join(spot_labels) if spot_labels else "—"
+    else:
+        spot_str = "—"
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -626,6 +642,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   <h2>Member</h2>
   <div class="row"><span>Name</span><span>{m.name if m else "—"}</span></div>
   <div class="row"><span>Phone</span><span>{m.phone if m and m.phone else "—"}</span></div>
+  <div class="row"><span>Spot #</span><span>{spot_str}</span></div>
 
   <h2>Equb Details</h2>
   <div class="row"><span>Cycle</span><span>{cycle.name if cycle else "—"}</span></div>
