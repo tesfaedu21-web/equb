@@ -65,9 +65,19 @@ def _dual_date(dt) -> str:
 
 
 def _receipt_no(payment) -> str:
-    """Generate a receipt number using the Ethiopian calendar year."""
-    dt = payment.paid_date if payment.paid_date else _utcnow()
-    return f"RCP-{_eth_year(dt):04d}-{payment.id:05d}"
+    """Generate a receipt number: RCP-{eth_year}-W{week}-{id}
+    Batch payments use batch ID + highest week in the batch (= the week when
+    payment was recorded). Single payments use payment ID + their own week.
+    All payments in the same batch return the same receipt number.
+    """
+    if payment.batch_id and payment.batch:
+        b   = payment.batch
+        dt  = b.payment_date or payment.paid_date or _utcnow()
+        max_week = max((bp.week.week_number for bp in b.payments if bp.week), default=0)
+        return f"RCP-{_eth_year(dt):04d}-W{max_week:02d}-{b.id:05d}"
+    dt  = payment.paid_date if payment.paid_date else _utcnow()
+    wk  = payment.week.week_number if payment.week else 0
+    return f"RCP-{_eth_year(dt):04d}-W{wk:02d}-{payment.id:05d}"
 
 
 router = APIRouter()
