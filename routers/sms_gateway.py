@@ -38,6 +38,7 @@ def get_pending(
             .limit(10)
             .all())
     for j in jobs:
+        j.status = "sending"   # prevent re-delivery on the next poll before ack arrives
         j.attempts += 1
     db.commit()
     return [{"id": j.id, "phone": j.phone, "message": j.message} for j in jobs]
@@ -62,7 +63,11 @@ def ack_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    job.status = data.status
+    if data.status == "sent":
+        job.status = "sent"
+    else:
+        # Failed: retry if under the attempt limit, otherwise give up
+        job.status = "pending" if job.attempts < 3 else "failed"
     job.sent_at = _utcnow()
     job.provider_response = data.response or ""
 

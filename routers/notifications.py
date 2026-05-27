@@ -374,7 +374,7 @@ def send_draw_winner(week, member, db: Session) -> str:
             "member_name": member.name,
             "week_number": str(week.week_number),
             "draw_date": week.draw_date.strftime("%d %b %Y"),
-            "net_pot": str(int(week.net_pot or 0)),
+            "net_pot": f"{int(week.net_pot or 0):,}",
         }
         msg = _pick_message(tmpl, cfg, vars_)
         status, response = _send_sms(member.phone, msg, cfg, db=db,
@@ -706,6 +706,21 @@ def notification_logs(request: Request, db: Session = Depends(get_db)):
                 .order_by(NotificationLog.sent_at.desc())
                 .limit(2000).all())
 
+    # Pre-build member_id → sorted spot numbers (single query, avoids N+1)
+    member_ids = {l.member_id for l in all_logs if l.member_id}
+    spot_map: dict = {}
+    if member_ids:
+        from database import Spot as _Spot
+        rows = (db.query(MemberSpot.member_id, _Spot.number)
+                .join(_Spot, MemberSpot.spot_id == _Spot.id)
+                .filter(MemberSpot.member_id.in_(member_ids))
+                .distinct()
+                .all())
+        for mid, num in rows:
+            spot_map.setdefault(mid, []).append(num)
+        for mid in spot_map:
+            spot_map[mid].sort()
+
     # These fire per-member automatically — group by day to avoid flooding the list
     GROUP_BY_DAY = {"payment_confirmed", "payment_reminder", "missed_payment"}
 
@@ -714,6 +729,7 @@ def notification_logs(request: Request, db: Session = Depends(get_db)):
             "id": l.id,
             "member_name": l.member.name if l.member else None,
             "phone": l.phone,
+            "spot_numbers": spot_map.get(l.member_id, []),
             "status": l.status,
             "sent_at": l.sent_at.isoformat(),
             "error": l.provider_response if l.status == "failed" else None,
