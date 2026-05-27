@@ -236,27 +236,9 @@
                   </td>
                   <td class="px-4 py-3 text-gray-600 text-sm amharic max-w-[200px] truncate">
                     <template x-if="w.status === 'drawn' && w.winner_spot">
-                      <span x-data="{changing:false, memberSpots:[]}"
-                            @spot-change-open.window="if($event.detail===w.id){changing=true; fetch('/api/members/'+w.winner_spot.members[0]?.id,{headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.json()).then(d=>{memberSpots=d.spot_numbers||[]})}">
+                      <span>
                         <span class="font-bold text-equb-green text-xs">#<span x-text="w.winner_spot.number"></span></span>
                         <span class="ml-1" x-text="w.winner_spot.members.map(m=>m.name).join(' & ')"></span>
-                        <!-- change spot: small inline picker loaded on demand -->
-                        <template x-if="isAdmin && !changing">
-                          <button type="button" @click.stop="$dispatch('spot-change-open',w.id)"
-                            class="ml-1 text-xs text-gray-400 hover:text-equb-green underline">change</button>
-                        </template>
-                        <template x-if="changing">
-                          <span class="inline-flex items-center gap-1 ml-1">
-                            <template x-for="sn in memberSpots" :key="sn">
-                              <button type="button"
-                                @click.stop="fetch('/api/draws/weeks/'+w.id+'/set-spot',{method:'PATCH',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify({spot_number:sn})}).then(r=>r.json()).then(d=>{const i=weeks.findIndex(x=>x.id===w.id);if(i>=0)weeks[i]=d;changing=false;showToast('Spot #'+sn+' set','success');})"
-                                :class="sn===w.winner_spot.number ? 'bg-equb-green text-white border-equb-green' : 'bg-white text-gray-700 border-gray-300 hover:border-equb-green'"
-                                class="px-2 py-0.5 rounded border text-xs font-bold transition-colors"
-                                x-text="'#'+sn"></button>
-                            </template>
-                            <button type="button" @click.stop="changing=false" class="text-xs text-gray-400 hover:text-red-500 ml-1">✕</button>
-                          </span>
-                        </template>
                       </span>
                     </template>
                     <template x-if="w.status === 'sold' && w.transaction">
