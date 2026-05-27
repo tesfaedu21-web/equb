@@ -323,6 +323,17 @@ def reset_system(request: Request, db: Session = Depends(get_db)):
     """
     _require_superadmin(request)
 
+    # Backup before wiping — best-effort, never block the reset
+    try:
+        from routers.backup import _do_pg_dump, send_backup_email
+        import os as _os
+        _path = _do_pg_dump("pre_reset")
+        if _path:
+            send_backup_email(_path, _os.path.basename(_path), db)
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger("equb.auth").warning("pre-reset backup failed: %s", _e)
+
     # Delete in FK-safe order
     db.query(VoucherReturn).delete(synchronize_session=False)
     db.query(PotDisbursement).delete(synchronize_session=False)

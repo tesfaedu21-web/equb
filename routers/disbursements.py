@@ -263,17 +263,19 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
         raise HTTPException(status_code=400, detail="No winner recorded for this week")
 
     if data.member_id:
-        # Half-spot split: check if this specific member already has a cheque for this week
+        # Half-spot split: check if this specific member already has a non-voided cheque for this week
         existing = db.query(PotDisbursement).filter(
             PotDisbursement.week_id == data.week_id,
-            PotDisbursement.member_id == data.member_id
+            PotDisbursement.member_id == data.member_id,
+            PotDisbursement.voided_at.is_(None)
         ).first()
         if existing:
             raise HTTPException(status_code=400, detail="Disbursement already recorded for this member")
     else:
-        # Full spot: block if any disbursement exists for this week
+        # Full spot: block if any non-voided disbursement exists for this week
         existing = db.query(PotDisbursement).filter(
-            PotDisbursement.week_id == data.week_id
+            PotDisbursement.week_id == data.week_id,
+            PotDisbursement.voided_at.is_(None)
         ).first()
         if existing:
             raise HTTPException(status_code=400, detail="Disbursement already recorded for this week")

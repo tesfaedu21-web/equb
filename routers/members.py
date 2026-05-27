@@ -770,6 +770,12 @@ def mark_left(member_id: int, request: Request, db: Session = Depends(get_db)):
     m.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
     for sa in m.spot_assignments:
         sa.is_active = False
+    # Cancel all open (pending/late) payments so they don't stay open forever
+    from database import Payment as _Payment
+    db.query(_Payment).filter(
+        _Payment.member_id == member_id,
+        _Payment.status.in_(["pending", "late"]),
+    ).update({"status": "missed"}, synchronize_session=False)
     db.commit()
     return {"ok": True}
 

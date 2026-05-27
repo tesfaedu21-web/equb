@@ -198,50 +198,19 @@ async def send_pre_draw_reminders():
         db.close()
 
 async def run_daily_backup():
-    """Daily at 02:00 UTC: pg_dump → /tmp/equb_backups/, keep last 7."""
-    import subprocess
-    from urllib.parse import urlparse
-    db_url = os.environ.get("DATABASE_URL", "")
-    if not db_url:
-        logger.warning("backup: DATABASE_URL not set")
-        return
+    """Daily at 02:00 UTC: pg_dump → /tmp/equb_backups/, email to admin, keep last 7."""
+    from routers.backup import _do_pg_dump, send_backup_email, _prune_old_backups
+    db = next(get_db())
     try:
-        p = urlparse(db_url)
-        backup_dir = "/tmp/equb_backups"
-        os.makedirs(backup_dir, exist_ok=True)
-        timestamp = _utcnow().strftime("%Y%m%d_%H%M%S")
-        out_file = os.path.join(backup_dir, f"equb_{timestamp}.sql")
-        env = os.environ.copy()
-        env["PGPASSWORD"] = p.password or ""
-        cmd = [
-            "pg_dump",
-            "-h", p.hostname or "localhost",
-            "-p", str(p.port or 5432),
-            "-U", p.username or "",
-            "-d", p.path.lstrip("/"),
-            "--no-password", "--format=plain", "--encoding=UTF8",
-            "-f", out_file,
-        ]
-        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=120)
-        # Always prune old backups (including failed zero-byte files) so disk doesn't fill
-        all_bk = sorted(
-            [f for f in os.listdir(backup_dir) if f.startswith("equb_") and f.endswith(".sql")],
-            reverse=True,
-        )
-        for old in all_bk[7:]:
-            try:
-                os.remove(os.path.join(backup_dir, old))
-            except OSError:
-                pass
-        if r.returncode != 0:
-            logger.error("backup: pg_dump failed: %s", r.stderr[:300])
+        path = _do_pg_dump("daily")
+        if not path:
             return
-        size = os.path.getsize(out_file)
-        logger.info("backup: saved %s (%d bytes)", out_file, size)
-    except FileNotFoundError:
-        logger.warning("backup: pg_dump not found on this host")
-    except Exception as e:
-        logger.error("backup: error: %s", e)
+        _prune_old_backups("/tmp/equb_backups", keep=7)
+        import os as _os
+        filename = _os.path.basename(path)
+        send_backup_email(path, filename, db)
+    finally:
+        db.close()
 
 
 async def send_weekly_report():

@@ -1112,6 +1112,10 @@ ${d.unpaid.length > 0 ? `
 </div>
 </body></html>`;
         const win = window.open('','_blank','width=950,height=700');
+        if (!win || win.closed || typeof win.document === 'undefined') {
+          this.showToast('Popup blocked — please allow popups for this site, then try again.', 'error');
+          return;
+        }
         win.document.write(html);
         win.document.close();
         win.focus();
