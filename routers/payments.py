@@ -6,8 +6,9 @@ from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
 from datetime import datetime, date as _date, timezone, timedelta
 from collections import defaultdict
-from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle, Settings
+from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle, Settings, log_action
 from routers.notifications import send_payment_confirmed
+from routers.deps import _require_admin, _get_current_user
 
 
 def _utcnow():
@@ -269,17 +270,34 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
     if not data.week_ids:
         raise HTTPException(status_code=400, detail="No weeks selected")
 
+    # Reject future payment dates
+    pay_date = datetime.fromisoformat(data.payment_date) if data.payment_date else _utcnow()
+    if pay_date.date() > _utcnow().date():
+        raise HTTPException(status_code=400, detail="Payment date cannot be in the future")
+
+    # Require reference number for non-cash payments
+    if data.payment_method in ("cheque", "bank_transfer") and not (data.reference or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Reference number is required for {data.payment_method.replace('_', ' ')} payments",
+        )
+
     member = db.query(Member).filter(Member.id == data.member_id).first()
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
-
-    pay_date = datetime.fromisoformat(data.payment_date) if data.payment_date else _utcnow()
+    if member.status == "left":
+        raise HTTPException(status_code=400, detail="Cannot record payment for a member who has left")
 
     payments = (db.query(Payment)
                 .filter(Payment.member_id == data.member_id,
                         Payment.week_id.in_(data.week_ids)).all())
     if not payments:
         raise HTTPException(status_code=404, detail="No matching payment records found")
+
+    # Validate amounts
+    for p in payments:
+        if (p.amount or 0) <= 0:
+            raise HTTPException(status_code=400, detail=f"Payment amount must be greater than zero (week {p.week_id})")
 
     # Idempotency guard: reject if any week is already paid to prevent double-charge
     already_paid = [p for p in payments if p.status == "paid"]
@@ -318,6 +336,13 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
 
     db.commit()
     db.refresh(batch)
+    user = _get_current_user(request, db)
+    log_action(db, user=user, action="create", table="payment_batches",
+               record_id=batch.id,
+               description=f"Recorded {len(payments)} payment(s) for {member.name} — {total:,.0f} ETB via {data.payment_method}",
+               new={"member_id": data.member_id, "weeks": data.week_ids,
+                    "total": float(total), "method": data.payment_method})
+    db.commit()
     sms_status = send_payment_confirmed(payments[0], db) if payments else "skipped"
     result = batch_to_dict(batch)
     result["sms_status"] = sms_status
@@ -330,6 +355,23 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
     if not p:
         raise HTTPException(status_code=404, detail="Payment not found")
 
+    caller_role = getattr(request.state, "user_role", "cashier")
+
+    # Only admin/superadmin can un-pay (reset paid → pending/late/missed)
+    if p.status == "paid" and data.status != "paid":
+        if caller_role not in ("admin", "superadmin"):
+            raise HTTPException(
+                status_code=403,
+                detail="Only an admin can reverse a recorded payment. Contact your administrator.",
+            )
+
+    # Reject future paid_date
+    if data.paid_date:
+        pd = datetime.fromisoformat(data.paid_date)
+        if pd.date() > _utcnow().date():
+            raise HTTPException(status_code=400, detail="Payment date cannot be in the future")
+
+    old_status = p.status
     was_unpaid = p.status != "paid"
     p.status = data.status
     if data.payment_method:
@@ -348,6 +390,13 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
         p.penalty_amount = _calc_penalty(p, p.paid_date or _utcnow(), db)
     if data.status == "paid" and was_unpaid:
         p.collected_by_id = getattr(request.state, "user_id", None)
+
+    user = _get_current_user(request, db)
+    log_action(db, user=user, action="update", table="payments",
+               record_id=p.id,
+               description=f"Payment status changed: {old_status} → {data.status}",
+               old={"status": old_status},
+               new={"status": data.status, "method": data.payment_method})
     db.commit()
     sms_status = "skipped"
     if data.status == "paid" and was_unpaid:
@@ -359,7 +408,11 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
 
 @router.post("/bulk")
 def bulk_update(data: BulkPayment, request: Request, db: Session = Depends(get_db)):
+    # Bulk status changes require admin role
+    _require_admin(request)
     paid_date = datetime.fromisoformat(data.paid_date) if data.paid_date else _utcnow()
+    if paid_date.date() > _utcnow().date():
+        raise HTTPException(status_code=400, detail="Payment date cannot be in the future")
     cashier_id = getattr(request.state, "user_id", None)
     updated = 0
     for mid in data.member_ids:
@@ -388,6 +441,11 @@ def bulk_update(data: BulkPayment, request: Request, db: Session = Depends(get_d
                 except Exception:
                     pass
             updated += 1
+    user = _get_current_user(request, db)
+    log_action(db, user=user, action="bulk_update", table="payments",
+               description=f"Bulk set {updated} payment(s) to '{data.status}' for week {data.week_id}",
+               new={"week_id": data.week_id, "status": data.status,
+                    "member_count": updated, "method": data.payment_method})
     db.commit()
     return {"updated": updated}
 
