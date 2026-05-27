@@ -893,6 +893,11 @@ def _migrate(engine):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_scheduled_notifications_status ON scheduled_notifications(status, scheduled_at)",
         "ALTER TABLE settings ADD COLUMN IF NOT EXISTS admin_phone VARCHAR",
+        # Performance indexes for common filter/sort columns
+        "CREATE INDEX IF NOT EXISTS ix_members_status ON members(status)",
+        "CREATE INDEX IF NOT EXISTS ix_cycles_status ON cycles(status)",
+        "CREATE INDEX IF NOT EXISTS ix_pot_transactions_week ON pot_transactions(week_id)",
+        "CREATE INDEX IF NOT EXISTS ix_weeks_draw_date ON weeks(draw_date)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

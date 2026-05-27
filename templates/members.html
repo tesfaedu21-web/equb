@@ -978,6 +978,7 @@ function members() {
           const dt = s.includes('T') ? s : s + 'T00:00:00';
           return this.fmtDate(dt);
         };
+        const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const methodLabel = v => ({cash:'Cash',bank_transfer:'Bank Transfer',cheque:'Cheque'}[v]||v||'—');
         const gregToEth = dateStr => {
           if (!dateStr) return '';
@@ -1007,8 +1008,8 @@ function members() {
               <div style="font-size:10px;color:#888">${b.weeks_count} week${b.weeks_count>1?'s':''}</div>
             </td>
             <td style="color:#555">${methodLabel(b.payment_method)}</td>
-            <td style="font-family:monospace;color:#999">${b.reference||'—'}</td>
-            <td style="color:#555">${b.collected_by_name||'—'}</td>
+            <td style="font-family:monospace;color:#999">${esc(b.reference||'—')}</td>
+            <td style="color:#555">${esc(b.collected_by_name||'—')}</td>
             <td style="text-align:right;font-weight:700;color:#15803d">${fmtNum(b.total_amount)}</td>
           </tr>`).join('');
 
@@ -1029,7 +1030,7 @@ function members() {
         const printedAt = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
 
         const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>Payment Statement — ${d.member_name}</title>
+<title>Payment Statement — ${esc(d.member_name)}</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 28px 32px; color: #111; font-size: 13px; }
@@ -1064,14 +1065,14 @@ function members() {
 <div class="org-header">
   <div class="org-logo"></div>
   <div>
-    <div class="org-name">${orgName}</div>
+    <div class="org-name">${esc(orgName)}</div>
     <div class="org-tagline">Member Payment Statement</div>
   </div>
-  <div class="print-date">Cycle: ${cycleName}<br>Printed: ${printedAt}</div>
+  <div class="print-date">Cycle: ${esc(cycleName)}<br>Printed: ${printedAt}</div>
 </div>
 
-<div class="member-name">${d.member_name}</div>
-<div class="member-sub">Spot(s): ${d.spot_numbers.join(', ')||'—'} &nbsp;·&nbsp; ${d.phone||'No phone'}</div>
+<div class="member-name">${esc(d.member_name)}</div>
+<div class="member-sub">Spot(s): ${d.spot_numbers.join(', ')||'—'} &nbsp;·&nbsp; ${esc(d.phone||'No phone')}</div>
 
 <div class="cards">
   <div class="card"><div class="label">Paid Weeks</div><div class="val" style="color:#15803d">${d.summary.paid}</div></div>
@@ -1105,7 +1106,7 @@ ${d.unpaid.length > 0 ? `
 </table>` : '<div style="margin-top:10px;color:#15803d;font-size:13px;font-weight:600">No outstanding weeks</div>'}
 
 <div class="print-footer">
-  <span>${orgName} — ${d.member_name} · ${cycleName}</span>
+  <span>${esc(orgName)} — ${esc(d.member_name)} · ${esc(cycleName)}</span>
   <span>Printed: ${printedAt}</span>
 </div>
 </body></html>`;

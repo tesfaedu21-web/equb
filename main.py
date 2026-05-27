@@ -76,17 +76,27 @@ def _clear_attempts(ip: str):
     _login_attempts.pop(ip, None)
 
 # ── Session blocklist (server-side invalidation) ──────────────────────────────
-_invalidated_sessions: set = set()
+_invalidated_sessions: dict = {}  # token → expiry timestamp (float)
+_SESSION_TTL = 86400              # 24 h — matches max realistic session lifetime
 
 def _invalidate_session(token: str):
-    _invalidated_sessions.add(token)
-    if len(_invalidated_sessions) > 10000:
-        _invalidated_sessions.clear()
+    now = time.time()
+    _invalidated_sessions[token] = now + _SESSION_TTL
+    # Prune expired entries periodically; avoids clear-all which would un-blocklist
+    # tokens that were invalidated less than 24 h ago.
+    if len(_invalidated_sessions) > 1000:
+        expired = [k for k, v in _invalidated_sessions.items() if v < now]
+        for k in expired:
+            del _invalidated_sessions[k]
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 def _get_client_ip(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")
-    return forwarded.split(",")[0].strip() if forwarded else (request.client.host or "unknown")
+    if forwarded:
+        # Railway's edge proxy appends the real client IP as the rightmost entry.
+        # Using [0] (leftmost) lets a client spoof their own X-Forwarded-For header.
+        return forwarded.split(",")[-1].strip()
+    return request.client.host or "unknown"
 
 def _utcnow() -> datetime:
     """Naive UTC datetime — compatible with naive datetimes stored in the DB."""
@@ -378,7 +388,7 @@ async def auth_middleware(request: Request, call_next):
 
     uid   = request.session.get("user_id")
     token = request.session.get("_token")
-    if not uid or (token and token in _invalidated_sessions):
+    if not uid or (token and _invalidated_sessions.get(token, 0) > time.time()):
         request.session.clear()
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Not authenticated"}, status_code=401)
