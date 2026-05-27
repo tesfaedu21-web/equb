@@ -26,6 +26,44 @@ def _eth_year(dt) -> int:
     return dt.year - 8
 
 
+_ETH_MONTHS = ['መስከረም','ጥቅምት','ህዳር','ታህሳስ','ጥር','የካቲት','መጋቢት','ሚያዝያ','ግንቦት','ሰኔ','ሐምሌ','ነሐሴ','ጳጉሜ']
+
+def _greg_to_eth(dt) -> str:
+    """Convert a Gregorian datetime/date to a formatted Ethiopian calendar string."""
+    y, mo, da = dt.year, dt.month, dt.day
+    a   = (14 - mo) // 12
+    yy  = y + 4800 - a
+    mm  = mo + 12 * a - 3
+    jdn = da + (153 * mm + 2) // 5 + 365 * yy + yy // 4 - yy // 100 + yy // 400 - 32045
+    diff = jdn - 1724221
+    k, n = divmod(diff, 1461)
+    s   = 4 * k + 1
+    l0  = 366 if s % 4 == 3 else 365
+    l1  = 366 if (s + 1) % 4 == 3 else 365
+    l2  = 366 if (s + 2) % 4 == 3 else 365
+    if n < l0:
+        ey, dn = s, n
+    elif n < l0 + l1:
+        ey, dn = s + 1, n - l0
+    elif n < l0 + l1 + l2:
+        ey, dn = s + 2, n - l0 - l1
+    else:
+        ey, dn = s + 3, n - l0 - l1 - l2
+    return f"{dn % 30 + 1} {_ETH_MONTHS[min(dn // 30, 12)]} {ey}"
+
+
+def _dual_date(dt) -> str:
+    """Return an HTML snippet showing both Ethiopian and Gregorian dates stacked."""
+    if not dt:
+        return "—"
+    eth  = _greg_to_eth(dt)
+    greg = dt.strftime("%d %b %Y")
+    return (f'<span style="text-align:right">'
+            f'<div>{eth}</div>'
+            f'<div style="font-size:11px;color:#9ca3af;margin-top:1px">{greg}</div>'
+            f'</span>')
+
+
 def _receipt_no(payment) -> str:
     """Generate a receipt number using the Ethiopian calendar year."""
     dt = payment.paid_date if payment.paid_date else _utcnow()
@@ -636,8 +674,8 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     group_name  = (gs.group_name  or "እቁብ") if gs else "እቁብ"
     group_tag   = (gs.group_tagline or "Equb Manager") if gs else "Equb Manager"
 
-    paid_date_str  = p.paid_date.strftime("%d %b %Y") if p.paid_date else "—"
-    draw_date_str  = w.draw_date.strftime("%d %b %Y") if w and w.draw_date else "—"
+    paid_date_html = _dual_date(p.paid_date)
+    draw_date_html = _dual_date(w.draw_date if w else None)
     amount_str     = f"{int(p.amount):,} ETB"
     penalty_str    = f"{int(p.penalty_amount):,} ETB" if p.penalty_amount else None
     total_str      = f"{int((p.amount or 0) + (p.penalty_amount or 0)):,} ETB"
@@ -707,7 +745,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
 
   <h2>Receipt Details</h2>
   <div class="row"><span>Receipt #</span><span>{receipt_no}</span></div>
-  <div class="row"><span>Date Paid</span><span>{paid_date_str}</span></div>
+  <div class="row"><span>Date Paid</span>{paid_date_html}</div>
   <div class="row"><span>Payment Method</span><span>{method_str}</span></div>
   <div class="row"><span>Collected By</span><span>{collected_by_str}</span></div>
   {"<div class='row'><span>Reference</span><span>" + p.reference + "</span></div>" if p.reference else ""}
@@ -721,7 +759,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   <h2>Equb Details</h2>
   <div class="row"><span>Cycle</span><span>{cycle.name if cycle else "—"}</span></div>
   <div class="row"><span>Week #</span><span>{w.week_number if w else "—"}</span></div>
-  <div class="row"><span>Draw Date</span><span>{draw_date_str}</span></div>
+  <div class="row"><span>Draw Date</span>{draw_date_html}</div>
 
   <h2>Amount</h2>
   <div class="row"><span>Contribution</span><span>{amount_str}</span></div>
