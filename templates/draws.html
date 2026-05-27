@@ -330,7 +330,7 @@
   <div x-show="activeTab === 'disbursements'" x-cloak>
 
     <!-- Summary cards -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3" x-show="disbursements.length > 0">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3" x-show="disbursements.length > 0">
       <div class="card py-4 text-center">
         <div class="text-2xl font-bold text-gray-900" x-text="disbursements.length"></div>
         <div class="text-xs text-gray-400 mt-1">Total Disbursements</div>
@@ -349,6 +349,14 @@
         <div class="text-2xl font-bold text-amber-500"
              x-text="disbursements.filter(d=>d.status==='issued').length"></div>
         <div class="text-xs text-gray-400 mt-1">Pending Collection</div>
+      </div>
+      <div class="card py-4 text-center" :class="disbursements.filter(d=>d.is_overdue).length > 0 ? 'border-red-300 bg-red-50' : ''">
+        <div class="text-2xl font-bold"
+             :class="disbursements.filter(d=>d.is_overdue).length > 0 ? 'text-red-600' : 'text-gray-300'"
+             x-text="disbursements.filter(d=>d.is_overdue).length"></div>
+        <div class="text-xs mt-1"
+             :class="disbursements.filter(d=>d.is_overdue).length > 0 ? 'text-red-500' : 'text-gray-400'"
+             x-text="disbursements.filter(d=>d.is_overdue).length > 0 ? 'Overdue (30+ days)' : 'None Overdue'"></div>
       </div>
     </div>
 
@@ -402,8 +410,12 @@
                 <td class="px-5 py-3.5 text-xs text-gray-500 amharic"
                     x-text="[d.guarantor_1?.name, d.guarantor_2?.name, d.guarantor_3?.name].filter(Boolean).join(', ')"></td>
                 <td class="px-5 py-3.5">
-                  <span :class="d.status === 'collected' ? 'badge badge-active' : 'badge badge-pending'"
-                        x-text="d.status === 'collected' ? '✓ Collected' : 'Issued'"></span>
+                  <span x-show="d.status === 'collected'" class="badge badge-active">✓ Collected</span>
+                  <span x-show="d.status === 'voided'" class="badge badge-missed">Voided</span>
+                  <span x-show="d.status === 'issued' && d.is_overdue"
+                        class="badge bg-red-100 text-red-700 border border-red-300"
+                        title="Cheque issued more than 30 days ago">⚠ Overdue</span>
+                  <span x-show="d.status === 'issued' && !d.is_overdue" class="badge badge-pending">Issued</span>
                 </td>
                 <td class="px-5 py-3.5 text-right flex items-center gap-1 justify-end">
                   <button x-show="d.status === 'issued'"

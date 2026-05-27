@@ -197,6 +197,20 @@
         </div>
       </div>
 
+      <!-- SMS Queue Stale Alert -->
+      <div x-show="queueStats && queueStats.is_stale"
+           class="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-sm">
+        <svg class="w-5 h-5 shrink-0 mt-0.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        <div>
+          <span class="font-semibold">SMS Gateway queue is stale.</span>
+          <span x-text="` ${queueStats?.pending} message(s) have been pending for ${queueStats?.oldest_pending_minutes}+ minutes.`"></span>
+          Is the Android SMS Gateway app running and connected?
+        </div>
+      </div>
+
       <!-- Delivery Stats Dashboard -->
       <div class="card p-0 overflow-hidden" x-show="deliveryStats">
         <div class="px-6 py-4 border-b flex items-center justify-between">
@@ -357,6 +371,7 @@
                 <th class="text-left px-5 py-2 text-xs font-semibold text-gray-400 uppercase">Type</th>
                 <th class="text-left px-5 py-2 text-xs font-semibold text-gray-400 uppercase">Status</th>
                 <th class="text-left px-5 py-2 text-xs font-semibold text-gray-400 uppercase">Sent</th>
+                <th class="px-5 py-2"></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-50">
@@ -376,6 +391,14 @@
                     }" x-text="l.status === 'mock' ? 'TEST' : l.status"></span>
                   </td>
                   <td class="px-5 py-2.5 text-gray-400 text-xs" x-text="fmtDate(l.sent_at)"></td>
+                  <td class="px-5 py-2.5 text-right">
+                    <button x-show="l.status === 'failed'"
+                            @click="resendSms(l)"
+                            :disabled="l._resending"
+                            class="text-xs px-2 py-0.5 rounded border border-equb-green text-equb-green hover:bg-equb-green hover:text-white disabled:opacity-40 transition-colors">
+                      <span x-text="l._resending ? 'Sending…' : 'Resend'"></span>
+                    </button>
+                  </td>
                 </tr>
               </template>
             </tbody>
@@ -704,7 +727,7 @@ function notifications() {
   return {
     cfg: { provider: 'africastalking', username: '', api_key: null, api_key_input: '', sender_id: '', is_active: false, has_device_token: false, newToken: '', sms_language: 'en',
            email_enabled: false, smtp_host: '', smtp_port: 587, smtp_user: '', smtp_password: '', smtp_password_input: '', smtp_use_tls: true, email_from: '' },
-    templates: [], logBatches: [], logIndividuals: [], expandedBatch: null, deliveryStats: null,
+    templates: [], logBatches: [], logIndividuals: [], expandedBatch: null, deliveryStats: null, queueStats: null,
     schedules: [], schedSaving: false,
     schedForm: { template_key: '', target: 'all', week_id: null, scheduled_at: '' },
     weeks: [], allMembers: [],
@@ -721,13 +744,14 @@ function notifications() {
 
     async load() {
       try {
-        const [s, t, l, stats, scheds, cycles] = await Promise.all([
+        const [s, t, l, stats, scheds, cycles, qs] = await Promise.all([
           this.api('GET', '/api/notifications/settings'),
           this.api('GET', '/api/notifications/templates'),
           this.api('GET', '/api/notifications/logs'),
           this.api('GET', '/api/notifications/stats'),
           this.api('GET', '/api/notifications/schedule'),
           this.api('GET', '/api/draws/cycles'),
+          this.api('GET', '/api/sms-gateway/queue').catch(() => null),
         ]);
         this.deliveryStats = stats;
         this.schedules = scheds || [];
@@ -735,6 +759,7 @@ function notifications() {
         this.templates = t;
         this.logBatches = l.batches || [];
         this.logIndividuals = l.individuals || [];
+        if (qs) this.queueStats = qs;
 
         const active = cycles.find(c => c.status === 'active') || cycles[0];
         if (active) {
@@ -751,13 +776,15 @@ function notifications() {
     },
 
     async loadLogs() {
-      const [l, stats] = await Promise.all([
+      const [l, stats, qs] = await Promise.all([
         this.api('GET', '/api/notifications/logs').catch(() => ({})),
         this.api('GET', '/api/notifications/stats').catch(() => null),
+        this.api('GET', '/api/sms-gateway/queue').catch(() => null),
       ]);
       this.logBatches = l.batches || [];
       this.logIndividuals = l.individuals || [];
       if (stats) this.deliveryStats = stats;
+      if (qs) this.queueStats = qs;
     },
 
     async createSchedule() {
@@ -936,6 +963,18 @@ function notifications() {
         await this.loadLogs();
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.sending.missed = false; }
+    },
+
+    async resendSms(log) {
+      log._resending = true;
+      try {
+        const res = await this.api('POST', `/api/notifications/${log.id}/resend`);
+        log.status = res.status;
+        this.showToast(res.status === 'sent' ? 'SMS resent successfully' : `Resend status: ${res.status}`,
+                       res.status === 'sent' ? 'success' : 'error');
+        await this.loadLogs();
+      } catch(e) { this.showToast(e.message || 'Resend failed', 'error'); }
+      finally { log._resending = false; }
     },
 
     openCustom() {

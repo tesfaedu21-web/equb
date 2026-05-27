@@ -13,7 +13,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 
-from database import init_db, get_db, User, Settings, Payment, Week, _pwd, log_action
+from sqlalchemy import text as _sa_text
+from database import init_db, get_db, engine as _db_engine, User, Settings, Payment, Week, _pwd, log_action
 from routers.deps import _get_permissions
 from routers import (
     members, draws, payments, reports, notifications,
@@ -267,29 +268,55 @@ async def send_weekly_report():
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
+# Numeric key for pg_try_advisory_lock — unique to this application
+_SCHEDULER_LOCK_KEY = 202406011
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    scheduler = None
+    scheduler   = None
+    _lock_conn  = None   # held open to keep the advisory lock alive
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
         from apscheduler.triggers.interval import IntervalTrigger
         from routers.notifications import fire_scheduled_notifications
 
-        scheduler = AsyncIOScheduler()
-        scheduler.add_job(auto_close_past_weeks,        CronTrigger(hour=21, minute=0))
-        scheduler.add_job(send_pre_draw_reminders,      CronTrigger(hour=18, minute=0))
-        scheduler.add_job(fire_scheduled_notifications, IntervalTrigger(minutes=5))
-        scheduler.add_job(run_daily_backup,             CronTrigger(hour=2, minute=0))
-        scheduler.add_job(send_weekly_report,           CronTrigger(day_of_week="mon", hour=8, minute=0))
-        scheduler.start()
-        logger.info("scheduler: jobs registered — auto-close 21:00, reminders 18:00, backup 02:00, weekly-report Mon 08:00")
+        # Acquire a session-level advisory lock so only one process runs the scheduler
+        # when Railway (or any multi-worker host) starts more than one instance.
+        got_lock = False
+        try:
+            _lock_conn = _db_engine.connect()
+            row = _lock_conn.execute(
+                _sa_text("SELECT pg_try_advisory_lock(:key)"),
+                {"key": _SCHEDULER_LOCK_KEY},
+            )
+            got_lock = bool(row.scalar())
+        except Exception as _le:
+            logger.warning("scheduler: advisory lock unavailable (%s) — starting anyway", _le)
+            got_lock = True   # non-PG env (SQLite dev); just proceed
+
+        if not got_lock:
+            logger.warning("scheduler: another instance holds the advisory lock — skipping scheduler on this replica")
+        else:
+            scheduler = AsyncIOScheduler()
+            scheduler.add_job(auto_close_past_weeks,        CronTrigger(hour=21, minute=0))
+            scheduler.add_job(send_pre_draw_reminders,      CronTrigger(hour=18, minute=0))
+            scheduler.add_job(fire_scheduled_notifications, IntervalTrigger(minutes=5))
+            scheduler.add_job(run_daily_backup,             CronTrigger(hour=2, minute=0))
+            scheduler.add_job(send_weekly_report,           CronTrigger(day_of_week="mon", hour=8, minute=0))
+            scheduler.start()
+            logger.info("scheduler: jobs registered — auto-close 21:00, reminders 18:00, backup 02:00, weekly-report Mon 08:00")
     except ImportError:
         logger.warning("scheduler: APScheduler not installed — skipping scheduled jobs")
     yield
     if scheduler and scheduler.running:
         scheduler.shutdown(wait=False)
+    if _lock_conn:
+        try:
+            _lock_conn.close()   # releases the session-level advisory lock
+        except Exception:
+            pass
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(

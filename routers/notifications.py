@@ -824,6 +824,38 @@ def notification_logs(request: Request, db: Session = Depends(get_db)):
     return {"batches": batches, "individuals": individuals_sorted[:50]}
 
 
+# ── Resend ────────────────────────────────────────────────────────────────────
+
+@router.post("/{log_id}/resend")
+def resend_notification(log_id: int, request: Request, db: Session = Depends(get_db)):
+    """Resend a failed SMS notification. Creates a new log entry; never mutates history."""
+    _require_feature(request, db, "notifications")
+    log = db.query(NotificationLog).filter(NotificationLog.id == log_id).first()
+    if not log:
+        raise HTTPException(404, "Notification log not found")
+    if log.status not in ("failed", "error"):
+        raise HTTPException(400, "Only failed notifications can be resent")
+
+    cfg = db.query(NotificationSettings).first()
+    if not cfg:
+        raise HTTPException(500, "Notification settings not configured")
+
+    status, response = _send_sms(log.phone, log.message, cfg, db=db,
+                                 template_key=log.template_key, member_id=log.member_id)
+    new_log = NotificationLog(
+        member_id=log.member_id,
+        phone=log.phone,
+        template_key=log.template_key,
+        message=log.message,
+        status=status,
+        provider_response=response,
+    )
+    db.add(new_log)
+    db.commit()
+    db.refresh(new_log)
+    return {"ok": True, "status": status, "log_id": new_log.id}
+
+
 # ── Delivery stats ───────────────────────────────────────────────────────────
 
 @router.get("/stats")

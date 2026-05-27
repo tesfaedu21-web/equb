@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func
 from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
@@ -17,10 +17,10 @@ def _utcnow():
 
 def _eth_year(dt) -> int:
     """Return the Ethiopian calendar year for a given Gregorian date.
-    Enkutatash (Meskerem 1) falls on Sep 12 when the new Ethiopian year is an Ethiopian leap year
-    (EY % 4 == 3), which corresponds to Gregorian years where dt.year % 4 == 2 (e.g. 2022, 2026).
+    Enkutatash (Meskerem 1) falls on Sep 12 in Gregorian years where dt.year % 4 == 3
+    (i.e. 2019, 2023, 2027 …) — the year after an Ethiopian leap year.
     """
-    new_year_day = 12 if dt.year % 4 == 2 else 11
+    new_year_day = 12 if dt.year % 4 == 3 else 11
     if (dt.month, dt.day) >= (9, new_year_day):
         return dt.year - 7
     return dt.year - 8
@@ -230,7 +230,13 @@ def payments_for_week(week_id: int, db: Session = Depends(get_db)):
     db.expire(w)
 
     payments = (db.query(Payment).filter(Payment.week_id == week_id)
-                .join(Member).order_by(Member.name).all())
+                .join(Member)
+                .options(
+                    selectinload(Payment.batch).selectinload(PaymentBatch.payments).selectinload(Payment.week),
+                    selectinload(Payment.collected_by),
+                    selectinload(Payment.member),
+                )
+                .order_by(Member.name).all())
     return [payment_to_dict(p, cycle_id) for p in payments]
 
 
@@ -240,7 +246,13 @@ def payments_for_member(member_id: int, cycle_id: Optional[int] = None,
     if not cycle_id:
         active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
-    q = db.query(Payment).filter(Payment.member_id == member_id).join(Week)
+    q = (db.query(Payment).filter(Payment.member_id == member_id)
+         .join(Week)
+         .options(
+             selectinload(Payment.batch).selectinload(PaymentBatch.payments).selectinload(Payment.week),
+             selectinload(Payment.collected_by),
+             selectinload(Payment.week),
+         ))
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)
     payments = q.order_by(Week.week_number).all()
@@ -291,7 +303,11 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
     q = (db.query(Payment)
          .filter(Payment.member_id == member_id,
                  Payment.status.in_(["pending", "late", "missed"]))
-         .join(Week))
+         .join(Week)
+         .options(
+             selectinload(Payment.batch).selectinload(PaymentBatch.payments).selectinload(Payment.week),
+             selectinload(Payment.week),
+         ))
     # Always scope to the active cycle so old-cycle debt never bleeds in
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)

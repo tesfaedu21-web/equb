@@ -134,8 +134,8 @@
     <!-- Payments table -->
     <div x-show="selectedWeek" class="card p-0 overflow-hidden">
       <div class="px-5 py-3 border-b flex flex-wrap items-center gap-3 bg-gray-50">
-        <input x-model="search" type="text" placeholder="Name, spot #, receipt #…" class="w-48 py-1.5 text-xs"/>
-        <select x-model="filterStatus" class="w-36 py-1.5 text-xs">
+        <input x-model="search" @input="payPage=1" type="text" placeholder="Name, spot #, receipt #…" class="w-48 py-1.5 text-xs"/>
+        <select x-model="filterStatus" @change="payPage=1" class="w-36 py-1.5 text-xs">
           <option value="">All Status</option>
           <option value="pending">Pending</option>
           <option value="paid">Paid</option>
@@ -180,7 +180,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-50">
-            <template x-for="p in filteredPayments" :key="p.id">
+            <template x-for="p in pagedPayments" :key="p.id">
               <tr class="transition-colors"
                   :class="{
                     'optimistic-paid':   p.status==='paid'   && p._saving,
@@ -281,6 +281,23 @@
             </tr>
           </tbody>
         </table>
+      </div>
+      <!-- Pagination — only shown when more than one page -->
+      <div x-show="payTotalPages > 1" class="px-5 py-3 border-t flex items-center justify-between text-sm bg-gray-50">
+        <span class="text-xs text-gray-400"
+              x-text="`${(payPage-1)*payPageSize+1}–${Math.min(payPage*payPageSize, filteredPayments.length)} of ${filteredPayments.length} payments`"></span>
+        <div class="flex items-center gap-1">
+          <button @click="payPage = Math.max(1, payPage-1)" :disabled="payPage===1"
+                  class="px-3 py-1 rounded-lg text-xs font-semibold bg-white border disabled:opacity-30 hover:bg-gray-50">← Prev</button>
+          <template x-for="p in payTotalPages" :key="p">
+            <button @click="payPage = p"
+                    :class="payPage===p ? 'bg-equb-green text-white' : 'bg-white hover:bg-gray-50'"
+                    class="w-8 h-7 rounded-lg text-xs font-semibold border"
+                    x-text="p"></button>
+          </template>
+          <button @click="payPage = Math.min(payTotalPages, payPage+1)" :disabled="payPage===payTotalPages"
+                  class="px-3 py-1 rounded-lg text-xs font-semibold bg-white border disabled:opacity-30 hover:bg-gray-50">Next →</button>
+        </div>
       </div>
     </div>
   </div>
@@ -968,6 +985,7 @@ function payments() {
     memberSearch: '',
     selectedCycle: '', selectedWeek: '',
     search: '', filterStatus: '', selected: [],
+    payPage: 1, payPageSize: 50,
     activeTab: 'week',
     currentWeekId: null,
     showPayModal: false, loadingOutstanding: false, saving: false,
@@ -1007,6 +1025,11 @@ function payments() {
         const st = !this.filterStatus || p.status === this.filterStatus;
         return s && st;
       });
+    },
+    get payTotalPages() { return Math.max(1, Math.ceil(this.filteredPayments.length / this.payPageSize)); },
+    get pagedPayments() {
+      const start = (this.payPage - 1) * this.payPageSize;
+      return this.filteredPayments.slice(start, start + this.payPageSize);
     },
     get filteredMembers() {
       if (!this.memberSearch) return this.allMembers;
@@ -1128,6 +1151,7 @@ function payments() {
     async loadPayments() {
       if (!this.selectedWeek) return;
       this.selected = [];
+      this.payPage  = 1;
       this.payments = await this.api('GET', `/api/payments/week/${this.selectedWeek}`).catch(() => []);
       // Update currentWeekId when user changes week selection
       this.currentWeekId = parseInt(this.selectedWeek);

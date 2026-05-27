@@ -81,6 +81,12 @@ def _to_dict(d: PotDisbursement) -> dict:
         "void_reason": d.void_reason,
         "notes": d.notes,
         "created_at": d.created_at.isoformat(),
+        "is_overdue": (
+            d.status == "issued"
+            and d.voided_at is None
+            and d.cheque_date is not None
+            and (_utcnow() - d.cheque_date).days > 30
+        ),
     }
 
 

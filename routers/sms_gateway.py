@@ -104,15 +104,30 @@ def queue_status(request: Request, db: Session = Depends(get_db)):
     if role not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Admin only")
 
+    from datetime import datetime, timezone
+    now     = datetime.now(timezone.utc).replace(tzinfo=None)
     total   = db.query(SmsQueue).count()
     pending = db.query(SmsQueue).filter(SmsQueue.status == "pending").count()
     sent    = db.query(SmsQueue).filter(SmsQueue.status == "sent").count()
     failed  = db.query(SmsQueue).filter(SmsQueue.status == "failed").count()
+
+    oldest_pending = (db.query(SmsQueue)
+                      .filter(SmsQueue.status == "pending")
+                      .order_by(SmsQueue.created_at.asc())
+                      .first())
+    oldest_pending_minutes = None
+    is_stale = False
+    if oldest_pending and oldest_pending.created_at:
+        oldest_pending_minutes = int((now - oldest_pending.created_at).total_seconds() / 60)
+        is_stale = oldest_pending_minutes > 30
+
     recent  = (db.query(SmsQueue)
                .order_by(SmsQueue.created_at.desc())
                .limit(20).all())
     return {
         "total": total, "pending": pending, "sent": sent, "failed": failed,
+        "oldest_pending_minutes": oldest_pending_minutes,
+        "is_stale": is_stale,
         "recent": [
             {"id": j.id, "phone": j.phone, "status": j.status,
              "attempts": j.attempts, "created_at": j.created_at.isoformat() if j.created_at else None,
