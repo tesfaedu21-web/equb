@@ -448,7 +448,7 @@
                      class="w-full text-sm"/>
             </div>
             <div>
-              <input x-model="newExpense.expense_date" type="date" class="w-full text-sm"/>
+              <input x-model="newExpense.expense_date" type="date" class="w-full text-sm" :max="new Date().toISOString().split('T')[0]"/>
             </div>
             <div class="sm:col-span-2">
               <input x-model="newExpense.notes" type="text" placeholder="Notes (optional)"
