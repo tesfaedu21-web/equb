@@ -275,13 +275,6 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
     if pay_date.date() > _utcnow().date():
         raise HTTPException(status_code=400, detail="Payment date cannot be in the future")
 
-    # Require reference number for non-cash payments
-    if data.payment_method in ("cheque", "bank_transfer") and not (data.reference or "").strip():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Reference number is required for {data.payment_method.replace('_', ' ')} payments",
-        )
-
     member = db.query(Member).filter(Member.id == data.member_id).first()
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
