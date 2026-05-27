@@ -251,6 +251,8 @@ def _pick_message(tmpl, cfg, vars_: dict) -> str:
         pm_key = vars_.get("_pm_key")
         if pm_key:
             overrides["payment_method"] = _PAYMENT_METHOD_AM.get(pm_key, vars_.get("payment_method", pm_key))
+        if vars_.get("week_number_am"):
+            overrides["week_number"] = vars_["week_number_am"]
         if overrides:
             am_vars = {**vars_, **overrides}
     en_msg = _render(tmpl.message, en_vars)
@@ -304,18 +306,25 @@ def send_payment_confirmed(payment, db: Session) -> str:
         # Batch-aware: aggregate weeks and total across all payments in this batch
         if payment.batch_id and payment.batch:
             batch_payments = [bp for bp in payment.batch.payments if bp.week]
-            week_nums   = sorted(bp.week.week_number for bp in batch_payments)
+            week_nums    = sorted(bp.week.week_number for bp in batch_payments)
             total_amount = sum(bp.amount for bp in batch_payments)
-            if len(week_nums) <= 5:
-                week_str = ", ".join(str(n) for n in week_nums[:-1]) + (" & " + str(week_nums[-1]) if len(week_nums) > 1 else str(week_nums[0]))
+            if len(week_nums) == 1:
+                week_str    = str(week_nums[0])
+                week_str_am = str(week_nums[0])
+            elif len(week_nums) <= 5:
+                prefix      = ", ".join(str(n) for n in week_nums[:-1])
+                week_str    = f"{prefix} & {week_nums[-1]}"
+                week_str_am = f"{prefix} እና {week_nums[-1]}"
             else:
-                week_str = f"{week_nums[0]}–{week_nums[-1]} ({len(week_nums)} weeks)"
-            latest_w    = max(batch_payments, key=lambda bp: bp.week.week_number).week
+                week_str    = f"{week_nums[0]}–{week_nums[-1]} ({len(week_nums)} weeks)"
+                week_str_am = f"{week_nums[0]}–{week_nums[-1]} ({len(week_nums)} ሳምንቶች)"
+            latest_w      = max(batch_payments, key=lambda bp: bp.week.week_number).week
             draw_date_str = latest_w.draw_date.strftime("%d %b %Y")
         else:
-            week_nums    = [w.week_number]
-            week_str     = str(w.week_number)
-            total_amount = payment.amount
+            week_nums     = [w.week_number]
+            week_str      = str(w.week_number)
+            week_str_am   = week_str
+            total_amount  = payment.amount
             draw_date_str = w.draw_date.strftime("%d %b %Y")
 
         receipt_no = _receipt_no(payment) if payment.status == "paid" else ""
@@ -323,6 +332,7 @@ def send_payment_confirmed(payment, db: Session) -> str:
             "member_name":    m.name,
             "amount":         f"{int(total_amount):,}",
             "week_number":    week_str,
+            "week_number_am": week_str_am,
             "draw_date":      draw_date_str,
             "payment_method": method_label,
             "receipt_no":     receipt_no,
