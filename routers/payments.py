@@ -97,6 +97,7 @@ def payment_to_dict(p: Payment, cycle_id: Optional[int] = None) -> dict:
         "collected_by_id": p.collected_by_id,
         "collected_by_name": p.collected_by.full_name if p.collected_by else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        "receipt_no": f"RCP-{(p.paid_date.year if p.paid_date else 0):04d}-{p.id:05d}" if p.status == "paid" else None,
     }
 
 
@@ -573,7 +574,8 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     total_str      = f"{int((p.amount or 0) + (p.penalty_amount or 0)):,} ETB"
     method_labels  = {"cash": "Cash", "bank_transfer": "Bank Transfer", "cheque": "Cheque"}
     method_str     = method_labels.get(p.payment_method or "", p.payment_method or "—")
-    receipt_no     = f"RCP-{p.id:06d}"
+    year           = p.paid_date.year if p.paid_date else _utcnow().year
+    receipt_no     = f"RCP-{year:04d}-{p.id:05d}"
     collected_by_str = p.collected_by.full_name if p.collected_by else "—"
     is_late        = bool(p.penalty_amount)
 
