@@ -13,6 +13,23 @@ from routers.notifications import send_payment_confirmed
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+
+def _eth_year(dt) -> int:
+    """Return the Ethiopian calendar year for a given Gregorian date.
+    Ethiopian New Year (Enkutatash) falls on Sep 12 in Gregorian leap years, Sep 11 otherwise.
+    """
+    new_year_day = 12 if dt.year % 4 == 0 else 11
+    if (dt.month, dt.day) >= (9, new_year_day):
+        return dt.year - 7
+    return dt.year - 8
+
+
+def _receipt_no(payment) -> str:
+    """Generate a receipt number using the Ethiopian calendar year."""
+    dt = payment.paid_date if payment.paid_date else _utcnow()
+    return f"RCP-{_eth_year(dt):04d}-{payment.id:05d}"
+
+
 router = APIRouter()
 
 METHODS = {"cash", "bank_transfer", "cheque"}
@@ -97,7 +114,7 @@ def payment_to_dict(p: Payment, cycle_id: Optional[int] = None) -> dict:
         "collected_by_id": p.collected_by_id,
         "collected_by_name": p.collected_by.full_name if p.collected_by else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-        "receipt_no": f"RCP-{(p.paid_date.year if p.paid_date else 0):04d}-{p.id:05d}" if p.status == "paid" else None,
+        "receipt_no": _receipt_no(p) if p.status == "paid" else None,
     }
 
 
@@ -574,8 +591,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     total_str      = f"{int((p.amount or 0) + (p.penalty_amount or 0)):,} ETB"
     method_labels  = {"cash": "Cash", "bank_transfer": "Bank Transfer", "cheque": "Cheque"}
     method_str     = method_labels.get(p.payment_method or "", p.payment_method or "—")
-    year           = p.paid_date.year if p.paid_date else _utcnow().year
-    receipt_no     = f"RCP-{year:04d}-{p.id:05d}"
+    receipt_no     = _receipt_no(p)
     collected_by_str = p.collected_by.full_name if p.collected_by else "—"
     is_late        = bool(p.penalty_amount)
 
