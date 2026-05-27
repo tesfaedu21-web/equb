@@ -299,12 +299,15 @@ def send_payment_confirmed(payment, db: Session) -> str:
             return "skipped"
         pm_key = payment.payment_method or "cash"
         method_label = _PAYMENT_METHOD_EN.get(pm_key, "Cash")
+        from routers.payments import _eth_year, _receipt_no
+        receipt_no = _receipt_no(payment) if payment.status == "paid" else ""
         vars_ = {
             "member_name": m.name,
             "amount": f"{int(payment.amount):,}",
             "week_number": str(w.week_number),
             "draw_date": w.draw_date.strftime("%d %b %Y"),
             "payment_method": method_label,
+            "receipt_no": receipt_no,
             "_pm_key": pm_key,
         }
         msg = _pick_message(tmpl, cfg, vars_)

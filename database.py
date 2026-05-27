@@ -603,8 +603,8 @@ DEFAULT_TEMPLATES = [
     {
         "key": "payment_confirmed",
         "title": "Payment Confirmed",
-        "message": "Dear {member_name}, your Equb payment of {amount} ETB for Week {week_number} ({draw_date}) has been received via {payment_method}. Thank you!",
-        "message_am": "ውድ {member_name}፣ የሳምንት {week_number} ({draw_date}) የእቁብ ክፍያዎ {amount} ብር በ{payment_method} ደርሷል። አመሰግናለን!",
+        "message": "Dear {member_name}, your Equb payment of {amount} ETB for Week {week_number} ({draw_date}) has been received via {payment_method}. Receipt: {receipt_no}. Thank you!",
+        "message_am": "ውድ {member_name}፣ የሳምንት {week_number} ({draw_date}) የእቁብ ክፍያዎ {amount} ብር በ{payment_method} ደርሷል። ደረሰኝ: {receipt_no}። አመሰግናለን!",
     },
     {
         "key": "payment_reminder",
@@ -893,6 +893,9 @@ def _migrate(engine):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_scheduled_notifications_status ON scheduled_notifications(status, scheduled_at)",
         "ALTER TABLE settings ADD COLUMN IF NOT EXISTS admin_phone VARCHAR",
+        # Add receipt_no variable to payment_confirmed template if not already customised
+        "UPDATE notification_templates SET message = 'Dear {member_name}, your Equb payment of {amount} ETB for Week {week_number} ({draw_date}) has been received via {payment_method}. Receipt: {receipt_no}. Thank you!' WHERE key = 'payment_confirmed' AND message NOT LIKE '%receipt_no%'",
+        "UPDATE notification_templates SET message_am = 'ውድ {member_name}፣ የሳምንት {week_number} ({draw_date}) የእቁብ ክፍያዎ {amount} ብር በ{payment_method} ደርሷል። ደረሰኝ: {receipt_no}። አመሰግናለን!' WHERE key = 'payment_confirmed' AND (message_am IS NULL OR message_am NOT LIKE '%receipt_no%')",
         # Performance indexes for common filter/sort columns
         "CREATE INDEX IF NOT EXISTS ix_members_status ON members(status)",
         "CREATE INDEX IF NOT EXISTS ix_cycles_status ON cycles(status)",
