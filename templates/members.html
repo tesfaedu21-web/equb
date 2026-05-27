@@ -1007,6 +1007,7 @@ function members() {
               <div style="font-weight:600">Week ${b.weeks_covered.join(', ')}</div>
               <div style="font-size:10px;color:#888">${b.weeks_count} week${b.weeks_count>1?'s':''}</div>
             </td>
+            <td style="font-family:monospace;color:#6b7280;font-size:11px">${esc(b.receipt_no||'—')}</td>
             <td style="color:#555">${methodLabel(b.payment_method)}</td>
             <td style="font-family:monospace;color:#999">${esc(b.reference||'—')}</td>
             <td style="color:#555">${esc(b.collected_by_name||'—')}</td>
@@ -1085,11 +1086,11 @@ function members() {
 ${d.batches.length > 0 ? `
 <table>
 <thead><tr>
-  <th>#</th><th>Payment Date</th><th>Weeks Paid</th><th>Method</th><th>Reference</th><th>Cashier</th><th style="text-align:right">Amount</th>
+  <th>#</th><th>Payment Date</th><th>Weeks Paid</th><th>Receipt #</th><th>Method</th><th>Reference</th><th>Cashier</th><th style="text-align:right">Amount</th>
 </tr></thead>
 <tbody>${batchRows}</tbody>
 <tfoot><tr>
-  <td colspan="6" style="text-align:right;color:#555">Total Paid</td>
+  <td colspan="7" style="text-align:right;color:#555">Total Paid</td>
   <td style="text-align:right;color:#15803d">${fmtNum(d.summary.total_paid_amount)}</td>
 </tr></tfoot>
 </table>` : '<div class="empty">No payments recorded yet</div>'}

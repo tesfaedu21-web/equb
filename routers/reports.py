@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, DistributionCheque, VoucherReturn, cycle_cfg
 from routers.deps import _require_feature
+from routers.payments import _eth_year
 
 
 def _utcnow():
@@ -1227,6 +1228,7 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
         if not bp:
             continue
         week_numbers = sorted([p.week.week_number for p in bp if p.week])
+        eth_yr = _eth_year(b.payment_date) if b.payment_date else None
         batch_rows.append({
             "payment_date":     b.payment_date.isoformat(),
             "weeks_covered":    week_numbers,
@@ -1235,18 +1237,22 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
             "payment_method":   b.payment_method,
             "reference":        b.reference,
             "collected_by_name": b.collected_by.full_name if b.collected_by else None,
+            "receipt_no":       f"RCP-{eth_yr}-{b.id:05d}" if eth_yr else None,
         })
     # Payments marked paid directly (no batch)
     for p in ps:
         if p.status == "paid" and not p.batch_id and p.week:
+            pd = p.paid_date
+            eth_yr = _eth_year(pd) if pd else None
             batch_rows.append({
-                "payment_date":     p.paid_date.isoformat() if p.paid_date else None,
+                "payment_date":     pd.isoformat() if pd else None,
                 "weeks_covered":    [p.week.week_number],
                 "weeks_count":      1,
                 "total_amount":     float(p.amount),
                 "payment_method":   p.payment_method,
                 "reference":        p.reference,
                 "collected_by_name": p.collected_by.full_name if p.collected_by else None,
+                "receipt_no":       f"RCP-{eth_yr}-{p.id:05d}" if eth_yr else None,
             })
     batch_rows.sort(key=lambda x: x["payment_date"] or "")
 
