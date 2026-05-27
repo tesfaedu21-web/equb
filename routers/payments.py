@@ -17,9 +17,10 @@ def _utcnow():
 
 def _eth_year(dt) -> int:
     """Return the Ethiopian calendar year for a given Gregorian date.
-    Ethiopian New Year (Enkutatash) falls on Sep 12 in Gregorian leap years, Sep 11 otherwise.
+    Enkutatash (Meskerem 1) falls on Sep 12 when the new Ethiopian year is an Ethiopian leap year
+    (EY % 4 == 3), which corresponds to Gregorian years where dt.year % 4 == 2 (e.g. 2022, 2026).
     """
-    new_year_day = 12 if dt.year % 4 == 0 else 11
+    new_year_day = 12 if dt.year % 4 == 2 else 11
     if (dt.month, dt.day) >= (9, new_year_day):
         return dt.year - 7
     return dt.year - 8

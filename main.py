@@ -6,7 +6,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -301,7 +301,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
-    openapi_url="/openapi.json",
+    openapi_url=None,
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -595,6 +595,12 @@ async def api_docs_page(request: Request):
     if getattr(request.state, "user_role", "") != "superadmin":
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "api_docs.html", _ctx(request))
+
+@app.get("/openapi.json", include_in_schema=False)
+async def openapi_spec(request: Request):
+    if getattr(request.state, "user_role", "") != "superadmin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return app.openapi()
 
 @app.get("/collections",   response_class=HTMLResponse)
 async def collections_page(request: Request):
