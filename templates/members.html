@@ -975,8 +975,8 @@ function members() {
         const fmtNum = n => Number(n||0).toLocaleString('en-ET') + ' ETB';
         const fmtDt  = s => {
           if (!s) return '—';
-          const dt = s.includes('T') ? s : s + 'T00:00:00';
-          return this.fmtDate(dt);
+          return new Date(s.includes('T') ? s : s + 'T00:00:00')
+            .toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
         };
         const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const methodLabel = v => ({cash:'Cash',bank_transfer:'Bank Transfer',cheque:'Cheque'}[v]||v||'—');
