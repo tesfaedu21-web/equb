@@ -406,7 +406,7 @@
                     <span class="text-sm font-bold text-gray-800" x-text="fmt(p.amount)"></span>
                     <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
                           :class="'status-' + p.status"
-                          x-text="p.status.charAt(0).toUpperCase() + p.status.slice(1)"></span>
+                          x-text="p.status ? p.status.charAt(0).toUpperCase() + p.status.slice(1) : ''"></span>
                   </div>
                 </div>
                 <!-- Print receipt button — full-width, clearly visible on paid rows -->

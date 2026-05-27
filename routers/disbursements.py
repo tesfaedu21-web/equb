@@ -346,7 +346,8 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
         Payment.week_id.in_(cycle_week_ids), Payment.status == "paid"
     ).scalar() or 0.0
     already_disbursed = db.query(sqla_func.sum(PotDisbursement.gross_amount)).filter(
-        PotDisbursement.week_id.in_(cycle_week_ids)
+        PotDisbursement.week_id.in_(cycle_week_ids),
+        PotDisbursement.status != "voided",
     ).scalar() or 0.0
     available = total_collected - already_disbursed
     if round(data.gross_amount, 2) > round(available + 0.005, 2):

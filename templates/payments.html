@@ -1325,6 +1325,7 @@ function payments() {
     printDailyReport() {
       if (!this.dailyData) return;
       const d = this.dailyData;
+      const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       const fmtNum = n => Number(n || 0).toLocaleString('en-ET') + ' ETB';
       const fmtDateStr = s => {
         if (!s) return '—';
@@ -1343,11 +1344,11 @@ function payments() {
         const rowHtml = rows.map((row, i) => `
           <tr>
             <td style="color:#aaa">${i+1}</td>
-            <td style="font-weight:500">${row.member_name}</td>
-            <td style="color:#555">${row.spot_numbers.join(', ') || '—'}</td>
-            <td style="color:#555">${row.week_numbers.length > 0 ? 'Wk ' + row.week_numbers.join(', ') : row.weeks_paid + ' wk(s)'}</td>
-            <td style="font-family:monospace;color:#999;font-size:9px">${row.reference || '—'}</td>
-            <td style="color:#777">${row.collected_by_name || '—'}</td>
+            <td style="font-weight:500">${esc(row.member_name)}</td>
+            <td style="color:#555">${esc(row.spot_numbers.join(', ') || '—')}</td>
+            <td style="color:#555">${row.week_numbers.length > 0 ? 'Wk ' + esc(row.week_numbers.join(', ')) : row.weeks_paid + ' wk(s)'}</td>
+            <td style="font-family:monospace;color:#999;font-size:9px">${esc(row.reference || '—')}</td>
+            <td style="color:#777">${esc(row.collected_by_name || '—')}</td>
             <td style="text-align:right;font-weight:600">${fmtNum(row.total_amount)}</td>
           </tr>`).join('');
         return `
@@ -1497,20 +1498,21 @@ ${groupSections}
     printSummary() {
       if (!this.summaryData) return;
       const d = this.summaryData;
+      const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       const fmtNum = n => Number(n || 0).toLocaleString('en-ET') + ' ETB';
       const fmtDt  = s => s ? new Date(s).toLocaleDateString('en-ET', { year:'numeric', month:'long', day:'numeric' }) : '—';
       const methodBadge = m => ({
         cash:          '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px">Cash</span>',
         bank_transfer: '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-size:11px">Bank Transfer</span>',
         cheque:        '<span style="background:#f3e8ff;color:#6b21a8;padding:2px 8px;border-radius:4px;font-size:11px">Cheque</span>',
-      }[m] || `<span>${m}</span>`);
+      }[m] || `<span>${esc(m)}</span>`);
 
       const rows = d.payments.map((p, i) => `
         <tr>
           <td style="color:#666">${i + 1}</td>
-          <td style="font-weight:500">${p.member_name}</td>
+          <td style="font-weight:500">${esc(p.member_name)}</td>
           <td>${methodBadge(p.method)}</td>
-          <td style="font-family:monospace;color:#888">${p.reference || '—'}</td>
+          <td style="font-family:monospace;color:#888">${esc(p.reference || '—')}</td>
           <td style="color:#888">${fmtDt(p.paid_date)}</td>
           <td style="text-align:right;font-weight:600">${fmtNum(p.amount)}</td>
         </tr>`).join('');

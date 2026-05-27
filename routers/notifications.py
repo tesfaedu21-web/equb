@@ -384,6 +384,7 @@ def send_draw_winner(week, member, db: Session) -> str:
             template_key="draw_winner", message=msg,
             status=status, provider_response=response,
         ))
+        db.commit()
         return status
     except Exception:
         return "skipped"
@@ -560,6 +561,8 @@ def send_to_members(data: SendRequest, request: Request, db: Session = Depends(g
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
     cfg = db.query(NotificationSettings).first()
+    if not cfg:
+        raise HTTPException(status_code=503, detail="Notification settings not configured")
 
     active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
     active_cycle_id = active.id if active else None

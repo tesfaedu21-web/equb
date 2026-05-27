@@ -146,7 +146,7 @@ async def send_pre_draw_reminders():
     """
     db = next(get_db())
     try:
-        from routers.notifications import send_payment_reminder
+        from routers.notifications import send_missed_payment as send_payment_reminder
         now    = _utcnow()
         cutoff = now + timedelta(hours=48)
         upcoming_weeks = (
@@ -222,12 +222,13 @@ async def send_weekly_report():
     """Monday 08:00 UTC: email weekly summary to admin."""
     db = next(get_db())
     try:
-        from database import Settings, Cycle, Week, Member, Payment
-        cfg = db.query(Settings).first()
+        from database import Settings, NotificationSettings, Cycle, Week, Member, Payment
+        cfg = db.query(NotificationSettings).first()
         if not cfg or not cfg.smtp_host or not cfg.smtp_user or not cfg.smtp_password:
             return
-        admin_email = getattr(cfg, "email_from", None) or cfg.smtp_user
-        group_name  = cfg.group_name or "Equb"
+        gs = db.query(Settings).first()
+        admin_email = cfg.email_from or cfg.smtp_user
+        group_name  = (gs.group_name if gs and gs.group_name else None) or "Equb"
         now         = _utcnow()
         week_ago    = now - timedelta(days=7)
 
