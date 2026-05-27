@@ -105,33 +105,46 @@ async def auto_close_past_weeks():
         late_cutoff   = now - timedelta(days=0)
         missed_cutoff = now - timedelta(days=3)
 
-        newly_late = (
-            db.query(Payment)
-            .join(Week, Week.id == Payment.week_id)
-            .filter(Payment.status == "pending",
-                    Week.draw_date < late_cutoff,
-                    Week.draw_date >= missed_cutoff)
+        # Collect IDs first, then do atomic bulk UPDATE so a cashier marking a
+        # payment "paid" between our read and our commit doesn't get overwritten.
+        late_week_ids = [r[0] for r in (
+            db.query(Week.id)
+            .filter(Week.draw_date < late_cutoff, Week.draw_date >= missed_cutoff)
             .all()
-        )
-        for p in newly_late:
-            p.status = "late"
+        )]
+        missed_week_ids = [r[0] for r in (
+            db.query(Week.id).filter(Week.draw_date < missed_cutoff).all()
+        )]
 
-        newly_missed = (
-            db.query(Payment)
-            .join(Week, Week.id == Payment.week_id)
-            .filter(Payment.status.in_(["pending", "late"]),
-                    Week.draw_date < missed_cutoff)
-            .all()
-        )
-        for p in newly_missed:
-            p.status = "missed"
+        late_count = 0
+        if late_week_ids:
+            late_count = db.query(Payment).filter(
+                Payment.status == "pending",
+                Payment.week_id.in_(late_week_ids),
+            ).update({"status": "late"}, synchronize_session=False)
 
-        if newly_late or newly_missed:
+        # Fetch newly-missed IDs *before* the UPDATE so we can notify them
+        newly_missed_payments = []
+        if missed_week_ids:
+            newly_missed_payments = (
+                db.query(Payment)
+                .filter(Payment.status.in_(["pending", "late"]),
+                        Payment.week_id.in_(missed_week_ids))
+                .all()
+            )
+            if newly_missed_payments:
+                missed_ids = [p.id for p in newly_missed_payments]
+                db.query(Payment).filter(
+                    Payment.id.in_(missed_ids),
+                    Payment.status.in_(["pending", "late"]),  # skip if paid in the meantime
+                ).update({"status": "missed"}, synchronize_session=False)
+
+        if late_count or newly_missed_payments:
             db.commit()
             from routers.notifications import send_missed_payment
-            for p in newly_missed:
+            for p in newly_missed_payments:
                 send_missed_payment(p, db)
-            logger.info("scheduler: %d → late, %d → missed", len(newly_late), len(newly_missed))
+            logger.info("scheduler: %d → late, %d → missed", late_count, len(newly_missed_payments))
     except Exception as e:
         logger.error("scheduler auto-close error: %s", e)
         db.rollback()
@@ -200,18 +213,21 @@ async def run_daily_backup():
             "-f", out_file,
         ]
         r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=120)
-        if r.returncode != 0:
-            logger.error("backup: pg_dump failed: %s", r.stderr[:300])
-            return
-        size = os.path.getsize(out_file)
-        logger.info("backup: saved %s (%d bytes)", out_file, size)
-        # Prune to last 7 backups
+        # Always prune old backups (including failed zero-byte files) so disk doesn't fill
         all_bk = sorted(
             [f for f in os.listdir(backup_dir) if f.startswith("equb_") and f.endswith(".sql")],
             reverse=True,
         )
         for old in all_bk[7:]:
-            os.remove(os.path.join(backup_dir, old))
+            try:
+                os.remove(os.path.join(backup_dir, old))
+            except OSError:
+                pass
+        if r.returncode != 0:
+            logger.error("backup: pg_dump failed: %s", r.stderr[:300])
+            return
+        size = os.path.getsize(out_file)
+        logger.info("backup: saved %s (%d bytes)", out_file, size)
     except FileNotFoundError:
         logger.warning("backup: pg_dump not found on this host")
     except Exception as e:

@@ -357,6 +357,13 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
                    f"{data.gross_amount:,.0f} ETB requested. "
                    f"Ensure more members have paid before disbursing."
         )
+    # Gross amount must not exceed the week's net pot
+    if w.net_pot is not None and round(data.gross_amount, 2) > round(w.net_pot + 0.005, 2):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Gross amount {data.gross_amount:,.0f} ETB exceeds this week's net pot "
+                   f"of {w.net_pot:,.0f} ETB."
+        )
 
     # For sold weeks: deduct seller/association fee split equally per recipient
     seller_fee_deduction = 0.0

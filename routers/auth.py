@@ -1,6 +1,8 @@
+import time
+from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from database import (get_db, User, Settings, _pwd, Cycle, Spot, Member, MemberSpot,
                        Week, PaymentBatch, Payment, PotTransaction,
@@ -12,20 +14,37 @@ router = APIRouter()
 
 _VALID_ROLES = {"superadmin", "admin", "cashier"}
 
+# Per-user 2FA failure tracking: user_id → [timestamps]
+_2fa_failures: dict = defaultdict(list)
+_2FA_MAX = 5        # max attempts
+_2FA_WINDOW = 900   # 15 minutes
+
+
+def _check_2fa_rate(user_id: int):
+    now = time.time()
+    attempts = [t for t in _2fa_failures[user_id] if now - t < _2FA_WINDOW]
+    _2fa_failures[user_id] = attempts
+    if len(attempts) >= _2FA_MAX:
+        raise HTTPException(status_code=429, detail="Too many 2FA attempts. Try again in 15 minutes.")
+
+
+def _record_2fa_failure(user_id: int):
+    _2fa_failures[user_id].append(time.time())
+
 
 class UserCreate(BaseModel):
-    username: str
-    password: str
-    full_name: str
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=8, max_length=128)
+    full_name: str = Field(..., min_length=1, max_length=100)
     role: str = "cashier"
-    email: Optional[str] = None
+    email: Optional[str] = Field(default=None, max_length=254)
 
 
 class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
+    full_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     role: Optional[str] = None
     is_active: Optional[bool] = None
-    email: Optional[str] = None
+    email: Optional[str] = Field(default=None, max_length=254)
 
 
 class PasswordChange(BaseModel):
@@ -243,6 +262,7 @@ def verify_2fa(data: TOTPVerify, request: Request, db: Session = Depends(get_db)
     uid = getattr(request.state, "user_id", None)
     if not uid:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    _check_2fa_rate(uid)
     u = db.query(User).filter(User.id == uid).first()
     if not u or not u.totp_secret:
         raise HTTPException(status_code=400, detail="Run /2fa/setup first")
@@ -250,6 +270,7 @@ def verify_2fa(data: TOTPVerify, request: Request, db: Session = Depends(get_db)
         import pyotp
         totp = pyotp.TOTP(u.totp_secret)
         if not totp.verify(data.code, valid_window=1):
+            _record_2fa_failure(uid)
             raise HTTPException(status_code=400, detail="Invalid TOTP code")
         u.totp_enabled = True
         db.commit()
@@ -264,6 +285,7 @@ def disable_2fa(data: TOTPVerify, request: Request, db: Session = Depends(get_db
     uid = getattr(request.state, "user_id", None)
     if not uid:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    _check_2fa_rate(uid)
     u = db.query(User).filter(User.id == uid).first()
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
@@ -273,6 +295,7 @@ def disable_2fa(data: TOTPVerify, request: Request, db: Session = Depends(get_db
         import pyotp
         totp = pyotp.TOTP(u.totp_secret)
         if not totp.verify(data.code, valid_window=1):
+            _record_2fa_failure(uid)
             raise HTTPException(status_code=400, detail="Invalid TOTP code")
         u.totp_enabled = False
         u.totp_secret = None

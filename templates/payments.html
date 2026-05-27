@@ -485,14 +485,20 @@
 
     <div x-show="loadingDebtors" class="card text-center py-10 text-gray-400">Loading…</div>
 
-    <div x-show="!loadingDebtors && debtors.length === 0"
+    <div x-show="!loadingDebtors && debtorsError"
+         class="card text-center py-12">
+      <div class="text-4xl mb-3">⚠️</div>
+      <div class="font-semibold text-red-600">Failed to load debtors</div>
+      <div class="text-sm text-gray-400 mt-1">Check your connection and try refreshing.</div>
+    </div>
+    <div x-show="!loadingDebtors && !debtorsError && debtors.length === 0"
          class="card text-center py-12">
       <div class="text-5xl mb-3">🎉</div>
       <div class="font-semibold text-gray-700">All caught up!</div>
       <div class="text-sm text-gray-400 mt-1">No members have outstanding past-due payments.</div>
     </div>
 
-    <div x-show="!loadingDebtors && debtors.length > 0" class="card p-0 overflow-hidden">
+    <div x-show="!loadingDebtors && !debtorsError && debtors.length > 0" class="card p-0 overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-gray-50 border-b">
@@ -958,7 +964,7 @@ function payments() {
   return {
     isAdmin: ['admin','superadmin'].includes((window._equbCtx||{}).userRole||''),
     cycles: [], weeks: [], payments: [], allMembers: [], outstanding: [], appSettings: {},
-    debtors: [], debtorSearch: '', loadingDebtors: false,
+    debtors: [], debtorSearch: '', loadingDebtors: false, debtorsError: false,
     memberSearch: '',
     selectedCycle: '', selectedWeek: '',
     search: '', filterStatus: '', selected: [],
@@ -1129,11 +1135,12 @@ function payments() {
 
     async loadDebtors() {
       this.loadingDebtors = true;
+      this.debtorsError = false;
       try {
         const cqs = this.selectedCycle ? `?cycle_id=${this.selectedCycle}` : '';
         const raw = await this.api('GET', `/api/payments/outstanding-members${cqs}`);
         this.debtors = raw.sort((a, b) => (b.unpaid_amount || 0) - (a.unpaid_amount || 0));
-      } catch(e) { this.showToast(e.message, 'error'); }
+      } catch(e) { this.debtorsError = true; this.showToast(e.message, 'error'); }
       finally { this.loadingDebtors = false; }
     },
 
