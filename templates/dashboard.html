@@ -500,11 +500,11 @@ function dashboard() {
     },
 
     async load() {
-      await this.loadStats();
+      await this.loadStats(false);
     },
 
-    async loadStats() {
-      this.loading = true;
+    async loadStats(showSkeleton = true) {
+      if (showSkeleton) this.loading = true;
       try {
         const qs = this.selectedCycleId ? `?cycle_id=${this.selectedCycleId}` : '';
         [this.stats, this.trendData, this.ranking] = await Promise.all([
