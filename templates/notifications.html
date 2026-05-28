@@ -882,7 +882,7 @@ function notifications() {
       this.emailTesting = true;
       try {
         const res = await this.api('POST', '/api/notifications/email/test');
-        this.showToast(`Test email ${res.status} → ${res.sent_to}`, res.status === 'sent' ? 'success' : 'error');
+        this.showToast(res.status === 'sent' ? `Test email sent → ${res.sent_to}` : `Email failed: ${res.detail}`, res.status === 'sent' ? 'success' : 'error');
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.emailTesting = false; }
     },
