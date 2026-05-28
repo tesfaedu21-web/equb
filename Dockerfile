@@ -1,9 +1,8 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
-# Pre-install libldap dep from Debian repo, then add PGDG for postgresql-client-18
+# Add PGDG repo and install postgresql-client-18 (matches Railway's Postgres 18)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        curl ca-certificates gnupg libldap-2.5-0 libsasl2-2 && \
+    apt-get install -y --no-install-recommends curl ca-certificates gnupg && \
     install -d /usr/share/postgresql-common/pgdg && \
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
          -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc && \
