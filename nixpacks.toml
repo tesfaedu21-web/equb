@@ -1,1 +1,4 @@
 providers = ["python"]
+
+[phases.setup]
+nixPkgs = ["postgresql"]
