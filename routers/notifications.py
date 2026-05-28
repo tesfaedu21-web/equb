@@ -181,6 +181,8 @@ def _send_email(to_address: str, subject: str, body: str, cfg, body_html: str = 
         server.quit()
         return "sent", f"Delivered to {to_address}"
     except Exception as e:
+        logger.error("_send_email failed to=%s host=%s port=%s user=%s tls=%s err=%s",
+                     to_address, cfg.smtp_host, cfg.smtp_port, cfg.smtp_user, cfg.smtp_use_tls, e)
         return "failed", str(e)
 
 
