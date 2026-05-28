@@ -690,7 +690,14 @@ def member_payment_balance(member_id: int, up_to_week_number: int = 9999,
 
 @router.get("/{payment_id}/receipt", response_class=HTMLResponse)
 def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
-    p = db.query(Payment).filter(Payment.id == payment_id).first()
+    p = (db.query(Payment)
+           .options(
+               selectinload(Payment.batch).selectinload(PaymentBatch.payments).selectinload(Payment.week),
+               selectinload(Payment.collected_by),
+               selectinload(Payment.week),
+           )
+           .filter(Payment.id == payment_id)
+           .first())
     if not p:
         raise HTTPException(status_code=404, detail="Payment not found")
     gs = db.query(Settings).first()

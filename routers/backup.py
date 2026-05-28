@@ -85,6 +85,7 @@ def send_backup_email(path: str, filename: str, db: Session) -> bool:
     Uses the SMTP settings already configured in NotificationSettings.
     Returns True on success, False on failure. Never raises.
     """
+    import io
     try:
         cfg = db.query(NotificationSettings).first()
         gs  = db.query(Settings).first()
@@ -92,23 +93,19 @@ def send_backup_email(path: str, filename: str, db: Session) -> bool:
             logger.info("backup email: SMTP not configured — skipping email delivery")
             return False
 
-        # Compress to .gz to reduce attachment size
-        gz_path = path + ".gz"
-        with open(path, "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
+        # Compress into memory — avoids writing then re-reading a temp file
+        buf = io.BytesIO()
+        with open(path, "rb") as f_in, gzip.open(buf, "wb") as f_out:
             f_out.write(f_in.read())
-        gz_size = os.path.getsize(gz_path)
+        gz_data = buf.getvalue()
+        gz_size = len(gz_data)
 
         # Gmail has a 25 MB attachment limit — skip if over 20 MB compressed
         if gz_size > 20 * 1024 * 1024:
             logger.warning("backup email: compressed file too large (%d bytes)", gz_size)
-            os.remove(gz_path)
             return False
 
-        with open(gz_path, "rb") as f:
-            gz_data = f.read()
-        os.remove(gz_path)
-
-        group_name = (gs.group_name if gs else None) or "Equb"
+        group_name  = (gs.group_name if gs else None) or "Equb"
         gz_filename = filename + ".gz"
 
         msg = EmailMessage()
@@ -129,14 +126,16 @@ def send_backup_email(path: str, filename: str, db: Session) -> bool:
         port = cfg.smtp_port or 587
         if cfg.smtp_use_tls:
             smtp = smtplib.SMTP(cfg.smtp_host, port, timeout=30)
-            smtp.starttls()
         else:
             smtp = smtplib.SMTP_SSL(cfg.smtp_host, port, timeout=30)
-
-        if cfg.smtp_user and cfg.smtp_password:
-            smtp.login(cfg.smtp_user, cfg.smtp_password)
-        smtp.send_message(msg)
-        smtp.quit()
+        try:
+            if cfg.smtp_use_tls:
+                smtp.starttls()
+            if cfg.smtp_user and cfg.smtp_password:
+                smtp.login(cfg.smtp_user, cfg.smtp_password)
+            smtp.send_message(msg)
+        finally:
+            smtp.quit()
 
         logger.info("backup email: sent %s (%d bytes) to %s", gz_filename, gz_size, cfg.email_from)
         return True
@@ -145,12 +144,13 @@ def send_backup_email(path: str, filename: str, db: Session) -> bool:
         return False
 
 
-def _prune_old_backups(backup_dir: str, keep: int = 7):
-    """Keep only the most recent `keep` backups in backup_dir."""
+def _prune_old_backups(backup_dir: str, keep: int = 7, label: str = ""):
+    """Keep only the most recent `keep` backups with the given label prefix."""
     try:
+        prefix = f"equb_{label}_" if label else "equb_"
         files = sorted(
             [f for f in os.listdir(backup_dir)
-             if f.startswith("equb_") and f.endswith(".sql")],
+             if f.startswith(prefix) and f.endswith(".sql")],
             reverse=True,
         )
         for old in files[keep:]:

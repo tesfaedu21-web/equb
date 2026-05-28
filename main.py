@@ -206,10 +206,12 @@ async def run_daily_backup():
         path = _do_pg_dump("daily")
         if not path:
             return
-        _prune_old_backups("/tmp/equb_backups", keep=7)
-        import os as _os
-        filename = _os.path.basename(path)
-        send_backup_email(path, filename, db)
+        _prune_old_backups("/tmp/equb_backups", keep=7, label="daily")
+        filename = os.path.basename(path)
+        import asyncio as _asyncio
+        await _asyncio.get_event_loop().run_in_executor(
+            None, send_backup_email, path, filename, db
+        )
     finally:
         db.close()
 
