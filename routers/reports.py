@@ -1,4 +1,7 @@
+import csv
+import io
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime, timezone
@@ -825,23 +828,14 @@ def delete_expense(expense_id: int, request: Request, db: Session = Depends(get_
     return {"ok": True}
 
 
-@router.get("/general-ledger")
-def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
-    _require_feature(request, db, "view_reports")
-    """Chronological ledger of every financial event for a cycle."""
-    if not cycle_id:
-        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
-        if not cycle:
-            return []
-        cycle_id = cycle.id
-
+def _general_ledger_data(cycle_id: int, db: Session) -> list:
+    """Return general ledger entries for a cycle (no auth check)."""
     week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
     if not week_ids:
         return []
 
     entries = []
 
-    # 1. Member collections — one entry per week, dated by earliest paid_date (or draw_date)
     weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
     week_map = {w.id: w for w in weeks}
 
@@ -868,7 +862,6 @@ def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session
             "debit":       0,
         })
 
-    # 2. Winner cheques (disbursements)
     disbs = (db.query(PotDisbursement)
              .filter(PotDisbursement.week_id.in_(week_ids))
              .order_by(PotDisbursement.cheque_date).all())
@@ -886,7 +879,6 @@ def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session
             "credit":      0,
             "debit":       d.net_amount,
         })
-        # Voucher payment (if paid to vendor) — only the vendor's portion (paid spots)
         if d.voucher_paid and d.voucher_deduction:
             vp = gl_vendor_data.get(d.id, {}).get("vendor_payment", d.voucher_deduction)
             entries.append({
@@ -897,7 +889,6 @@ def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session
                 "debit":       vp,
             })
 
-    # 3. Association expenses
     expenses = db.query(AssociationExpense).filter(
         AssociationExpense.cycle_id == cycle_id
     ).order_by(AssociationExpense.expense_date).all()
@@ -910,7 +901,6 @@ def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session
             "debit":       e.amount,
         })
 
-    # Sort chronologically and add running balance
     entries.sort(key=lambda x: x["date"])
     balance = 0
     for e in entries:
@@ -918,6 +908,18 @@ def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session
         e["balance"] = float(balance)
 
     return entries
+
+
+@router.get("/general-ledger")
+def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    _require_feature(request, db, "view_reports")
+    """Chronological ledger of every financial event for a cycle."""
+    if not cycle_id:
+        cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
+        if not cycle:
+            return []
+        cycle_id = cycle.id
+    return _general_ledger_data(cycle_id, db)
 
 
 @router.get("/cycle-distribution")
@@ -1136,6 +1138,181 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
             "collection_rate": round(oblig_paid / gross * 100, 1) if gross else 0,
         })
     return result
+
+
+# ── CSV Export Endpoints ──────────────────────────────────────────────────────
+
+def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
+    """Serialize a list of flat dicts to a CSV StreamingResponse."""
+    if not rows:
+        output = io.StringIO()
+        output.write("No data\n")
+        output.seek(0)
+    else:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+        output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/export/payment-matrix.csv")
+def export_payment_matrix(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """
+    CSV: one row per member, one column per week.
+    Cell value = paid / late / missed / pending.
+    """
+    if not cycle_id:
+        c = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
+        cycle_id = c.id if c else None
+    if not cycle_id:
+        return _csv_response([], "payment-matrix.csv")
+
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    weeks = db.query(Week).filter(Week.cycle_id == cycle_id).order_by(Week.week_number).all()
+    week_ids = [w.id for w in weeks]
+
+    member_ids = [r[0] for r in db.query(MemberSpot.member_id).filter(
+        MemberSpot.cycle_id == cycle_id, MemberSpot.is_active == True
+    ).distinct().all()]
+    members = db.query(Member).filter(Member.id.in_(member_ids)).order_by(Member.name).all()
+
+    all_payments = db.query(Payment).filter(Payment.week_id.in_(week_ids)).all() if week_ids else []
+    pay_map: dict = {}
+    for p in all_payments:
+        pay_map[(p.member_id, p.week_id)] = p.status
+
+    cycle_name = cycle.name if cycle else str(cycle_id)
+    week_headers = {w.id: f"Wk{w.week_number} ({w.draw_date.strftime('%d/%m/%y')})" for w in weeks}
+
+    rows = []
+    for m in members:
+        row: dict = {"Member": m.name, "Phone": m.phone or ""}
+        total_paid = 0
+        total_owed = 0
+        for w in weeks:
+            status = pay_map.get((m.id, w.id), "—")
+            row[week_headers[w.id]] = status
+            if status == "paid":
+                total_paid += 1
+            if status in ("paid", "late", "missed", "pending"):
+                total_owed += 1
+        row["Paid Weeks"] = total_paid
+        row["Total Weeks"] = total_owed
+        rows.append(row)
+
+    return _csv_response(rows, f"payment-matrix-{cycle_name}.csv")
+
+
+@router.get("/export/disbursements.csv")
+def export_disbursements(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """CSV: one row per disbursement cheque."""
+    if not cycle_id:
+        c = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
+        cycle_id = c.id if c else None
+    if not cycle_id:
+        return _csv_response([], "disbursements.csv")
+
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]
+    disbs = db.query(PotDisbursement).filter(
+        PotDisbursement.week_id.in_(week_ids)
+    ).order_by(PotDisbursement.cheque_date).all() if week_ids else []
+
+    rows = []
+    for d in disbs:
+        winner = ", ".join(
+            sa.member.name for sa in d.winner_spot.spot_assignments
+            if sa.is_active and (d.week is None or sa.cycle_id == d.week.cycle_id)
+        ) if d.winner_spot else "—"
+        rows.append({
+            "Week #": d.week.week_number if d.week else "",
+            "Draw Date": d.week.draw_date.strftime("%Y-%m-%d") if d.week else "",
+            "Cheque Date": d.cheque_date.strftime("%Y-%m-%d") if d.cheque_date else "",
+            "Cheque #": d.cheque_number or "",
+            "Winner": winner,
+            "Gross (ETB)": float(d.gross_amount),
+            "Service Fee (ETB)": float(d.service_fee or 0),
+            "Voucher Deduction (ETB)": float(d.voucher_deduction or 0),
+            "Net Amount (ETB)": float(d.net_amount),
+            "Status": d.status,
+            "Voucher Paid": "Yes" if d.voucher_paid else "No",
+        })
+
+    cycle_name = cycle.name if cycle else str(cycle_id)
+    return _csv_response(rows, f"disbursements-{cycle_name}.csv")
+
+
+@router.get("/export/general-ledger.csv")
+def export_general_ledger(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """CSV: full general ledger with running balance."""
+    if not cycle_id:
+        c = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
+        cycle_id = c.id if c else None
+    if not cycle_id:
+        return _csv_response([], "general-ledger.csv")
+
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    entries = _general_ledger_data(cycle_id, db)
+
+    rows = []
+    for e in entries:
+        rows.append({
+            "Date": e["date"],
+            "Type": e["type"],
+            "Description": e["description"],
+            "Credit (ETB)": float(e["credit"]),
+            "Debit (ETB)": float(e["debit"]),
+            "Balance (ETB)": float(e["balance"]),
+        })
+
+    cycle_name = cycle.name if cycle else str(cycle_id)
+    return _csv_response(rows, f"general-ledger-{cycle_name}.csv")
+
+
+@router.get("/export/outstanding.csv")
+def export_outstanding(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """CSV: all members with unpaid past-due weeks."""
+    if not cycle_id:
+        c = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
+        cycle_id = c.id if c else None
+    if not cycle_id:
+        return _csv_response([], "outstanding.csv")
+
+    cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
+    now = _eat_now()
+    rows_data = (
+        db.query(Member, func.count(Payment.id).label("unpaid_weeks"),
+                 func.sum(Payment.amount).label("total_owed"))
+        .join(Payment, Payment.member_id == Member.id)
+        .join(Week, Week.id == Payment.week_id)
+        .filter(
+            Week.cycle_id == cycle_id,
+            Payment.status.in_(["pending", "late", "missed"]),
+            Week.draw_date <= now,
+        )
+        .group_by(Member.id)
+        .order_by(func.sum(Payment.amount).desc())
+        .all()
+    )
+
+    rows = []
+    for m, unpaid_weeks, total_owed in rows_data:
+        rows.append({
+            "Member": m.name,
+            "Phone": m.phone or "",
+            "Unpaid Weeks": unpaid_weeks,
+            "Total Owed (ETB)": float(total_owed or 0),
+            "Member Status": m.status,
+        })
+
+    cycle_name = cycle.name if cycle else str(cycle_id)
+    return _csv_response(rows, f"outstanding-{cycle_name}.csv")
 
 
 @router.get("/member-ranking")
