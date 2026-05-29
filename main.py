@@ -352,7 +352,7 @@ app.include_router(backup_router.router,        prefix="/api/backup",        tag
 # SessionMiddleware (add_middleware) runs before all @app.middleware decorators.
 
 _GATEWAY_PUBLIC = {"/api/sms-gateway/pending", "/api/sms-gateway/ack"}
-_PUBLIC         = {"/login", "/favicon.ico", "/portal", "/health"}
+_PUBLIC         = {"/login", "/login/2fa", "/favicon.ico", "/portal", "/health"}
 
 
 @app.middleware("http")
