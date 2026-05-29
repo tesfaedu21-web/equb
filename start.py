@@ -1,4 +1,6 @@
-import os, sys, subprocess
+import os
+import sys
+import subprocess
 
 project_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(project_dir)
