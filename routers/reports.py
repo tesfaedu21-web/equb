@@ -398,8 +398,8 @@ def weekly_payment_summary(week_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
-    totals = {"cash": 0.0, "bank_transfer": 0.0, "cheque": 0.0, "other": 0.0}
-    count  = {"cash": 0,   "bank_transfer": 0,   "cheque": 0,   "other": 0}
+    totals = {"cash": 0, "bank_transfer": 0, "cheque": 0, "other": 0}
+    count  = {"cash": 0, "bank_transfer": 0, "cheque": 0, "other": 0}
     paid_rows = []
     unpaid_rows = []
 
@@ -408,7 +408,7 @@ def weekly_payment_summary(week_id: int, db: Session = Depends(get_db)):
         if p.status == "paid":
             method = p.payment_method or "cash"
             bucket = method if method in totals else "other"
-            totals[bucket] += p.amount
+            totals[bucket] += float(p.amount)
             count[bucket]  += 1
             paid_rows.append({
                 "member_id":   p.member_id,
