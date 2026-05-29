@@ -3,7 +3,7 @@ import logging
 import os
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
     DateTime, ForeignKey, Text, UniqueConstraint, Index, JSON, Numeric,
@@ -16,6 +16,19 @@ logger = logging.getLogger("equb.db")
 def _utcnow():
     """Naive UTC datetime — avoids deprecated datetime.utcnow()."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+_EAT = timezone(timedelta(hours=3))  # Ethiopian Standard Time (UTC+3, no DST)
+
+
+def _eat_now() -> datetime:
+    """Current naive datetime in EAT — use when comparing against draw_date columns."""
+    return datetime.now(_EAT).replace(tzinfo=None)
+
+
+def _eat_today():
+    """Current date in EAT."""
+    return datetime.now(_EAT).date()
 
 # Load .env file if it exists (for local PostgreSQL development)
 _env_path = os.path.join(os.path.dirname(__file__), ".env")

@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, DistributionCheque, VoucherReturn, cycle_cfg
+from database import get_db, Member, MemberSpot, Week, Payment, PaymentBatch, PotTransaction, Spot, Cycle, Settings, PotDisbursement, AssociationExpense, DistributionCheque, VoucherReturn, cycle_cfg, _eat_now
 from routers.deps import _require_feature
 from routers.payments import _eth_year
 
@@ -244,7 +244,7 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
     debtors_total_owed = 0.0
     top_debtors = []
     if cycle:
-        now_dt = _utcnow()
+        now_dt = _eat_now()
         debtor_rows = (
             db.query(
                 Payment.member_id,

@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 
 from sqlalchemy import text as _sa_text
-from database import init_db, get_db, engine as _db_engine, User, Settings, Payment, Week, _pwd, log_action
+from database import init_db, get_db, engine as _db_engine, User, Settings, Payment, Week, _pwd, log_action, _eat_now
 from routers.deps import _get_permissions
 from routers import (
     members, draws, payments, reports, notifications,
@@ -112,7 +112,7 @@ async def auto_close_past_weeks():
     """
     db = next(get_db())
     try:
-        now           = _utcnow()
+        now           = _eat_now()
         late_cutoff   = now - timedelta(days=0)
         missed_cutoff = now - timedelta(days=3)
 
@@ -171,7 +171,7 @@ async def send_pre_draw_reminders():
     db = next(get_db())
     try:
         from routers.notifications import send_missed_payment as send_payment_reminder
-        now    = _utcnow()
+        now    = _eat_now()
         cutoff = now + timedelta(hours=48)
         upcoming_weeks = (
             db.query(Week)

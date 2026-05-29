@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
-from database import get_db, Member, MemberSpot, Spot, Payment, Week, Cycle, PotTransaction, Settings
+from database import get_db, Member, MemberSpot, Spot, Payment, Week, Cycle, PotTransaction, Settings, _eat_today
 
 router = APIRouter()
 
@@ -77,7 +77,7 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
              for sa in sas if sa.spot]
 
     # Payment history in active cycle
-    today = _utcnow().date()
+    today = _eat_today()
     payments = []
     if cycle_id:
         week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == cycle_id).all()]

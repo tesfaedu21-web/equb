@@ -6,7 +6,7 @@ from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
 from datetime import datetime, date as _date, timezone, timedelta
 from collections import defaultdict
-from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle, Settings, log_action
+from database import get_db, Payment, PaymentBatch, Member, MemberSpot, Week, Cycle, Settings, log_action, _eat_now, _eat_today
 from routers.notifications import send_payment_confirmed
 from routers.deps import _require_admin, _get_current_user
 
@@ -299,7 +299,7 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
             db.bulk_save_objects(new_records)
             db.commit()
 
-    now = _utcnow()
+    now = _eat_now()
     q = (db.query(Payment)
          .filter(Payment.member_id == member_id,
                  Payment.status.in_(["pending", "late", "missed"]))
@@ -337,7 +337,7 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
 
     # Reject future payment dates
     pay_date = datetime.fromisoformat(data.payment_date) if data.payment_date else _utcnow()
-    if pay_date.date() > _utcnow().date():
+    if pay_date.date() > _eat_today():
         raise HTTPException(status_code=400, detail="Payment date cannot be in the future")
 
     member = db.query(Member).filter(Member.id == data.member_id).first()
@@ -426,7 +426,7 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
     # Reject future paid_date
     if data.paid_date:
         pd = datetime.fromisoformat(data.paid_date)
-        if pd.date() > _utcnow().date():
+        if pd.date() > _eat_today():
             raise HTTPException(status_code=400, detail="Payment date cannot be in the future")
 
     old_status = p.status
@@ -469,7 +469,7 @@ def bulk_update(data: BulkPayment, request: Request, db: Session = Depends(get_d
     # Bulk status changes require admin role
     _require_admin(request)
     paid_date = datetime.fromisoformat(data.paid_date) if data.paid_date else _utcnow()
-    if paid_date.date() > _utcnow().date():
+    if paid_date.date() > _eat_today():
         raise HTTPException(status_code=400, detail="Payment date cannot be in the future")
     cashier_id = getattr(request.state, "user_id", None)
     updated = 0
@@ -520,7 +520,7 @@ def member_batches(member_id: int, limit: int = 50, db: Session = Depends(get_db
 @router.get("/outstanding-members")
 def outstanding_members(cycle_id: Optional[int] = None, db: Session = Depends(get_db)):
     """All members (active or received) that have unpaid past-due weeks in the given cycle."""
-    now = _utcnow()
+    now = _eat_now()
 
     if not cycle_id:
         active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
