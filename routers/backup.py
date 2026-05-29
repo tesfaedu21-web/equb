@@ -7,7 +7,10 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import io
+import tempfile
+
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -177,6 +180,71 @@ def download_backup(request: Request, db: Session = Depends(get_db)):
         media_type="application/octet-stream",
         filename=filename,
     )
+
+
+@router.post("/restore")
+async def restore_backup(request: Request, file: UploadFile = File(...)):
+    """Restore database from uploaded .sql or .sql.gz backup. Superadmin only."""
+    _require_superadmin(request)
+
+    fname = file.filename or ""
+    if not (fname.endswith(".sql") or fname.endswith(".sql.gz")):
+        raise HTTPException(400, "Only .sql or .sql.gz files are accepted")
+
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url:
+        raise HTTPException(500, "DATABASE_URL not set")
+    params = _parse_db_url(db_url)
+    if not params["dbname"]:
+        raise HTTPException(500, "Could not parse database name from DATABASE_URL")
+
+    # Pre-restore backup so the current state is recoverable
+    pre = _do_pg_dump("pre_restore")
+    if pre:
+        logger.info("restore: pre-restore backup saved to %s", pre)
+    else:
+        logger.warning("restore: could not take pre-restore backup — proceeding anyway")
+
+    # Read and optionally decompress upload
+    content = await file.read()
+    if fname.endswith(".gz"):
+        try:
+            content = gzip.decompress(content)
+        except Exception as e:
+            raise HTTPException(400, f"Could not decompress .gz file: {e}")
+
+    # Write to a temp file and run psql
+    with tempfile.NamedTemporaryFile(suffix=".sql", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    env = os.environ.copy()
+    env["PGPASSWORD"] = params["password"]
+    cmd = [
+        "psql",
+        "-h", params["host"],
+        "-p", params["port"],
+        "-U", params["user"],
+        "-d", params["dbname"],
+        "--no-password",
+        "-f", tmp_path,
+    ]
+    try:
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=300)
+        os.unlink(tmp_path)
+        if r.returncode != 0:
+            logger.error("restore: psql failed: %s", r.stderr[:400])
+            raise HTTPException(500, f"Restore failed: {r.stderr[:300]}")
+        logger.info("restore: completed successfully from %s", fname)
+        return {"ok": True, "message": "Restore completed successfully."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise HTTPException(500, f"Restore error: {e}")
 
 
 @router.get("/status")

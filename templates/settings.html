@@ -364,6 +364,27 @@
         </a>
       </div>
     </div>
+
+    <!-- Restore from backup -->
+    <div class="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-3">
+      <div>
+        <p class="text-sm font-semibold text-gray-800">Restore from Backup</p>
+        <p class="text-xs text-gray-500 mt-0.5">
+          Upload a <code class="bg-gray-100 px-1 rounded">.sql</code> or <code class="bg-gray-100 px-1 rounded">.sql.gz</code> file.
+          A pre-restore backup is taken automatically before applying.
+        </p>
+      </div>
+      <div class="flex items-center gap-3">
+        <input type="file" accept=".sql,.sql.gz" x-ref="restoreFile"
+               class="text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-equb-pale file:text-equb-green hover:file:bg-green-100 cursor-pointer flex-1"/>
+        <button @click="restoreBackup()" :disabled="restoring"
+                class="flex-shrink-0 px-4 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors disabled:opacity-50"
+                x-text="restoring ? 'Restoring…' : 'Upload & Restore'"></button>
+      </div>
+      <div x-show="restoreMsg" x-text="restoreMsg"
+           :class="restoreOk ? 'text-green-700 bg-green-50 border border-green-200' : 'text-red-700 bg-red-50 border border-red-200'"
+           class="text-xs rounded-lg px-3 py-2"></div>
+    </div>
   </div>
 
   <!-- Danger Zone — superadmin only -->
@@ -608,6 +629,7 @@ function settings() {
     saving: false,
     savingPenalty: false,
     backupStatus: '',
+    restoring: false, restoreMsg: '', restoreOk: false,
     isSuperAdmin: (window._equbCtx || {}).userRole === 'superadmin',
     showUserModal: false,
     editUserId: null,
@@ -692,6 +714,31 @@ function settings() {
         this.pwd = { current:'', new:'' };
         this.showToast('Password updated');
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    async restoreBackup() {
+      const file = this.$refs.restoreFile.files[0];
+      if (!file) { this.restoreMsg = 'Please select a .sql or .sql.gz file first.'; this.restoreOk = false; return; }
+      const confirmed = confirm(
+        `Restore from "${file.name}"?\n\nThis will overwrite the current database. A pre-restore backup is taken automatically first.\n\nProceed?`
+      );
+      if (!confirmed) return;
+      this.restoring = true; this.restoreMsg = ''; this.restoreOk = false;
+      try {
+        const form = new FormData();
+        form.append('file', file);
+        const resp = await fetch('/api/backup/restore', {
+          method: 'POST',
+          headers: { 'X-Session-Token': (window._equbCtx || {}).token || '' },
+          body: form,
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Restore failed');
+        this.restoreMsg = data.message;
+        this.restoreOk = true;
+        this.$refs.restoreFile.value = '';
+      } catch(e) { this.restoreMsg = e.message; this.restoreOk = false; }
+      finally { this.restoring = false; }
     },
 
     async checkBackupStatus() {
