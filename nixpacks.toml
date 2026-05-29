@@ -1,4 +1,4 @@
-providers = ["python"]
+providers = ["python", "node"]
 
 [phases.setup]
 aptPkgs = ["curl", "ca-certificates", "gnupg"]

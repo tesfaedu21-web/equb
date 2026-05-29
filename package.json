@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "build": "tailwindcss -i ./static/css/input.css -o ./static/css/tailwind.css --minify",
     "build:css": "tailwindcss -i ./static/css/input.css -o ./static/css/tailwind.css --minify"
   },
   "dependencies": {
