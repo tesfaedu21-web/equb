@@ -282,7 +282,7 @@ html, body { height: 100%; font-family: 'Outfit', sans-serif; overflow: hidden; 
 
   <!-- ══════════ RIGHT PANEL ══════════ -->
   <div class="right">
-    <div class="country-tag">Ethiopia · EC 2017</div>
+    <div class="country-tag" id="countryTag">Ethiopia · EC —</div>
     <div class="ver-badge">v4.0</div>
 
     <div class="form-card">
@@ -426,6 +426,16 @@ function loginPage() {
     },
   };
 }
+
+// ── Ethiopian year in country tag ──
+(function() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const cutoff = new Date(y, 8, 11); // Sep 11
+  const ethYear = now >= cutoff ? y - 7 : y - 8;
+  const el = document.getElementById('countryTag');
+  if (el) el.textContent = 'Ethiopia · EC ' + ethYear;
+})();
 
 // ── Particle generator ──
 (function spawnParticles() {
