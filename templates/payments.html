@@ -111,16 +111,16 @@
       <div class="card" x-show="selectedWeek">
         <div class="grid grid-cols-3 gap-2 text-center">
           <div>
-            <div class="text-xl font-bold text-green-600" x-text="payments.filter(p=>p.status==='paid').length"></div>
-            <div class="text-xs text-gray-400">Paid</div>
+            <div class="kpi-value-sm kpi-value-green" x-text="payments.filter(p=>p.status==='paid').length"></div>
+            <div class="kpi-label mt-0.5">Paid</div>
           </div>
           <div>
-            <div class="text-xl font-bold text-yellow-500" x-text="payments.filter(p=>p.status==='pending').length"></div>
-            <div class="text-xs text-gray-400">Pending</div>
+            <div class="kpi-value-sm" style="color:#D97706" x-text="payments.filter(p=>p.status==='pending').length"></div>
+            <div class="kpi-label mt-0.5">Pending</div>
           </div>
           <div>
-            <div class="text-xl font-bold text-red-500" x-text="payments.filter(p=>p.status==='missed').length"></div>
-            <div class="text-xs text-gray-400">Missed</div>
+            <div class="kpi-value-sm kpi-value-red" x-text="payments.filter(p=>p.status==='missed').length"></div>
+            <div class="kpi-label mt-0.5">Missed</div>
           </div>
         </div>
         <div class="mt-3 bg-gray-100 rounded-full h-2">
@@ -129,7 +129,7 @@
         </div>
         <div class="text-center text-xs text-gray-400 mt-1">
           Collected:
-          <span class="font-semibold text-equb-green"
+          <span class="etb-gold font-semibold"
             x-text="fmt(payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount,0))"></span>
           <span class="text-gray-300 mx-1">/</span>
           <span class="font-semibold text-gray-700"

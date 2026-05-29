@@ -232,7 +232,14 @@
         <tbody class="divide-y divide-gray-50">
           <template x-for="m in pagedMembers" :key="m.id">
             <tr class="hover:bg-gray-50/70 transition-colors">
-              <td class="px-4 py-3 font-medium text-gray-900 amharic break-words max-w-[140px]" x-text="m.name"></td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-2.5">
+                  <div class="member-avatar flex-shrink-0"
+                       x-text="(m.name||'?').split(' ').map(w=>w[0]||'').join('').toUpperCase().slice(0,2)"
+                       :style="`background:hsl(${(m.id*47)%360},40%,38%)`"></div>
+                  <span class="font-medium text-gray-900 amharic break-words" x-text="m.name"></span>
+                </div>
+              </td>
               <td class="px-4 py-3 hidden sm:table-cell">
                 <template x-if="m.phone">
                   <a :href="`tel:${m.phone}`"
@@ -254,7 +261,7 @@
                   <span x-show="m.spot_numbers.length === 0" class="text-gray-300 text-xs">—</span>
                 </div>
               </td>
-              <td class="px-4 py-3 font-semibold text-equb-green whitespace-nowrap hidden sm:table-cell" x-text="fmt(m.total_weekly_contribution)"></td>
+              <td class="px-4 py-3 whitespace-nowrap hidden sm:table-cell etb-gold" x-text="fmt(m.total_weekly_contribution)"></td>
               <td class="px-4 py-3 text-gray-500 text-xs amharic hidden md:table-cell break-words max-w-[160px]" x-text="m.partners.join(', ') || '—'"></td>
               <td class="px-4 py-3">
                 <span :class="`badge badge-${m.status}`" x-text="m.status ? m.status.charAt(0).toUpperCase() + m.status.slice(1) : ''"></span>
