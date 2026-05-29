@@ -199,7 +199,7 @@ def payments_for_week(week_id: int, db: Session = Depends(get_db)):
     ).all()
 
     # Sum weekly contribution per member across all their spots in this cycle
-    member_amounts: dict = defaultdict(float)
+    member_amounts: dict = defaultdict(int)
     for ms in cycle_spots:
         member_amounts[ms.member_id] += ms.weekly_contribution
     cycle_member_ids = set(member_amounts.keys())
