@@ -461,7 +461,7 @@ def send_draw_announcement(week, spot_number: int, db: Session) -> int:
                     template_key="draw_announcement", message=msg,
                     status=status, provider_response=response, batch_id=bid,
                 ))
-                if status == "sent":
+                if status in ("sent", "queued", "mock"):
                     sent += 1
             except Exception:
                 pass
@@ -497,6 +497,7 @@ def send_disbursement_ready(week, member, cheque_number: str, db: Session) -> st
             template_key="disbursement_ready", message=msg,
             status=status, provider_response=response,
         ))
+        db.commit()
         return status
     except Exception:
         return "skipped"
