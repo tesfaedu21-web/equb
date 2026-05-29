@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
-    DateTime, ForeignKey, Text, UniqueConstraint, Index, JSON,
+    DateTime, ForeignKey, Text, UniqueConstraint, Index, JSON, Numeric,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
@@ -81,17 +81,17 @@ def get_db():
 class Settings(Base):
     __tablename__ = "settings"
     id = Column(Integer, primary_key=True)
-    full_spot_amount = Column(Float, default=21000)
-    half_spot_amount = Column(Float, default=10500)
-    association_deduction = Column(Float, default=1000)
+    full_spot_amount = Column(Numeric(12, 2), default=21000)
+    half_spot_amount = Column(Numeric(12, 2), default=10500)
+    association_deduction = Column(Numeric(12, 2), default=1000)
     total_member_spots = Column(Integer, default=113)
     total_assoc_spots = Column(Integer, default=5)
     group_week_interval = Column(Integer, default=4)
     # Vouchers deducted from winner's pot at disbursement
-    full_spot_voucher = Column(Float, default=80)
-    half_spot_voucher = Column(Float, default=40)
+    full_spot_voucher = Column(Numeric(12, 2), default=80)
+    half_spot_voucher = Column(Numeric(12, 2), default=40)
     # Late payment penalty
-    penalty_rate       = Column(Float, default=0)   # % of payment amount; 0 = disabled
+    penalty_rate       = Column(Numeric(12, 2), default=0)   # % of payment amount; 0 = disabled
     penalty_grace_days = Column(Integer, default=0) # days after draw_date before penalty applies
     # Branding
     group_name = Column(String, default="እቁብ")
@@ -133,11 +133,11 @@ class Cycle(Base):
     created_at = Column(DateTime, default=_utcnow)
 
     # Per-cycle financial settings — set at creation, independent of global Settings
-    full_spot_amount     = Column(Float,   nullable=True)
-    half_spot_amount     = Column(Float,   nullable=True)
-    association_deduction = Column(Float,  nullable=True)
-    full_spot_voucher    = Column(Float,   nullable=True)
-    half_spot_voucher    = Column(Float,   nullable=True)
+    full_spot_amount     = Column(Numeric(12, 2), nullable=True)
+    half_spot_amount     = Column(Numeric(12, 2), nullable=True)
+    association_deduction = Column(Numeric(12, 2), nullable=True)
+    full_spot_voucher    = Column(Numeric(12, 2), nullable=True)
+    half_spot_voucher    = Column(Numeric(12, 2), nullable=True)
     total_member_spots   = Column(Integer, nullable=True)
     total_assoc_spots    = Column(Integer, nullable=True)
     group_week_interval  = Column(Integer, nullable=True)
@@ -199,7 +199,7 @@ class MemberSpot(Base):
     spot_id = Column(Integer, ForeignKey("spots.id"), nullable=False)
     cycle_id = Column(Integer, ForeignKey("cycles.id"), nullable=True)  # NULL = legacy pre-cycle data
     share = Column(String, default="full")                # full | half
-    weekly_contribution = Column(Float, default=21000)    # 21000 full, 10500 half
+    weekly_contribution = Column(Numeric(12, 2), default=21000)    # 21000 full, 10500 half
     is_active = Column(Boolean, default=True)
     exited_at_week_id = Column(Integer, ForeignKey("weeks.id"), nullable=True)
     exit_reason = Column(String, nullable=True)           # left | stopped_paying
@@ -225,9 +225,9 @@ class Week(Base):
     draw_date = Column(DateTime, nullable=False)
     is_group_week = Column(Boolean, default=False)        # every Nth week → buyer sale
     is_worker_week = Column(Boolean, default=False)       # extra week for worker/staff payment
-    gross_pot = Column(Float, nullable=True)
-    association_amount = Column(Float, nullable=True)     # deducted to assoc fund
-    net_pot = Column(Float, nullable=True)
+    gross_pot = Column(Numeric(12, 2), nullable=True)
+    association_amount = Column(Numeric(12, 2), nullable=True)     # deducted to assoc fund
+    net_pot = Column(Numeric(12, 2), nullable=True)
     status = Column(String, default="pending")            # pending | drawn | sold
     winner_spot_id = Column(Integer, ForeignKey("spots.id"), nullable=True)
     notes = Column(Text)
@@ -247,7 +247,7 @@ class PaymentBatch(Base):
     member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     payment_date = Column(DateTime, nullable=False)
     weeks_paid = Column(Integer, nullable=False, default=1)
-    total_amount = Column(Float, nullable=False)
+    total_amount = Column(Numeric(12, 2), nullable=False)
     payment_method = Column(String, default="cash")       # cash | bank_transfer | cheque
     reference = Column(String, nullable=True)
     notes = Column(Text)
@@ -271,12 +271,12 @@ class Payment(Base):
     member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     week_id = Column(Integer, ForeignKey("weeks.id"), nullable=False)
     batch_id = Column(Integer, ForeignKey("payment_batches.id"), nullable=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     paid_date = Column(DateTime, nullable=True)
     payment_method = Column(String, nullable=True)
     reference = Column(String, nullable=True)
     status = Column(String, default="pending")            # pending | paid | late | missed
-    penalty_amount = Column(Float, default=0)             # late-payment penalty in ETB
+    penalty_amount = Column(Numeric(12, 2), default=0)             # late-payment penalty in ETB
     notes = Column(Text)
     collected_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
@@ -304,10 +304,10 @@ class PotTransaction(Base):
     original_winner_id = Column(Integer, ForeignKey("members.id"), nullable=True)
     seller_id = Column(Integer, ForeignKey("members.id"), nullable=True)
     buyer_id = Column(Integer, ForeignKey("members.id"), nullable=False)
-    percentage = Column(Float, nullable=True)
-    gross_amount = Column(Float, nullable=False)
-    seller_fee = Column(Float, nullable=True)              # profit → seller (or assoc fund if assoc_spot_sale)
-    buyer_receives = Column(Float, nullable=False)
+    percentage = Column(Numeric(12, 2), nullable=True)
+    gross_amount = Column(Numeric(12, 2), nullable=False)
+    seller_fee = Column(Numeric(12, 2), nullable=True)              # profit → seller (or assoc fund if assoc_spot_sale)
+    buyer_receives = Column(Numeric(12, 2), nullable=False)
     transaction_date = Column(DateTime, default=_utcnow)
     notes = Column(Text)
 
@@ -329,10 +329,10 @@ class PotDisbursement(Base):
     week_id = Column(Integer, ForeignKey("weeks.id"), nullable=False)
     winner_spot_id = Column(Integer, ForeignKey("spots.id"), nullable=True)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=True)   # set for half-spot split cheques
-    gross_amount = Column(Float, nullable=False)
-    voucher_deduction = Column(Float, default=0)
-    net_amount = Column(Float, nullable=False)
-    service_fee = Column(Float, default=0)                # worker week contribution
+    gross_amount = Column(Numeric(12, 2), nullable=False)
+    voucher_deduction = Column(Numeric(12, 2), default=0)
+    net_amount = Column(Numeric(12, 2), nullable=False)
+    service_fee = Column(Numeric(12, 2), default=0)                # worker week contribution
     cheque_number = Column(String, nullable=False)
     cheque_date = Column(DateTime, nullable=False)
     guarantor_1_id = Column(Integer, ForeignKey("members.id"), nullable=False)
@@ -364,7 +364,7 @@ class AssociationExpense(Base):
     id = Column(Integer, primary_key=True)
     cycle_id = Column(Integer, ForeignKey("cycles.id"), nullable=False)
     description = Column(String, nullable=False)   # paper, pen, meeting costs, etc.
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     expense_date = Column(DateTime, default=_utcnow)
     notes = Column(Text)
     created_at = Column(DateTime, default=_utcnow)
@@ -380,7 +380,7 @@ class DistributionCheque(Base):
     id = Column(Integer, primary_key=True)
     cycle_id = Column(Integer, ForeignKey("cycles.id"), nullable=False)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     cheque_number = Column(String, nullable=False)
     cheque_date = Column(DateTime, nullable=False)
     status = Column(String, default="issued")   # issued | collected
@@ -541,12 +541,12 @@ class SpotListing(Base):
     spot_id         = Column(Integer, ForeignKey("spots.id"), nullable=True)
     seller_id       = Column(Integer, ForeignKey("members.id"), nullable=True)
     listing_type    = Column(String, nullable=False, default="member_sale")
-    asking_price    = Column(Float, nullable=True)
-    percentage      = Column(Float, nullable=True)     # seller's cut % (member_sale)
+    asking_price    = Column(Numeric(12, 2), nullable=True)
+    percentage      = Column(Numeric(12, 2), nullable=True)     # seller's cut % (member_sale)
     status          = Column(String, default="open")
     notes           = Column(Text, nullable=True)
     buyer_id        = Column(Integer, ForeignKey("members.id"), nullable=True)
-    sold_price      = Column(Float, nullable=True)
+    sold_price      = Column(Numeric(12, 2), nullable=True)
     listed_at       = Column(DateTime, default=_utcnow)
     sold_at         = Column(DateTime, nullable=True)
 
@@ -566,7 +566,7 @@ class DebtCase(Base):
     member_id  = Column(Integer, ForeignKey("members.id"), nullable=False)
     cycle_id   = Column(Integer, ForeignKey("cycles.id"), nullable=True)
     status     = Column(String, default="open")   # open | promise_to_pay | escalated | resolved | written_off
-    total_owed = Column(Float, default=0)
+    total_owed = Column(Numeric(12, 2), default=0)
     promise_date = Column(DateTime, nullable=True)
     resolved_at  = Column(DateTime, nullable=True)
     notes      = Column(Text, nullable=True)
@@ -587,7 +587,7 @@ class DebtContact(Base):
     contact_date   = Column(DateTime, default=_utcnow)
     method         = Column(String, nullable=False)   # phone | in_person | sms | email | letter
     outcome        = Column(String, nullable=False)   # contacted | no_answer | promise | refused | partial_payment
-    promised_amount = Column(Float, nullable=True)
+    promised_amount = Column(Numeric(12, 2), nullable=True)
     promise_date   = Column(DateTime, nullable=True)
     notes          = Column(Text, nullable=True)
     logged_by_id   = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -901,6 +901,40 @@ def _migrate(engine):
         "CREATE INDEX IF NOT EXISTS ix_cycles_status ON cycles(status)",
         "CREATE INDEX IF NOT EXISTS ix_pot_transactions_week ON pot_transactions(week_id)",
         "CREATE INDEX IF NOT EXISTS ix_weeks_draw_date ON weeks(draw_date)",
+        # Float → NUMERIC(12,2): eliminates IEEE-754 rounding on all financial columns
+        "ALTER TABLE settings ALTER COLUMN full_spot_amount TYPE NUMERIC(12,2) USING full_spot_amount::NUMERIC(12,2)",
+        "ALTER TABLE settings ALTER COLUMN half_spot_amount TYPE NUMERIC(12,2) USING half_spot_amount::NUMERIC(12,2)",
+        "ALTER TABLE settings ALTER COLUMN association_deduction TYPE NUMERIC(12,2) USING association_deduction::NUMERIC(12,2)",
+        "ALTER TABLE settings ALTER COLUMN full_spot_voucher TYPE NUMERIC(12,2) USING full_spot_voucher::NUMERIC(12,2)",
+        "ALTER TABLE settings ALTER COLUMN half_spot_voucher TYPE NUMERIC(12,2) USING half_spot_voucher::NUMERIC(12,2)",
+        "ALTER TABLE settings ALTER COLUMN penalty_rate TYPE NUMERIC(12,2) USING penalty_rate::NUMERIC(12,2)",
+        "ALTER TABLE cycles ALTER COLUMN full_spot_amount TYPE NUMERIC(12,2) USING full_spot_amount::NUMERIC(12,2)",
+        "ALTER TABLE cycles ALTER COLUMN half_spot_amount TYPE NUMERIC(12,2) USING half_spot_amount::NUMERIC(12,2)",
+        "ALTER TABLE cycles ALTER COLUMN association_deduction TYPE NUMERIC(12,2) USING association_deduction::NUMERIC(12,2)",
+        "ALTER TABLE cycles ALTER COLUMN full_spot_voucher TYPE NUMERIC(12,2) USING full_spot_voucher::NUMERIC(12,2)",
+        "ALTER TABLE cycles ALTER COLUMN half_spot_voucher TYPE NUMERIC(12,2) USING half_spot_voucher::NUMERIC(12,2)",
+        "ALTER TABLE member_spots ALTER COLUMN weekly_contribution TYPE NUMERIC(12,2) USING weekly_contribution::NUMERIC(12,2)",
+        "ALTER TABLE weeks ALTER COLUMN gross_pot TYPE NUMERIC(12,2) USING gross_pot::NUMERIC(12,2)",
+        "ALTER TABLE weeks ALTER COLUMN association_amount TYPE NUMERIC(12,2) USING association_amount::NUMERIC(12,2)",
+        "ALTER TABLE weeks ALTER COLUMN net_pot TYPE NUMERIC(12,2) USING net_pot::NUMERIC(12,2)",
+        "ALTER TABLE payment_batches ALTER COLUMN total_amount TYPE NUMERIC(12,2) USING total_amount::NUMERIC(12,2)",
+        "ALTER TABLE payments ALTER COLUMN amount TYPE NUMERIC(12,2) USING amount::NUMERIC(12,2)",
+        "ALTER TABLE payments ALTER COLUMN penalty_amount TYPE NUMERIC(12,2) USING penalty_amount::NUMERIC(12,2)",
+        "ALTER TABLE pot_transactions ALTER COLUMN percentage TYPE NUMERIC(12,2) USING percentage::NUMERIC(12,2)",
+        "ALTER TABLE pot_transactions ALTER COLUMN gross_amount TYPE NUMERIC(12,2) USING gross_amount::NUMERIC(12,2)",
+        "ALTER TABLE pot_transactions ALTER COLUMN seller_fee TYPE NUMERIC(12,2) USING seller_fee::NUMERIC(12,2)",
+        "ALTER TABLE pot_transactions ALTER COLUMN buyer_receives TYPE NUMERIC(12,2) USING buyer_receives::NUMERIC(12,2)",
+        "ALTER TABLE pot_disbursements ALTER COLUMN gross_amount TYPE NUMERIC(12,2) USING gross_amount::NUMERIC(12,2)",
+        "ALTER TABLE pot_disbursements ALTER COLUMN voucher_deduction TYPE NUMERIC(12,2) USING voucher_deduction::NUMERIC(12,2)",
+        "ALTER TABLE pot_disbursements ALTER COLUMN net_amount TYPE NUMERIC(12,2) USING net_amount::NUMERIC(12,2)",
+        "ALTER TABLE pot_disbursements ALTER COLUMN service_fee TYPE NUMERIC(12,2) USING service_fee::NUMERIC(12,2)",
+        "ALTER TABLE association_expenses ALTER COLUMN amount TYPE NUMERIC(12,2) USING amount::NUMERIC(12,2)",
+        "ALTER TABLE distribution_cheques ALTER COLUMN amount TYPE NUMERIC(12,2) USING amount::NUMERIC(12,2)",
+        "ALTER TABLE spot_listings ALTER COLUMN asking_price TYPE NUMERIC(12,2) USING asking_price::NUMERIC(12,2)",
+        "ALTER TABLE spot_listings ALTER COLUMN percentage TYPE NUMERIC(12,2) USING percentage::NUMERIC(12,2)",
+        "ALTER TABLE spot_listings ALTER COLUMN sold_price TYPE NUMERIC(12,2) USING sold_price::NUMERIC(12,2)",
+        "ALTER TABLE debt_cases ALTER COLUMN total_owed TYPE NUMERIC(12,2) USING total_owed::NUMERIC(12,2)",
+        "ALTER TABLE debt_contacts ALTER COLUMN promised_amount TYPE NUMERIC(12,2) USING promised_amount::NUMERIC(12,2)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

@@ -486,10 +486,10 @@ def association_fund_detail(cycle_id: Optional[int] = None, db: Session = Depend
     events.sort(key=_sort_key)
 
     # Add running balance
-    balance = 0.0
+    balance = 0
     for ev in events:
         balance += ev["amount"]
-        ev["running_balance"] = round(balance, 2)
+        ev["running_balance"] = round(float(balance), 2)
 
     total_collected = sum(ev["amount"] for ev in events if ev["type"] == "collection")
     expenses_total  = sum(abs(ev["amount"]) for ev in events if ev["type"] == "expense")
@@ -912,10 +912,10 @@ def general_ledger(request: Request, cycle_id: Optional[int] = None, db: Session
 
     # Sort chronologically and add running balance
     entries.sort(key=lambda x: x["date"])
-    balance = 0.0
+    balance = 0
     for e in entries:
         balance = balance + e["credit"] - e["debit"]
-        e["balance"] = balance
+        e["balance"] = float(balance)
 
     return entries
 
@@ -946,7 +946,7 @@ def cycle_distribution(cycle_id: Optional[int] = None, db: Session = Depends(get
     association_balance = association_fund - association_expenses
 
     # ── Association Spot Sale + Group Week Sale Profits ───────────────────────
-    assoc_spot_profit = 0.0
+    assoc_spot_profit = 0
     if week_ids:
         assoc_txs = db.query(PotTransaction).filter(
             PotTransaction.week_id.in_(week_ids),
@@ -991,7 +991,7 @@ def cycle_distribution(cycle_id: Optional[int] = None, db: Session = Depends(get
         })
 
     total_weight = sum(weight_by_member.values())
-    per_unit = (total_distributable / total_weight) if total_weight else 0.0
+    per_unit = (float(total_distributable) / total_weight) if total_weight else 0.0
 
     # Fetch member details
     member_ids = list(weight_by_member.keys())

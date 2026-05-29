@@ -278,10 +278,10 @@ def complete_sale(listing_id: int, data: CompleteSale, request: Request,
         for sa in buyer_sas
     )
 
-    gross = w.gross_pot or 0
-    pct = data.percentage if data.percentage is not None else (l.percentage or 0)
+    gross = float(w.gross_pot or 0)
+    pct = data.percentage if data.percentage is not None else float(l.percentage or 0)
     seller_fee = gross * (pct / 100) if pct else 0.0
-    buyer_receives = (w.net_pot or 0) - service_fee_buyer - voucher_buyer - seller_fee
+    buyer_receives = float(w.net_pot or 0) - float(service_fee_buyer) - float(voucher_buyer) - seller_fee
 
     tx_type = l.listing_type or "member_sale"
 

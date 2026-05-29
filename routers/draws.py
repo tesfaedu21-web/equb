@@ -44,7 +44,7 @@ def _actual_assoc_collected(db: Session, completed_week_ids: list, cycle_id: int
     ).all():
         ms_by_member.setdefault(ms.member_id, []).append(ms)
 
-    total = 0.0
+    total = 0
     for p in paid_payments:
         for ms in ms_by_member.get(p.member_id, []):
             total += assoc_ded if ms.share == "full" else assoc_ded / 2
@@ -826,9 +826,9 @@ def record_sale(week_id: int, data: PotSale, request: Request, db: Session = Dep
         for sa in buyer_sas
     )
 
-    gross = w.gross_pot or 0
+    gross = float(w.gross_pot or 0)
     seller_fee = 0.0
-    buyer_receives = (w.net_pot or 0) - service_fee_buyer - voucher_buyer
+    buyer_receives = float(w.net_pot or 0) - float(service_fee_buyer) - float(voucher_buyer)
 
     if data.transaction_type == "member_sale" and data.percentage:
         seller_fee = gross * (data.percentage / 100)
@@ -1199,7 +1199,7 @@ def _assoc_fund_data(db: Session, cycle_id: Optional[int]) -> dict:
     completed_weeks = [w for w in all_weeks if w.status in ("drawn", "sold")]
 
     # Deductions are collected when members pay — count from all paid weeks, not just drawn ones
-    weekly_deductions = _actual_assoc_collected(db, all_week_ids, cycle_id) if cycle_id else 0.0
+    weekly_deductions = _actual_assoc_collected(db, all_week_ids, cycle_id) if cycle_id else 0
 
     tx_q = (db.query(PotTransaction)
             .filter(PotTransaction.transaction_type.in_(["assoc_spot_sale", "group_week_sale"])))
@@ -1221,7 +1221,7 @@ def _assoc_fund_data(db: Session, cycle_id: Optional[int]) -> dict:
     full_count = sum(1 for a in assignments if a.share == "full")
     half_count = sum(1 for a in assignments if a.share == "half")
     total_shares = full_count * 1.0 + half_count * 0.5
-    per_share = round(net_fund / total_shares, 2) if total_shares > 0 else 0
+    per_share = round(float(net_fund) / total_shares, 2) if total_shares > 0 else 0
 
     return {
         "cycle": cycle,

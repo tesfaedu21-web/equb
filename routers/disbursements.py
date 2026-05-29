@@ -352,21 +352,21 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
     cycle_week_ids = [r[0] for r in db.query(Week.id).filter(Week.cycle_id == w.cycle_id).all()]
     total_collected = db.query(sqla_func.sum(Payment.amount)).filter(
         Payment.week_id.in_(cycle_week_ids), Payment.status == "paid"
-    ).scalar() or 0.0
+    ).scalar() or 0
     already_disbursed = db.query(sqla_func.sum(PotDisbursement.gross_amount)).filter(
         PotDisbursement.week_id.in_(cycle_week_ids),
         PotDisbursement.status != "voided",
-    ).scalar() or 0.0
+    ).scalar() or 0
     available = total_collected - already_disbursed
-    if round(data.gross_amount, 2) > round(available + 0.005, 2):
+    if round(data.gross_amount, 2) > round(float(available) + 0.005, 2):
         raise HTTPException(
             status_code=400,
-            detail=f"Insufficient funds: {available:,.0f} ETB available, "
+            detail=f"Insufficient funds: {float(available):,.0f} ETB available, "
                    f"{data.gross_amount:,.0f} ETB requested. "
                    f"Ensure more members have paid before disbursing."
         )
     # Gross amount must not exceed the week's net pot
-    if w.net_pot is not None and round(data.gross_amount, 2) > round(w.net_pot + 0.005, 2):
+    if w.net_pot is not None and round(data.gross_amount, 2) > round(float(w.net_pot) + 0.005, 2):
         raise HTTPException(
             status_code=400,
             detail=f"Gross amount {data.gross_amount:,.0f} ETB exceeds this week's net pot "
@@ -374,16 +374,16 @@ def create_disbursement(data: DisbursementCreate, request: Request, db: Session 
         )
 
     # For sold weeks: deduct seller/association fee split equally per recipient
-    seller_fee_deduction = 0.0
+    seller_fee_deduction = 0
     if w.status == "sold" and w.transactions:
-        total_seller_fee = w.transactions[0].seller_fee or 0.0
+        total_seller_fee = w.transactions[0].seller_fee or 0
         if w.winner_spot_id:
             n_recipients = len([sa for sa in w.winner_spot.spot_assignments
                                 if sa.is_active and sa.cycle_id == w.cycle_id]) or 1
         else:
             n_recipients = 1
         seller_fee_deduction = total_seller_fee / n_recipients
-    net_amount = data.gross_amount - service_fee - (data.voucher_deduction or 0) - seller_fee_deduction
+    net_amount = data.gross_amount - float(service_fee) - (data.voucher_deduction or 0) - float(seller_fee_deduction)
     # For sold-without-draw weeks winner_spot_id may be null — that is valid
     d = PotDisbursement(
         week_id=data.week_id,
