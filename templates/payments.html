@@ -44,6 +44,17 @@
     </button>
   </div>
 
+  <!-- Sticky overdue banner -->
+  <div x-show="sidebarStats.debtors > 0" x-cloak
+       class="alert-banner alert-banner-amber rounded-2xl">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+    </svg>
+    <span><strong x-text="sidebarStats.debtors"></strong> members have overdue payments</span>
+    <button @click="activeTab='debtors'; loadDebtors()"
+            class="ml-auto text-xs underline font-semibold">View Debtors →</button>
+  </div>
+
   <!-- Tab switcher — horizontally scrollable on small screens -->
   <div class="overflow-x-auto" style="margin:0 -4px;padding:0 4px 2px;">
   <div class="flex gap-1 bg-gray-100 rounded-xl p-1" style="width:max-content;min-width:100%;">

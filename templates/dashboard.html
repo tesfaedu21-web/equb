@@ -73,12 +73,26 @@
     <div class="skeleton rounded-xl" style="height:160px;"></div>
   </div>
 
+  <!-- Sticky debt alert banner -->
+  <div x-show="stats.cycle && !loading && stats.debtors_count > 0" x-cloak
+       class="alert-banner alert-banner-amber rounded-2xl -mb-2">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+    </svg>
+    <span>
+      <strong x-text="stats.debtors_count"></strong> members with overdue payments —
+      <strong x-text="fmt(stats.debtors_total_owed)"></strong> outstanding
+    </span>
+    <a href="/payments" @click="localStorage.setItem('paymentsTab','debtors')"
+       class="ml-auto text-xs underline font-semibold whitespace-nowrap">View Debtors →</a>
+  </div>
+
   <!-- Stats Grid -->
   <div x-show="stats.cycle && !loading" x-cloak class="grid grid-cols-2 lg:grid-cols-4 gap-4">
     <!-- Total Members -->
-    <div class="card">
+    <div class="card card-stripe card-stripe-gold">
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total Members</span>
+        <span class="kpi-label">Total Members</span>
         <div class="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
           <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -86,17 +100,17 @@
           </svg>
         </div>
       </div>
-      <div class="text-3xl font-bold text-gray-900" x-text="stats.total_members || 0"></div>
+      <div class="kpi-value" x-text="stats.total_members || 0"></div>
       <div class="text-xs text-gray-400 mt-1">
-        <span class="text-green-600 font-semibold" x-text="stats.active_members || 0"></span> Active ·
-        <span class="text-blue-600 font-semibold" x-text="stats.received_members || 0"></span> Received
+        <span class="text-green-500 font-semibold" x-text="stats.active_members || 0"></span> Active ·
+        <span class="text-blue-500 font-semibold" x-text="stats.received_members || 0"></span> Received
       </div>
     </div>
 
     <!-- Spots Progress -->
-    <div class="card">
+    <div class="card card-stripe card-stripe-green">
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Spots Drawn</span>
+        <span class="kpi-label">Spots Drawn</span>
         <div class="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center">
           <svg class="w-5 h-5 text-equb-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -104,20 +118,20 @@
           </svg>
         </div>
       </div>
-      <div class="text-3xl font-bold text-gray-900">
+      <div class="kpi-value kpi-value-white flex items-baseline gap-1">
         <span x-text="stats.received_spots || 0"></span>
-        <span class="text-lg text-gray-400">/ <span x-text="stats.total_spots || 0"></span></span>
+        <span class="text-base" style="color:var(--c-muted)">/ <span x-text="stats.total_spots || 0"></span></span>
       </div>
-      <div class="mt-2 bg-gray-100 rounded-full h-2">
-        <div class="bg-equb-green h-2 rounded-full transition-all duration-500"
+      <div class="mt-2 bg-gray-100 rounded-full h-2.5">
+        <div class="bg-equb-green h-2.5 rounded-full transition-all duration-500"
              :style="`width:${stats.total_spots ? (stats.received_spots/stats.total_spots*100) : 0}%`"></div>
       </div>
     </div>
 
     <!-- Next Draw -->
-    <div class="card">
+    <div class="card card-stripe card-stripe-blue">
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Next Draw</span>
+        <span class="kpi-label">Next Draw</span>
         <div class="w-9 h-9 bg-purple-50 rounded-xl flex items-center justify-center">
           <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -125,7 +139,7 @@
           </svg>
         </div>
       </div>
-      <div class="text-lg font-bold text-gray-900" x-text="stats.next_week ? fmtDate(stats.next_week.draw_date) : '—'"></div>
+      <div class="font-bold text-gray-900" style="font-size:1rem;line-height:1.3" x-text="stats.next_week ? fmtDate(stats.next_week.draw_date) : '—'"></div>
       <div class="text-xs text-gray-400 mt-1" x-show="stats.next_week">
         Week <span x-text="stats.next_week?.week_number"></span>
         <span x-show="stats.next_week?.is_group_week" class="badge badge-group ml-1">Group Week</span>
@@ -133,9 +147,9 @@
     </div>
 
     <!-- Association Fund -->
-    <div class="card">
+    <div class="card card-stripe card-stripe-gold">
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Association Fund</span>
+        <span class="kpi-label">Association Fund</span>
         <div class="w-9 h-9 bg-yellow-50 rounded-xl flex items-center justify-center">
           <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -143,8 +157,8 @@
           </svg>
         </div>
       </div>
-      <div class="text-xl font-bold text-gray-900" x-text="fmt(stats.association_fund)"></div>
-      <div class="text-xs text-gray-400 mt-1">Collected: <span x-text="fmt(stats.total_collected)"></span></div>
+      <div class="kpi-value-sm" x-text="fmt(stats.association_fund)"></div>
+      <div class="kpi-label mt-1">Collected: <span class="etb-gold" x-text="fmt(stats.total_collected)"></span></div>
     </div>
   </div>
 
@@ -202,7 +216,7 @@
     </div>
 
     <!-- Debtors alert -->
-    <div class="card" :class="stats.debtors_count > 0 ? 'border-red-200' : 'border-green-200'">
+    <div class="card card-stripe" :class="stats.debtors_count > 0 ? 'card-stripe-red' : 'card-stripe-green'">
       <h3 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
         <svg class="w-4 h-4" :class="stats.debtors_count > 0 ? 'text-red-500' : 'text-green-500'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
@@ -213,10 +227,10 @@
         <div>
           <div class="flex items-center justify-between mb-3">
             <div>
-              <span class="text-3xl font-black text-red-500" x-text="stats.debtors_count"></span>
+              <span class="kpi-value kpi-value-red" x-text="stats.debtors_count"></span>
               <span class="text-sm text-gray-500 ml-1">members owe</span>
             </div>
-            <span class="text-sm font-bold text-red-400" x-text="fmt(stats.debtors_total_owed || 0)"></span>
+            <span class="etb-gold font-bold" x-text="fmt(stats.debtors_total_owed || 0)"></span>
           </div>
           <div class="space-y-1.5 mb-3">
             <template x-for="d in (stats.top_debtors || [])" :key="d.name">

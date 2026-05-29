@@ -6,7 +6,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -626,6 +626,24 @@ async def openapi_spec(request: Request):
     if getattr(request.state, "user_role", "") != "superadmin":
         raise HTTPException(status_code=403, detail="Not authorized")
     return app.openapi()
+
+@app.get("/api/sidebar-stats")
+async def sidebar_stats(request: Request, db: Session = Depends(get_db)):
+    """Lightweight badge counts for the sidebar — debtors and open debt cases."""
+    from database import _eat_now as _en, DebtCase
+    now = _en()
+    # Members with at least one unpaid past-due payment
+    debtors = (db.query(Payment.member_id)
+               .join(Week, Week.id == Payment.week_id)
+               .filter(Payment.status.in_(["pending", "late", "missed"]),
+                       Week.draw_date <= now)
+               .distinct().count())
+    # Open debt/collection cases
+    open_cases = db.query(DebtCase).filter(
+        DebtCase.status.in_(["open", "promise_to_pay", "escalated"])
+    ).count()
+    return {"debtors": debtors, "open_cases": open_cases}
+
 
 @app.get("/collections",   response_class=HTMLResponse)
 async def collections_page(request: Request):

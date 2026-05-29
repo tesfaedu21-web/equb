@@ -20,56 +20,66 @@
   <meta name="apple-mobile-web-app-title" content="Equb"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Ethiopic:wght@400;600;700&family=DM+Serif+Display&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="/static/css/tailwind.css"/>
   <style>
     [x-cloak] { display: none !important; }
 
     /* ── Theme tokens ─────────────────────────────────────────────────────── */
     :root {
-      --bg-page:     #eef2f6;
-      --bg-card:     rgba(255,255,255,0.94);
-      --bg-input:    rgba(255,255,255,0.8);
-      --bg-input-f:  #fff;
-      --bg-secondary:rgba(255,255,255,0.9);
-      --bg-modal:    #fff;
-      --bg-topbar:   rgba(255,255,255,0.92);
-      --bg-row-h:    rgba(7,137,48,0.035);
-      --bg-skel-a:   #eef0f4;
-      --bg-skel-b:   #e4e7ec;
-      --c-text1:     #111827;
-      --c-text2:     #374151;
-      --c-muted:     #9ca3af;
-      --c-border:    #e2e8f0;
-      --c-border-c:  rgba(0,0,0,0.045);
-      --c-scroll:    #ced4da;
-      --c-scroll-h:  #adb5bd;
-      --topbar-b:    rgba(0,0,0,0.07);
+      --bg-page:      #eef2f6;
+      --bg-card:      rgba(255,255,255,0.94);
+      --bg-input:     rgba(255,255,255,0.8);
+      --bg-input-f:   #fff;
+      --bg-secondary: rgba(255,255,255,0.9);
+      --bg-modal:     #fff;
+      --bg-topbar:    rgba(255,255,255,0.92);
+      --bg-row-h:     rgba(7,137,48,0.035);
+      --bg-skel-a:    #eef0f4;
+      --bg-skel-b:    #e4e7ec;
+      --c-text1:      #111827;
+      --c-text2:      #374151;
+      --c-muted:      #9ca3af;
+      --c-border:     #e2e8f0;
+      --c-border-c:   rgba(0,0,0,0.045);
+      --c-scroll:     #ced4da;
+      --c-scroll-h:   #adb5bd;
+      --topbar-b:     rgba(0,0,0,0.07);
+      /* financial design tokens */
+      --font-display: 'DM Serif Display', Georgia, serif;
+      --font-ui:      'Outfit', 'Inter', system-ui, sans-serif;
+      --gold:         #B8860B;
+      --gold-light:   #D4A017;
+      --gold-dim:     rgba(184,134,11,0.12);
     }
     html.dark {
-      --bg-page:     #0d1117;
-      --bg-card:     rgba(22,27,42,0.98);
-      --bg-input:    rgba(18,23,36,0.9);
-      --bg-input-f:  #161c2e;
-      --bg-secondary:rgba(22,27,42,0.9);
-      --bg-modal:    #161c2e;
-      --bg-topbar:   rgba(10,12,20,0.97);
-      --bg-row-h:    rgba(7,137,48,0.08);
-      --bg-skel-a:   #1a2035;
-      --bg-skel-b:   #202840;
-      --c-text1:     #f0f4f9;
-      --c-text2:     #c9d1e0;
-      --c-muted:     #64748b;
-      --c-border:    rgba(255,255,255,0.09);
-      --c-border-c:  rgba(255,255,255,0.04);
-      --c-scroll:    #374151;
-      --c-scroll-h:  #4b5563;
-      --topbar-b:    rgba(255,255,255,0.05);
-      color-scheme:  dark;
+      --bg-page:      #0C1A14;
+      --bg-card:      rgba(15,26,18,0.98);
+      --bg-input:     rgba(12,22,15,0.9);
+      --bg-input-f:   #0f1a12;
+      --bg-secondary: rgba(15,26,18,0.9);
+      --bg-modal:     #0f1a12;
+      --bg-topbar:    rgba(8,15,10,0.97);
+      --bg-row-h:     rgba(45,106,79,0.12);
+      --bg-skel-a:    #132010;
+      --bg-skel-b:    #1a2e1c;
+      --c-text1:      #F0F7F2;
+      --c-text2:      #8BAF95;
+      --c-muted:      #4A7060;
+      --c-border:     rgba(42,64,48,0.7);
+      --c-border-c:   rgba(42,64,48,0.3);
+      --c-scroll:     #2A4030;
+      --c-scroll-h:   #3D6050;
+      --topbar-b:     rgba(42,64,48,0.4);
+      /* financial tokens dark */
+      --gold:         #C9A020;
+      --gold-light:   #F5D76E;
+      --gold-dim:     rgba(201,160,32,0.15);
+      color-scheme:   dark;
     }
 
     body {
-      font-family: 'Inter', system-ui, sans-serif;
+      font-family: var(--font-ui);
       background: var(--bg-page);
       background-image:
         radial-gradient(ellipse at 80% 0%, rgba(7,137,48,0.06) 0%, transparent 55%),
@@ -80,7 +90,7 @@
     @media (max-width: 767px) {
       body { background-attachment: scroll; }
     }
-    .amharic, input.amharic, .name-field { font-family: 'Noto Sans Ethiopic', sans-serif; }
+    .amharic, input.amharic, .name-field { font-family: 'Noto Serif Ethiopic', serif; }
 
     /* ── Sidebar ──────────────────────────────────────────────────────────── */
     .sidebar {
@@ -518,13 +528,86 @@
     html.dark .optimistic-paid   { background: rgba(5,46,22,0.3)   !important; }
     html.dark .optimistic-missed { background: rgba(127,29,29,0.25) !important; }
 
+    /* ── KPI display typography ──────────────────────────────────────────── */
+    .kpi-value {
+      font-family: var(--font-display);
+      font-size: 2.25rem; line-height: 1.1; font-weight: 400;
+      color: var(--gold); letter-spacing: -0.02em;
+    }
+    .kpi-value-sm {
+      font-family: var(--font-display);
+      font-size: 1.75rem; line-height: 1.1; font-weight: 400;
+      color: var(--gold); letter-spacing: -0.01em;
+    }
+    .kpi-value-red   { color: #ef4444; }
+    .kpi-value-green { color: #4CAF82; }
+    .kpi-value-white { color: var(--c-text1); }
+    .kpi-label {
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--c-muted);
+    }
+
+    /* ── Card left-border stripes ────────────────────────────────────────── */
+    .card-stripe        { border-left: 4px solid transparent !important; border-radius: 0 22px 22px 0 !important; }
+    .card-stripe-gold   { border-left-color: var(--gold) !important; }
+    .card-stripe-green  { border-left-color: #2D6A4F !important; }
+    .card-stripe-red    { border-left-color: #DC2626 !important; }
+    .card-stripe-blue   { border-left-color: #2563EB !important; }
+    .card-stripe-amber  { border-left-color: #D97706 !important; }
+
+    /* ── Sidebar alert badges ────────────────────────────────────────────── */
+    .nav-badge {
+      margin-left: auto; flex-shrink: 0;
+      font-size: 0.65rem; font-weight: 800;
+      padding: 1px 6px; border-radius: 99px; line-height: 1.6;
+    }
+    .nav-badge-amber { background:rgba(217,119,6,0.22); color:#fbbf24; border:1px solid rgba(217,119,6,0.35); }
+    .nav-badge-red   { background:rgba(220,38,38,0.22);  color:#fca5a5; border:1px solid rgba(220,38,38,0.35); }
+
+    /* ── Alert banner (sticky) ───────────────────────────────────────────── */
+    .alert-banner {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 20px; font-size: 0.8rem; font-weight: 600;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+    }
+    .alert-banner-amber { background: rgba(217,119,6,0.10); color: #d97706; }
+    .alert-banner-red   { background: rgba(220,38,38,0.10); color: #dc2626; }
+    html.dark .alert-banner-amber { background:rgba(217,119,6,0.14); color:#fbbf24; }
+    html.dark .alert-banner-red   { background:rgba(220,38,38,0.14); color:#fca5a5; }
+
+    /* ── Table zebra striping ────────────────────────────────────────────── */
+    tbody tr:nth-child(even) { background: rgba(0,0,0,0.016); }
+    html.dark tbody tr:nth-child(even) { background: rgba(45,106,79,0.045); }
+
+    /* ── Member avatar initials ──────────────────────────────────────────── */
+    .member-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.68rem; font-weight: 700; color: #fff; flex-shrink: 0;
+      background: linear-gradient(135deg, #2D6A4F, #4CAF82);
+    }
+
+    /* ── ETB gold amount ─────────────────────────────────────────────────── */
+    .etb-gold { color: var(--gold); font-weight: 600; }
+
     /* ── Print ───────────────────────────────────────────────────────────── */
     @media print {
       .print-only { display: block !important; }
       .no-print   { display: none !important; }
       main::before, main::after { display: none; }
+      body, html { background: #fff !important; color: #111 !important; }
+      aside, .sidebar, .mobile-topbar, .page-top-accent { display: none !important; }
+      .card { background: #fff !important; box-shadow: none !important; border: 1px solid #ddd !important; border-radius: 4px !important; }
+      table { border-collapse: collapse !important; width: 100% !important; font-size: 11px !important; }
+      th, td { border: 1px solid #ccc !important; padding: 5px 8px !important; }
+      th { background: #f0f7f2 !important; color: #111 !important; }
+      .print-header { display: flex !important; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 3px solid #078930; margin-bottom: 16px; }
+      .print-footer { display: flex !important; justify-content: space-between; margin-top: 28px; padding-top: 10px; border-top: 1px solid #ccc; font-size: 10px; color: #555; }
+      @page { margin: 18mm 16mm; }
     }
-    .print-only { display: none; }
+    .print-only   { display: none; }
+    .print-header { display: none; }
+    .print-footer { display: none; }
   </style>
   {% block head %}{% endblock %}
   <script src="https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js"
@@ -684,6 +767,8 @@
             d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
         </svg>
         <span class="nav-label">Payments</span>
+        <span x-show="sidebarStats.debtors > 0" x-text="sidebarStats.debtors"
+              class="nav-badge nav-badge-amber"></span>
       </a>
       <a href="/collections" @click="sidebarOpen = false" class="nav-link {% block nav_collections %}{% endblock %}" title="Collections">
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -691,6 +776,8 @@
             d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
         </svg>
         <span class="nav-label">Collections</span>
+        <span x-show="sidebarStats.openCases > 0" x-text="sidebarStats.openCases"
+              class="nav-badge nav-badge-red"></span>
       </a>
       <a href="/reports" @click="sidebarOpen = false" x-show="canDo('view_reports')" class="nav-link {% block nav_reports %}{% endblock %}" title="Reports">
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -968,6 +1055,7 @@ function app() {
     groupTagline:ctx.groupTagline|| 'Equb Manager',
     logoUrl:     ctx.logoUrl     || '',
 
+    sidebarStats: { debtors: 0, openCases: 0 },
     showAccountModal: false,
     accountPw: { current: '', newPw: '', confirm: '', saving: false, error: '', success: '' },
     acctTfa: { enabled: false, step: 'idle', secret: null, uri: null, code: '', error: '', busy: false },
@@ -1063,6 +1151,10 @@ function app() {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (this.themeMode === 'system') this.applyTheme();
       });
+      // Sidebar alert badges
+      this.api('GET', '/api/sidebar-stats')
+        .then(s => { if (s) this.sidebarStats = s; })
+        .catch(() => {});
       // Warn at 50 min, expire at 60 min (server session = 3600s)
       setTimeout(() => { this.sessionWarning = true; }, 50 * 60 * 1000);
       setTimeout(() => { window.location.href = '/login'; }, 60 * 60 * 1000);
