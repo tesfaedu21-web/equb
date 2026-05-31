@@ -7,7 +7,8 @@ from typing import Optional
 from database import (get_db, User, Settings, _pwd, Cycle, Spot, Member, MemberSpot,
                        Week, PaymentBatch, Payment, PotTransaction,
                        PotDisbursement, AssociationExpense, DistributionCheque,
-                       VoucherReturn, NotificationLog, NotificationSettings, NotificationTemplate)
+                       VoucherReturn, NotificationLog, NotificationSettings, NotificationTemplate,
+                       SpotListing, DebtContact, DebtCase, AuditLog, SmsQueue, ScheduledNotification)
 from routers.deps import _require_admin, _require_superadmin, _require_feature, _get_permissions, DEFAULT_PERMISSIONS
 
 router = APIRouter()
@@ -334,7 +335,10 @@ def reset_system(request: Request, db: Session = Depends(get_db)):
         import logging as _logging
         _logging.getLogger("equb.auth").warning("pre-reset backup failed: %s", _e)
 
-    # Delete in FK-safe order
+    # Delete in FK-safe order (children before parents)
+    db.query(DebtContact).delete(synchronize_session=False)
+    db.query(DebtCase).delete(synchronize_session=False)
+    db.query(SpotListing).delete(synchronize_session=False)
     db.query(VoucherReturn).delete(synchronize_session=False)
     db.query(PotDisbursement).delete(synchronize_session=False)
     db.query(PotTransaction).delete(synchronize_session=False)
@@ -342,7 +346,10 @@ def reset_system(request: Request, db: Session = Depends(get_db)):
     db.query(PaymentBatch).delete(synchronize_session=False)
     db.query(DistributionCheque).delete(synchronize_session=False)
     db.query(AssociationExpense).delete(synchronize_session=False)
+    db.query(ScheduledNotification).delete(synchronize_session=False)
+    db.query(SmsQueue).delete(synchronize_session=False)
     db.query(NotificationLog).delete(synchronize_session=False)
+    db.query(AuditLog).delete(synchronize_session=False)
     db.query(MemberSpot).delete(synchronize_session=False)
     db.query(Week).delete(synchronize_session=False)
     db.query(Member).delete(synchronize_session=False)
