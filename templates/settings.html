@@ -219,7 +219,7 @@
                 <button x-show="!u.is_active"
                         @click="toggleUser(u)"
                         class="text-xs text-gray-400 hover:text-green-600 font-medium px-2 py-1 rounded-lg hover:bg-green-50 ml-1">Activate</button>
-                <button x-show="u.role !== 'superadmin' && isSuperAdmin"
+                <button x-show="isSuperAdmin && u.username !== (window._equbCtx||{}).userName"
                         @click="deleteUser(u)"
                         class="text-xs text-red-400 hover:text-white hover:bg-red-500 font-medium px-2 py-1 rounded-lg ml-1 transition-colors">Delete</button>
               </td>

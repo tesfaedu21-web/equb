@@ -108,10 +108,12 @@ def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
-    if u.role == "superadmin":
-        raise HTTPException(status_code=400, detail="Cannot delete the Owner account")
     if u.id == caller_id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    if u.role == "superadmin":
+        remaining = db.query(User).filter(User.role == "superadmin", User.id != u.id).count()
+        if remaining == 0:
+            raise HTTPException(status_code=400, detail="Cannot delete the only Owner account")
     db.delete(u)
     db.commit()
     return {"ok": True, "deleted": u.username}
