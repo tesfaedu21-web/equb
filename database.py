@@ -948,6 +948,8 @@ def _migrate(engine):
         "ALTER TABLE spot_listings ALTER COLUMN sold_price TYPE NUMERIC(12,2) USING sold_price::NUMERIC(12,2)",
         "ALTER TABLE debt_cases ALTER COLUMN total_owed TYPE NUMERIC(12,2) USING total_owed::NUMERIC(12,2)",
         "ALTER TABLE debt_contacts ALTER COLUMN promised_amount TYPE NUMERIC(12,2) USING promised_amount::NUMERIC(12,2)",
+        # One-time cleanup: remove duplicate owner account (only if another superadmin exists)
+        "DELETE FROM users WHERE username = 'audi_bot' AND (SELECT COUNT(*) FROM users WHERE role = 'superadmin') > 1",
     ]
     with engine.connect() as conn:
         for sql in migrations:
