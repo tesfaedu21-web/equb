@@ -197,9 +197,10 @@
                     'optimistic-paid':   p.status==='paid'   && p._saving,
                     'optimistic-missed': p.status==='missed' && p._saving,
                     'optimistic-saving': p._saving,
-                    'bg-green-50/40':    p.status==='paid'   && !p._saving,
-                    'bg-red-50/20':      p.status==='missed' && !p._saving,
-                    'bg-orange-50/20':   p.status==='late'   && !p._saving,
+                    'bg-green-50/40':    p.status==='paid'    && !p._saving,
+                    'bg-red-50/20':      p.status==='missed'  && !p._saving,
+                    'bg-orange-50/20':   p.status==='late'    && !p._saving,
+                    'bg-amber-50/30':    p.status==='partial' && !p._saving,
                     'hover:bg-gray-50/70': !p._saving,
                   }">
                 <td class="px-4 py-3">
@@ -217,7 +218,15 @@
                   <span x-show="!p.spot_numbers || !p.spot_numbers.length" class="text-gray-300 text-xs">—</span>
                 </td>
                 <td class="px-4 py-3 font-medium text-gray-900 amharic" x-text="p.member_name"></td>
-                <td class="px-4 py-3 font-semibold text-gray-700" x-text="fmt(p.amount)"></td>
+                <td class="px-4 py-3">
+                  <div class="font-semibold text-gray-700" x-text="fmt(p.amount)"></div>
+                  <template x-if="p.status === 'partial' && p.paid_amount">
+                    <div class="text-xs mt-0.5">
+                      <span class="text-orange-600 font-medium" x-text="'Paid: ' + fmt(p.paid_amount)"></span>
+                      <span class="text-red-500 ml-1" x-text="'· Due: ' + fmt(p.remaining_amount)"></span>
+                    </div>
+                  </template>
+                </td>
                 <td class="px-4 py-3">
                   <span :class="`badge badge-${p.status}`" x-text="p.status ? p.status.charAt(0).toUpperCase() + p.status.slice(1) : ''"></span>
                 </td>
@@ -922,12 +931,32 @@
 
       <!-- Summary bar -->
       <div x-show="batch.week_ids.length > 0"
-           class="flex items-center justify-between bg-equb-pale rounded-xl px-4 py-3">
-        <div class="text-sm text-gray-600">
-          <span class="font-semibold text-gray-800" x-text="batch.week_ids.length"></span>
-          week<span x-show="batch.week_ids.length > 1">s</span> selected
+           class="rounded-xl px-4 py-3"
+           :class="batch.actual_paid && parseFloat(batch.actual_paid) < selectedAmount
+             ? 'bg-amber-50 border border-amber-200'
+             : 'bg-equb-pale'">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-sm text-gray-600">
+            <span class="font-semibold text-gray-800" x-text="batch.week_ids.length"></span>
+            week<span x-show="batch.week_ids.length > 1">s</span> selected ·
+            <span class="text-gray-500" x-text="fmt(selectedAmount)"></span> total
+          </div>
+          <template x-if="batch.actual_paid && parseFloat(batch.actual_paid) < selectedAmount">
+            <span class="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Partial</span>
+          </template>
         </div>
-        <div class="text-lg font-bold text-equb-green" x-text="fmt(selectedAmount)"></div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Amount Received (ETB)</label>
+          <input x-model="batch.actual_paid" type="number" min="1" :max="selectedAmount"
+                 :placeholder="selectedAmount"
+                 class="text-lg font-bold"
+                 style="color:var(--gold)"/>
+          <template x-if="batch.actual_paid && parseFloat(batch.actual_paid) < selectedAmount">
+            <p class="text-xs text-amber-600 mt-1">
+              ⚠ Partial — <span x-text="fmt(selectedAmount - parseFloat(batch.actual_paid || 0))"></span> will remain outstanding
+            </p>
+          </template>
+        </div>
       </div>
 
       <!-- Payment method (shown when weeks are selected) -->
@@ -968,7 +997,7 @@
             <button type="button" @click="showPayModal = false" class="btn-secondary flex-1">Cancel</button>
             <button type="button" @click="saveBatch()" :disabled="saving"
                     class="btn-primary flex-1"
-                    x-text="saving ? 'Saving…' : `Confirm — ${fmt(selectedAmount)}`"></button>
+                    x-text="saving ? 'Saving…' : `Confirm — ${fmt(batch.actual_paid ? parseFloat(batch.actual_paid) : selectedAmount)}`"></button>
           </div>
         </div>
       </template>
@@ -1188,6 +1217,7 @@ function payments() {
       this.batch = {
         member_id: p.member_id, week_ids: [],
         payment_method: 'cash', reference: '', payment_date: today, notes: '',
+        actual_paid: '',
         _fromRow: true, _memberName: p.member_name, _spotLabel: spotLabel,
         _currentWeekId: p.week_id,
       };
@@ -1205,6 +1235,7 @@ function payments() {
       this.batch = {
         member_id: d.member_id, week_ids: [],
         payment_method: 'cash', reference: '', payment_date: today, notes: '',
+        actual_paid: '',
         _fromRow: true, _memberName: d.member_name, _spotLabel: spotLabel,
         _currentWeekId: this.currentWeekId,
       };
@@ -1226,6 +1257,7 @@ function payments() {
       this.batch = {
         member_id: null, week_ids: [],
         payment_method: 'cash', reference: '', payment_date: today, notes: '',
+        actual_paid: '',
         _fromRow: false, _memberName: '', _spotLabel: '',
         _currentWeekId: this.currentWeekId,
       };
@@ -1278,6 +1310,7 @@ function payments() {
       if (!this.batch.week_ids.length) return;
       this.saving = true;
       try {
+        const actualPaid = this.batch.actual_paid ? parseFloat(this.batch.actual_paid) : null;
         const res = await this.api('POST', '/api/payments/batch-record', {
           member_id: this.batch.member_id,
           week_ids: this.batch.week_ids,
@@ -1285,11 +1318,14 @@ function payments() {
           payment_method: this.batch.payment_method,
           reference: this.batch.reference || null,
           notes: this.batch.notes || null,
+          total_paid: actualPaid,
         });
         this.showPayModal = false;
-        this.showToast(`Recorded ${res.weeks_paid} week(s) — ${this.fmt(res.total_amount)}`);
+        const label = res.is_partial
+          ? `Partial payment recorded — ${this.fmt(res.total_amount)} received`
+          : `Recorded ${res.weeks_paid} week(s) — ${this.fmt(res.total_amount)}`;
+        this.showToast(label);
         if (this.selectedWeek) await this.loadPayments();
-        // Refresh debtors list in background if on debtors tab
         if (this.activeTab === 'debtors') await this.loadDebtors();
       } catch(e) { this.showToast(e.message, 'error'); }
       finally { this.saving = false; }

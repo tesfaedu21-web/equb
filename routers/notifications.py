@@ -354,6 +354,52 @@ def send_payment_confirmed(payment, db: Session) -> str:
         return "skipped"  # never break the payment flow
 
 
+# ── Auto-send on partial payment ─────────────────────────────────────────────
+
+def send_partial_payment(payment, db: Session) -> str:
+    """
+    Send SMS when a payment is partially recorded.
+    Never raises — payment flow must not be broken by SMS issues.
+    """
+    try:
+        m = payment.member
+        w = payment.week
+        if not m or not m.phone or not w:
+            return "skipped"
+        cfg = db.query(NotificationSettings).first()
+        if not cfg:
+            return "skipped"
+
+        paid   = float(payment.paid_amount or 0)
+        total  = float(payment.amount or 0)
+        remain = total - paid
+
+        msg_en = (
+            f"Dear {m.name}, partial payment of {int(paid):,} ETB received for "
+            f"Week {w.week_number}. Remaining balance: {int(remain):,} ETB. "
+            f"Please settle at your earliest convenience."
+        )
+        msg_am = (
+            f"ውድ {m.name}፣ ለሳምንት {w.week_number} {int(paid):,} ብር ከፊል ክፍያ ተቀብለናል። "
+            f"ቀሪ ሂሳብ: {int(remain):,} ብር። እባክዎ ቀሪውን ያስተካክሉ።"
+        )
+
+        lang = getattr(cfg, "language", "en")
+        msg = msg_am if lang == "am" else msg_en
+
+        status, response = _send_sms(m.phone, msg, cfg, db=db,
+                                     template_key="partial_payment", member_id=m.id)
+        db.add(NotificationLog(
+            member_id=m.id, phone=m.phone,
+            template_key="partial_payment", message=msg,
+            status=status, provider_response=response,
+        ))
+        db.commit()
+        return status
+    except Exception:
+        return "skipped"
+
+
 # ── Auto-send on missed payment ──────────────────────────────────────────────
 
 def send_missed_payment(payment, db: Session) -> str:

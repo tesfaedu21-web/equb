@@ -288,7 +288,8 @@ class Payment(Base):
     paid_date = Column(DateTime, nullable=True)
     payment_method = Column(String, nullable=True)
     reference = Column(String, nullable=True)
-    status = Column(String, default="pending")            # pending | paid | late | missed
+    status = Column(String, default="pending")            # pending | paid | partial | late | missed
+    paid_amount = Column(Numeric(12, 2), nullable=True)            # actual cash received (null = not yet paid)
     penalty_amount = Column(Numeric(12, 2), default=0)             # late-payment penalty in ETB
     notes = Column(Text)
     collected_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -948,6 +949,7 @@ def _migrate(engine):
         "ALTER TABLE spot_listings ALTER COLUMN sold_price TYPE NUMERIC(12,2) USING sold_price::NUMERIC(12,2)",
         "ALTER TABLE debt_cases ALTER COLUMN total_owed TYPE NUMERIC(12,2) USING total_owed::NUMERIC(12,2)",
         "ALTER TABLE debt_contacts ALTER COLUMN promised_amount TYPE NUMERIC(12,2) USING promised_amount::NUMERIC(12,2)",
+        "ALTER TABLE payments ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12,2)",
         # One-time: reactivate the new cycle that was accidentally closed
         "UPDATE cycles SET status='active', end_date=NULL WHERE id=32",
     ]

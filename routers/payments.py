@@ -104,7 +104,7 @@ def _calc_penalty(payment: Payment, paid_date: datetime, db: Session) -> float:
 
 
 class PaymentUpdate(BaseModel):
-    status: Literal["pending", "paid", "late", "missed"]
+    status: Literal["pending", "paid", "partial", "late", "missed"]
     paid_date: Optional[str] = None
     payment_method: Optional[str] = None
     reference: Optional[str] = None
@@ -121,6 +121,7 @@ class BatchPaymentRecord(BaseModel):
     reference: Optional[str] = None
     notes: Optional[str] = None
     penalty_amount: Optional[float] = None
+    total_paid: Optional[float] = None  # actual cash received; if < full total, distributes sequentially
 
     @model_validator(mode="after")
     def week_ids_not_empty(self):
@@ -155,6 +156,8 @@ def payment_to_dict(p: Payment, cycle_id: Optional[int] = None) -> dict:
         "draw_date": p.week.draw_date.isoformat() if p.week else None,
         "batch_id": p.batch_id,
         "amount": p.amount,
+        "paid_amount": p.paid_amount,
+        "remaining_amount": float(p.amount - p.paid_amount) if p.paid_amount is not None and p.status == "partial" else None,
         "paid_date": p.paid_date.isoformat() if p.paid_date else None,
         "payment_method": p.payment_method,
         "reference": p.reference,
@@ -357,7 +360,7 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
         if (p.amount or 0) <= 0:
             raise HTTPException(status_code=400, detail=f"Payment amount must be greater than zero (week {p.week_id})")
 
-    # Idempotency guard: reject if any week is already paid to prevent double-charge
+    # Idempotency guard: reject if any week is already fully paid
     already_paid = [p for p in payments if p.status == "paid"]
     if already_paid:
         paid_weeks = sorted([p.week.week_number for p in already_paid if p.week])
@@ -366,14 +369,21 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
             detail=f"Week(s) {paid_weeks} are already recorded as paid. Check for duplicate submission.",
         )
 
-    total = sum(p.amount for p in payments)
+    full_total = sum(p.amount for p in payments)
     cashier_id = getattr(request.state, "user_id", None)
+
+    # Sort weeks by week_number so distribution is sequential
+    payments.sort(key=lambda p: p.week.week_number if p.week else 0)
+
+    # Distribute actual cash received across weeks sequentially
+    remaining = float(data.total_paid) if data.total_paid is not None else float(full_total)
+    actual_collected = remaining  # save for batch record
 
     batch = PaymentBatch(
         member_id=data.member_id,
         payment_date=pay_date,
         weeks_paid=len(payments),
-        total_amount=total,
+        total_amount=min(remaining, float(full_total)),
         payment_method=data.payment_method,
         reference=data.reference,
         notes=data.notes,
@@ -382,28 +392,48 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
     db.add(batch)
     db.flush()
 
+    partial_payments = []
     for p in payments:
-        p.status = "paid"
+        week_amount = float(p.amount)
         p.paid_date = pay_date
         p.payment_method = data.payment_method
         p.reference = data.reference
         p.batch_id = batch.id
         p.collected_by_id = cashier_id
-        if data.penalty_amount is None:
-            p.penalty_amount = _calc_penalty(p, pay_date, db)
+        if remaining >= week_amount:
+            p.status = "paid"
+            p.paid_amount = p.amount
+            remaining -= week_amount
+            if data.penalty_amount is None:
+                p.penalty_amount = _calc_penalty(p, pay_date, db)
+        elif remaining > 0:
+            p.status = "partial"
+            p.paid_amount = round(remaining, 2)
+            remaining = 0
+            partial_payments.append(p)
+        # else: remaining==0, leave status unchanged (pending/late/missed)
 
     db.commit()
     db.refresh(batch)
     user = _get_current_user(request, db)
     log_action(db, user=user, action="create", table="payment_batches",
                record_id=batch.id,
-               description=f"Recorded {len(payments)} payment(s) for {member.name} — {total:,.0f} ETB via {data.payment_method}",
+               description=f"Recorded {len(payments)} payment(s) for {member.name} — {actual_collected:,.0f} ETB via {data.payment_method}",
                new={"member_id": data.member_id, "weeks": data.week_ids,
-                    "total": float(total), "method": data.payment_method})
+                    "total": actual_collected, "method": data.payment_method})
     db.commit()
-    sms_status = send_payment_confirmed(payments[0], db) if payments else "skipped"
+
+    # SMS: send partial notification if any week was partially paid
+    sms_status = "skipped"
+    if partial_payments:
+        from routers.notifications import send_partial_payment
+        sms_status = send_partial_payment(partial_payments[0], db)
+    elif payments:
+        sms_status = send_payment_confirmed(payments[0], db)
+
     result = batch_to_dict(batch)
     result["sms_status"] = sms_status
+    result["is_partial"] = bool(partial_payments)
     return result
 
 
