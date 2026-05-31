@@ -597,6 +597,75 @@
     </div>
   </div>
 </div><!-- end reset password modal -->
+
+<!-- ── Danger confirm modal ── -->
+<div x-show="dangerModal.show" x-cloak
+     class="modal-backdrop" @click.self="dangerModal.show=false"
+     @keydown.escape.window="dangerModal.show=false">
+  <div class="modal-box" style="max-width:440px">
+    <div style="height:4px;background:linear-gradient(90deg,#dc2626,#ef4444,#dc2626);border-radius:26px 26px 0 0"></div>
+    <div class="p-6 space-y-5">
+
+      <!-- Header -->
+      <div class="flex items-start gap-4">
+        <div style="width:44px;height:44px;border-radius:12px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg style="width:22px;height:22px;color:#dc2626" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-base font-bold text-gray-900" x-text="dangerModal.title"></h3>
+          <p class="text-xs text-gray-500 mt-0.5" x-text="dangerModal.subtitle"></p>
+        </div>
+        <button @click="dangerModal.show=false"
+                class="ml-auto w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Warning box -->
+      <div style="background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.15);border-radius:12px;padding:12px 14px">
+        <p class="text-sm text-gray-700 leading-relaxed" x-text="dangerModal.body"></p>
+      </div>
+
+      <!-- Type-to-confirm (for destructive actions) -->
+      <template x-if="dangerModal.confirmWord">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Type <strong x-text="dangerModal.confirmWord" style="color:#dc2626;font-family:monospace;font-size:0.8rem"></strong> to confirm
+          </label>
+          <input x-model="dangerModal.typed" type="text"
+                 :placeholder="dangerModal.confirmWord"
+                 style="font-family:monospace;letter-spacing:0.05em"
+                 class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                 @keydown.enter="dangerModal.typed === dangerModal.confirmWord && executeDanger()"/>
+        </div>
+      </template>
+
+      <!-- Actions -->
+      <div class="flex gap-3 pt-1">
+        <button @click="dangerModal.show=false" class="btn-secondary flex-1">Cancel</button>
+        <button @click="executeDanger()"
+                :disabled="dangerModal.confirmWord && dangerModal.typed !== dangerModal.confirmWord || dangerModal.running"
+                class="flex-1 py-2 px-4 rounded-xl text-sm font-semibold text-white transition-all"
+                style="background:linear-gradient(135deg,#dc2626,#b91c1c)"
+                :style="(dangerModal.confirmWord && dangerModal.typed !== dangerModal.confirmWord) || dangerModal.running ? 'opacity:.45;cursor:not-allowed' : 'box-shadow:0 4px 14px rgba(220,38,38,0.35)'">
+          <span x-show="!dangerModal.running" x-text="dangerModal.actionLabel"></span>
+          <span x-show="dangerModal.running" class="flex items-center justify-center gap-2">
+            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            Processing…
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div><!-- end danger modal -->
 </div><!-- end x-data scope -->
 {% endblock %}
 
@@ -620,6 +689,35 @@ function settings() {
     showResetPwdModal: false,
     resetPwdUser: null,
     resetPwdForm: { new_password: '' },
+    dangerModal: {
+      show: false, running: false,
+      title: '', subtitle: '', body: '', actionLabel: '',
+      confirmWord: '', typed: '',
+      _onConfirm: null,
+    },
+
+    openDanger({ title, subtitle, body, actionLabel, confirmWord = '', onConfirm }) {
+      this.dangerModal = {
+        show: true, running: false,
+        title, subtitle, body, actionLabel,
+        confirmWord, typed: '',
+        _onConfirm: onConfirm,
+      };
+    },
+
+    async executeDanger() {
+      if (this.dangerModal.running) return;
+      this.dangerModal.running = true;
+      try {
+        await this.dangerModal._onConfirm?.();
+        this.dangerModal.show = false;
+      } catch(e) {
+        this.dangerModal.show = false;
+        this.showToast(e.message, 'error');
+      } finally {
+        this.dangerModal.running = false;
+      }
+    },
 
     async load() {
       try {
@@ -703,26 +801,30 @@ function settings() {
     async restoreBackup() {
       const file = this.$refs.restoreFile.files[0];
       if (!file) { this.restoreMsg = 'Please select a .sql or .sql.gz file first.'; this.restoreOk = false; return; }
-      const confirmed = confirm(
-        `Restore from "${file.name}"?\n\nThis will overwrite the current database. A pre-restore backup is taken automatically first.\n\nProceed?`
-      );
-      if (!confirmed) return;
-      this.restoring = true; this.restoreMsg = ''; this.restoreOk = false;
-      try {
-        const form = new FormData();
-        form.append('file', file);
-        const resp = await fetch('/api/backup/restore', {
-          method: 'POST',
-          headers: { 'X-Session-Token': (window._equbCtx || {}).token || '' },
-          body: form,
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.detail || 'Restore failed');
-        this.restoreMsg = data.message;
-        this.restoreOk = true;
-        this.$refs.restoreFile.value = '';
-      } catch(e) { this.restoreMsg = e.message; this.restoreOk = false; }
-      finally { this.restoring = false; }
+      this.openDanger({
+        title: 'Restore from Backup',
+        subtitle: `File: ${file.name}`,
+        body: 'This will overwrite the current database with the selected backup file. A pre-restore snapshot is taken automatically before proceeding.',
+        actionLabel: 'Restore Database',
+        onConfirm: async () => {
+          this.restoring = true; this.restoreMsg = ''; this.restoreOk = false;
+          try {
+            const form = new FormData();
+            form.append('file', file);
+            const resp = await fetch('/api/backup/restore', {
+              method: 'POST',
+              headers: { 'X-Session-Token': (window._equbCtx || {}).token || '' },
+              body: form,
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || 'Restore failed');
+            this.restoreMsg = data.message;
+            this.restoreOk = true;
+            this.$refs.restoreFile.value = '';
+          } catch(e) { this.restoreMsg = e.message; this.restoreOk = false; }
+          finally { this.restoring = false; }
+        },
+      });
     },
 
     async checkBackupStatus() {
@@ -732,19 +834,19 @@ function settings() {
       } catch(e) { this.backupStatus = e.message; }
     },
 
-    async confirmReset() {
-      const first = confirm(
-        'WARNING: This will permanently delete ALL cycles, members, payments, transactions, and user accounts.\n\n' +
-        'Settings will be reset to defaults. Only the Owner account is kept.\n\nAre you sure you want to continue?'
-      );
-      if (!first) return;
-      const second = confirm('This CANNOT be undone.\n\nProceed with full system reset?');
-      if (!second) return;
-      try {
-        await this.api('POST', '/api/auth/reset-system', {});
-        this.showToast('System reset complete. Owner account preserved.');
-        await this.load();
-      } catch(e) { this.showToast(e.message, 'error'); }
+    confirmReset() {
+      this.openDanger({
+        title: 'Reset System',
+        subtitle: 'This action is permanent and cannot be undone.',
+        body: 'This will permanently delete ALL cycles, members, payments, transactions, and user accounts. Settings will be reset to defaults. Only the Owner account is preserved.',
+        actionLabel: 'Reset System',
+        confirmWord: 'RESET',
+        onConfirm: async () => {
+          await this.api('POST', '/api/auth/reset-system', {});
+          this.showToast('System reset complete. Owner account preserved.');
+          await this.load();
+        },
+      });
     },
 
     openResetPassword(u) {
