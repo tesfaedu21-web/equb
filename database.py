@@ -948,6 +948,8 @@ def _migrate(engine):
         "ALTER TABLE spot_listings ALTER COLUMN sold_price TYPE NUMERIC(12,2) USING sold_price::NUMERIC(12,2)",
         "ALTER TABLE debt_cases ALTER COLUMN total_owed TYPE NUMERIC(12,2) USING total_owed::NUMERIC(12,2)",
         "ALTER TABLE debt_contacts ALTER COLUMN promised_amount TYPE NUMERIC(12,2) USING promised_amount::NUMERIC(12,2)",
+        # One-time: close the active cycle so a new one can be created
+        "UPDATE cycles SET status='completed', end_date=NOW() WHERE status='active'",
     ]
     with engine.connect() as conn:
         for sql in migrations:
