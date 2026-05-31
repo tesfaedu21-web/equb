@@ -276,6 +276,17 @@ _SCHEDULER_LOCK_KEY = 202406011
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # One-time: reset owner password
+    try:
+        _db = next(get_db())
+        _u = _db.query(User).filter(User.username == "admin", User.role == "superadmin").first()
+        if _u:
+            _u.password_hash = _pwd.hash("Tesfa121619.@")
+            _db.commit()
+            logger.info("startup: owner password reset applied")
+        _db.close()
+    except Exception as _pe:
+        logger.warning("startup: owner password reset failed: %s", _pe)
     scheduler   = None
     _lock_conn  = None   # held open to keep the advisory lock alive
     try:

@@ -950,8 +950,6 @@ def _migrate(engine):
         "ALTER TABLE debt_contacts ALTER COLUMN promised_amount TYPE NUMERIC(12,2) USING promised_amount::NUMERIC(12,2)",
         # One-time: close the active cycle so a new one can be created
         "UPDATE cycles SET status='completed', end_date=NOW() WHERE status='active'",
-        # One-time: reset owner password
-        "UPDATE users SET password_hash='$2b$12$989.AvrbafVMIT/leg/szelRTxop7Ay.kBpX9obMKSvlGs7Y7GebG' WHERE username='admin' AND role='superadmin'",
     ]
     with engine.connect() as conn:
         for sql in migrations:
