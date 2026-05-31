@@ -276,17 +276,6 @@ _SCHEDULER_LOCK_KEY = 202406011
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    try:
-        from database import Cycle, Week, MemberSpot
-        _db = next(get_db())
-        cycles = _db.query(Cycle).order_by(Cycle.id).all()
-        for c in cycles:
-            wcount = _db.query(Week).filter(Week.cycle_id == c.id).count()
-            mcount = _db.query(MemberSpot).filter(MemberSpot.cycle_id == c.id, MemberSpot.is_active == True).count()
-            logger.info("CYCLE id=%s name=%s status=%s weeks=%s members=%s", c.id, c.name, c.status, wcount, mcount)
-        _db.close()
-    except Exception as _e:
-        logger.warning("cycle-check error: %s", _e)
     scheduler   = None
     _lock_conn  = None   # held open to keep the advisory lock alive
     try:
