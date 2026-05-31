@@ -101,6 +101,22 @@ def list_users(request: Request, db: Session = Depends(get_db)):
     return [_user_dict(u) for u in db.query(User).order_by(User.id).all()]
 
 
+@router.delete("/users/{user_id}")
+def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_superadmin(request)
+    caller_id = getattr(request.state, "user_id", None)
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if u.role == "superadmin":
+        raise HTTPException(status_code=400, detail="Cannot delete the Owner account")
+    if u.id == caller_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    db.delete(u)
+    db.commit()
+    return {"ok": True, "deleted": u.username}
+
+
 @router.post("/users")
 def create_user(data: UserCreate, request: Request, db: Session = Depends(get_db)):
     caller_role = getattr(request.state, "user_role", None)

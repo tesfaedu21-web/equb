@@ -219,6 +219,9 @@
                 <button x-show="!u.is_active"
                         @click="toggleUser(u)"
                         class="text-xs text-gray-400 hover:text-green-600 font-medium px-2 py-1 rounded-lg hover:bg-green-50 ml-1">Activate</button>
+                <button x-show="u.role !== 'superadmin' && isSuperAdmin"
+                        @click="deleteUser(u)"
+                        class="text-xs text-red-400 hover:text-white hover:bg-red-500 font-medium px-2 py-1 rounded-lg ml-1 transition-colors">Delete</button>
               </td>
             </tr>
           </template>
@@ -786,6 +789,20 @@ function settings() {
         this.users = await this.api('GET', '/api/auth/users');
         this.showToast(`User ${u.is_active ? 'deactivated' : 'activated'}`);
       } catch(e) { this.showToast(e.message, 'error'); }
+    },
+
+    deleteUser(u) {
+      this.openDanger({
+        title: `Delete "${u.full_name || u.username}"`,
+        subtitle: 'This user account will be permanently removed.',
+        body: `Username: ${u.username}\nRole: ${u.role}\n\nThis cannot be undone.`,
+        actionLabel: 'Delete User',
+        onConfirm: async () => {
+          await this.api('DELETE', `/api/auth/users/${u.id}`);
+          this.users = await this.api('GET', '/api/auth/users');
+          this.showToast(`User "${u.username}" deleted`);
+        },
+      });
     },
 
     async changePassword() {
