@@ -649,10 +649,11 @@
       <div class="flex gap-3 pt-1">
         <button @click="dangerModal.show=false" class="btn-secondary flex-1">Cancel</button>
         <button @click="executeDanger()"
-                :disabled="dangerModal.confirmWord && dangerModal.typed !== dangerModal.confirmWord || dangerModal.running"
+                :disabled="(dangerModal.confirmWord && dangerModal.typed !== dangerModal.confirmWord) || dangerModal.running"
                 class="flex-1 py-2 px-4 rounded-xl text-sm font-semibold text-white transition-all"
-                style="background:linear-gradient(135deg,#dc2626,#b91c1c)"
-                :style="(dangerModal.confirmWord && dangerModal.typed !== dangerModal.confirmWord) || dangerModal.running ? 'opacity:.45;cursor:not-allowed' : 'box-shadow:0 4px 14px rgba(220,38,38,0.35)'">
+                :style="(dangerModal.confirmWord && dangerModal.typed !== dangerModal.confirmWord) || dangerModal.running
+                  ? 'background:linear-gradient(135deg,#dc2626,#b91c1c);opacity:.4;cursor:not-allowed'
+                  : 'background:linear-gradient(135deg,#dc2626,#b91c1c);box-shadow:0 4px 14px rgba(220,38,38,0.35)'">
           <span x-show="!dangerModal.running" x-text="dangerModal.actionLabel"></span>
           <span x-show="dangerModal.running" class="flex items-center justify-center gap-2">
             <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
