@@ -229,12 +229,12 @@
     <!-- Change own password -->
     <div class="border-t pt-4">
       <h3 class="text-sm font-semibold text-gray-700 mb-3">Change My Password</h3>
-      <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
-        <div class="flex-1">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div>
           <label class="block text-xs text-gray-500 mb-1">Current Password</label>
           <input x-model="pwd.current" type="password"/>
         </div>
-        <div class="flex-1">
+        <div>
           <label class="block text-xs text-gray-500 mb-1">New Password</label>
           <input x-model="pwd.new" type="password"/>
           <div x-show="pwd.new.length > 0" class="mt-1.5 flex items-center gap-2">
@@ -251,8 +251,8 @@
                   x-text="pwd.new.length < 6 ? 'Weak' : pwd.new.length < 10 ? 'Fair' : 'Strong'"></span>
           </div>
         </div>
-        <button @click="changePassword()" class="btn-secondary sm:flex-shrink-0">Update Password</button>
       </div>
+      <button @click="changePassword()" class="btn-secondary">Update Password</button>
     </div>
   </div>
 
