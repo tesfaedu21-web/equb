@@ -276,6 +276,45 @@ _SCHEDULER_LOCK_KEY = 202406011
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # One-time: bulk-create missing payment records for all members in active cycle
+    try:
+        from database import Cycle, Week, MemberSpot, Payment as _Pay, _eat_now
+        from collections import defaultdict
+        _db = next(get_db())
+        _cycle = _db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
+        if _cycle:
+            _now = _eat_now()
+            _past_weeks = _db.query(Week).filter(
+                Week.cycle_id == _cycle.id, Week.draw_date <= _now
+            ).all()
+            _spots = _db.query(MemberSpot).filter(
+                MemberSpot.cycle_id == _cycle.id, MemberSpot.is_active
+            ).all()
+            # Build member → total weekly contribution
+            _contrib: dict = defaultdict(int)
+            for _ms in _spots:
+                _contrib[_ms.member_id] += _ms.weekly_contribution
+            # Existing payment week_ids per member
+            _existing: dict = defaultdict(set)
+            for _p in _db.query(_Pay.member_id, _Pay.week_id).filter(
+                _Pay.week_id.in_([w.id for w in _past_weeks])
+            ).all():
+                _existing[_p.member_id].add(_p.week_id)
+            # Create missing
+            _new = [
+                _Pay(member_id=_mid, week_id=_w.id, amount=_contrib[_mid])
+                for _mid, _amt in _contrib.items()
+                for _w in _past_weeks
+                if _w.id not in _existing[_mid] and _amt > 0
+            ]
+            if _new:
+                _db.bulk_save_objects(_new)
+                _db.commit()
+                logger.info("startup: created %d missing payment records for %d members",
+                            len(_new), len(_contrib))
+        _db.close()
+    except Exception as _e:
+        logger.warning("startup bulk-payment creation error: %s", _e)
     scheduler   = None
     _lock_conn  = None   # held open to keep the advisory lock alive
     try:
