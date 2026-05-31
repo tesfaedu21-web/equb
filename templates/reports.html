@@ -1039,7 +1039,10 @@
           <tbody class="divide-y divide-gray-50">
             <template x-for="r in auditLog.rows||[]" :key="r.id">
               <tr class="hover:bg-gray-50/70">
-                <td class="px-4 py-3 text-xs text-gray-400 whitespace-nowrap" x-text="fmtDate(r.timestamp)"></td>
+                <td class="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                  <div x-text="fmtDate(r.timestamp)"></div>
+                  <div class="text-gray-300 mt-0.5" x-text="r.timestamp ? new Date(r.timestamp).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : ''"></div>
+                </td>
                 <td class="px-4 py-3 font-mono text-xs" x-text="r.username||'—'"></td>
                 <td class="px-4 py-3">
                   <span :class="{
