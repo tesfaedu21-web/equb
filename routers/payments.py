@@ -410,6 +410,10 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
     partial_payments = []
     for p in payments:
         existing_paid = float(p.paid_amount or 0)
+        # Save prior partial state before overwriting
+        if p.status == "partial" and existing_paid > 0:
+            p.prior_paid_amount = p.paid_amount
+            p.prior_paid_date   = p.paid_date
         # Only the remaining balance is needed to fully clear this week
         week_needed = float(p.amount) - existing_paid
         p.paid_date = pay_date
@@ -451,6 +455,10 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
             if next_p:
                 cascade_week_number = next_p.week.week_number if next_p.week else None
                 week_needed = float(next_p.amount) - float(next_p.paid_amount or 0)
+                # Save prior partial state before overwriting (cascade creating a new partial)
+                if next_p.status == "partial" and float(next_p.paid_amount or 0) > 0:
+                    next_p.prior_paid_amount = next_p.paid_amount
+                    next_p.prior_paid_date   = next_p.paid_date
                 next_p.batch_id = batch.id
                 next_p.paid_date = pay_date
                 next_p.payment_method = data.payment_method
@@ -897,8 +905,14 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     credit_applied = min(credit_applied, _batch_credit)  # cap at actual drawn amount
 
     # Pre-existing partial amounts already on these weeks before this batch was recorded
-    # = total paid on receipt - (new cash + credit used here)
-    pre_existing_total = max(0.0, total_paid_all - _cash_for_batch - credit_applied)
+    # Use stored prior_paid_amount/date if available, otherwise estimate from cash difference
+    prior_paid_sum  = sum(float(bp.prior_paid_amount or 0) for bp in batch_payments if bp.prior_paid_amount)
+    prior_paid_date = None
+    for bp in batch_payments:
+        if bp.prior_paid_date:
+            prior_paid_date = bp.prior_paid_date
+            break
+    pre_existing_total = prior_paid_sum if prior_paid_sum > 0 else max(0.0, total_paid_all - _cash_for_batch - credit_applied)
 
     penalty_amt  = float(p.penalty_amount or 0)
     penalty_str  = f"{int(penalty_amt):,} ETB" if penalty_amt else None
@@ -1008,7 +1022,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   {f'<div class="row" style="color:#d97706;font-weight:600"><span>Total Remaining</span><span>{int(total_remaining):,} ETB</span></div>' if total_remaining > 0 else ""}
   {f'''<div style="border-top:1px dashed #e5e7eb;margin:10px 0 6px"></div>
   <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">How this was covered</div>
-  <div class="row" style="font-size:13px;color:#6b7280"><span>Previously paid (from prior overpayment)</span><span style="font-weight:600">{int(pre_existing_total):,} ETB</span></div>
+  <div class="row" style="font-size:13px;color:#6b7280"><span>Previous partial paid {prior_paid_date.strftime("%d %b %Y") if prior_paid_date else ""}</span><span style="font-weight:600">{int(pre_existing_total):,} ETB</span></div>
   <div class="row" style="font-size:13px;color:#374151"><span>Cash received on {p.paid_date.strftime("%d %b %Y") if p.paid_date else "this date"}</span><span style="font-weight:600">{new_cash_str}</span></div>''' if pre_existing_total > 0 else ""}
   <div class="total-row"><span>{'Amount Received' if is_partial_batch else 'Total Paid'}</span><span>{total_str}</span></div>
   {"<div class='row' style='margin-top:12px;font-size:13px;color:#6b7280'><span>Notes</span><span style='text-align:right'>" + p.notes + "</span></div>" if p.notes else ""}
