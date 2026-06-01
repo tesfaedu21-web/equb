@@ -496,9 +496,13 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
     sms_status = "skipped"
     if partial_payments:
         from routers.notifications import send_partial_payment
-        sms_status = send_partial_payment(partial_payments[0], db)
+        sms_status = send_partial_payment(partial_payments[0], db, credit_applied=existing_credit)
     elif payments:
-        sms_status = send_payment_confirmed(payments[0], db)
+        sms_status = send_payment_confirmed(payments[0], db, credit_applied=existing_credit)
+    # Notify member when overpayment was stored as credit (no outstanding week to absorb it)
+    if credit_carried > 0:
+        from routers.notifications import send_credit_stored
+        send_credit_stored(member, credit_carried, db)
 
     result = batch_to_dict(batch)
     result["sms_status"] = sms_status

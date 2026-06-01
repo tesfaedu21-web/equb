@@ -284,7 +284,7 @@ def _member_vars(m: Member, db: Session, week_number: int = 9999, cycle_id: Opti
 
 # ── Auto-send on payment confirmed ───────────────────────────────────────────
 
-def send_payment_confirmed(payment, db: Session) -> str:
+def send_payment_confirmed(payment, db: Session, credit_applied: float = 0.0) -> str:
     """
     Send SMS when a payment is marked paid.
     Returns SMS status: 'sent' | 'mock' | 'failed' | 'skipped'.
@@ -307,7 +307,7 @@ def send_payment_confirmed(payment, db: Session) -> str:
 
         # Batch-aware: aggregate weeks and total across all payments in this batch
         if payment.batch_id and payment.batch:
-            batch_payments = [bp for bp in payment.batch.payments if bp.week]
+            batch_payments = [bp for bp in payment.batch.payments if bp.week and bp.status == "paid"]
             week_nums    = sorted(bp.week.week_number for bp in batch_payments)
             total_amount = sum(bp.amount for bp in batch_payments)
             if len(week_nums) == 1:
@@ -341,6 +341,13 @@ def send_payment_confirmed(payment, db: Session) -> str:
             "_pm_key":        pm_key,
         }
         msg = _pick_message(tmpl, cfg, vars_)
+        # Append credit note after template rendering so existing templates aren't broken
+        if credit_applied > 0:
+            lang = getattr(cfg, "sms_language", "en")
+            if lang == "am":
+                msg += f" ({int(credit_applied):,} ብር ቅድሚያ ክፍያ ተጠቅሟል።)"
+            else:
+                msg += f" (Includes {int(credit_applied):,} ETB credit.)"
         status, response = _send_sms(m.phone, msg, cfg, db=db,
                                      template_key="payment_confirmed", member_id=m.id)
         db.add(NotificationLog(
@@ -356,7 +363,7 @@ def send_payment_confirmed(payment, db: Session) -> str:
 
 # ── Auto-send on partial payment ─────────────────────────────────────────────
 
-def send_partial_payment(payment, db: Session) -> str:
+def send_partial_payment(payment, db: Session, credit_applied: float = 0.0) -> str:
     """
     Send SMS when a payment is partially recorded.
     Never raises — payment flow must not be broken by SMS issues.
@@ -373,18 +380,20 @@ def send_partial_payment(payment, db: Session) -> str:
         paid   = float(payment.paid_amount or 0)
         total  = float(payment.amount or 0)
         remain = total - paid
+        lang   = getattr(cfg, "sms_language", "en")
+
+        credit_note_en = f" (incl. {int(credit_applied):,} ETB credit)" if credit_applied > 0 else ""
+        credit_note_am = f" ({int(credit_applied):,} ብር ቅድሚያ ክፍያ ጨምሮ)" if credit_applied > 0 else ""
 
         msg_en = (
-            f"Dear {m.name}, partial payment of {int(paid):,} ETB received for "
+            f"Dear {m.name}, partial payment of {int(paid):,} ETB{credit_note_en} received for "
             f"Week {w.week_number}. Remaining balance: {int(remain):,} ETB. "
             f"Please settle at your earliest convenience."
         )
         msg_am = (
-            f"ውድ {m.name}፣ ለሳምንት {w.week_number} {int(paid):,} ብር ከፊል ክፍያ ተቀብለናል። "
+            f"ውድ {m.name}፣ ለሳምንት {w.week_number} {int(paid):,} ብር{credit_note_am} ከፊል ክፍያ ተቀብለናል። "
             f"ቀሪ ሂሳብ: {int(remain):,} ብር። እባክዎ ቀሪውን ያስተካክሉ።"
         )
-
-        lang = getattr(cfg, "language", "en")
         msg = msg_am if lang == "am" else msg_en
 
         status, response = _send_sms(m.phone, msg, cfg, db=db,
@@ -392,6 +401,42 @@ def send_partial_payment(payment, db: Session) -> str:
         db.add(NotificationLog(
             member_id=m.id, phone=m.phone,
             template_key="partial_payment", message=msg,
+            status=status, provider_response=response,
+        ))
+        db.commit()
+        return status
+    except Exception:
+        return "skipped"
+
+
+# ── Auto-send when overpayment is stored as credit ────────────────────────────
+
+def send_credit_stored(member, amount: float, db: Session) -> str:
+    """
+    Send SMS when an overpayment is stored as a credit balance on the member account.
+    Never raises — payment flow must not be broken by SMS issues.
+    """
+    try:
+        if not member or not member.phone:
+            return "skipped"
+        cfg = db.query(NotificationSettings).first()
+        if not cfg:
+            return "skipped"
+        lang = getattr(cfg, "sms_language", "en")
+        msg_en = (
+            f"Dear {member.name}, your overpayment of {int(amount):,} ETB has been "
+            f"stored as a credit balance. It will be applied automatically to your next payment."
+        )
+        msg_am = (
+            f"ውድ {member.name}፣ ተጨማሪ ክፍያዎ {int(amount):,} ብር እንደ ቅድሚያ ክፍያ ሂሳብ ተቀምጧል። "
+            f"ለቀጣዩ ክፍያዎ ራስ-ሰር ይተገበራል።"
+        )
+        msg = msg_am if lang == "am" else msg_en
+        status, response = _send_sms(member.phone, msg, cfg, db=db,
+                                     template_key="credit_stored", member_id=member.id)
+        db.add(NotificationLog(
+            member_id=member.id, phone=member.phone,
+            template_key="credit_stored", message=msg,
             status=status, provider_response=response,
         ))
         db.commit()
