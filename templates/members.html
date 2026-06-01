@@ -264,7 +264,15 @@
               <td class="px-4 py-3 whitespace-nowrap hidden sm:table-cell etb-gold" x-text="fmt(m.total_weekly_contribution)"></td>
               <td class="px-4 py-3 text-gray-500 text-xs amharic hidden md:table-cell break-words max-w-[160px]" x-text="m.partners.join(', ') || '—'"></td>
               <td class="px-4 py-3">
-                <span :class="`badge badge-${m.status}`" x-text="m.status ? m.status.charAt(0).toUpperCase() + m.status.slice(1) : ''"></span>
+                <div class="flex flex-wrap items-center gap-1">
+                  <span :class="`badge badge-${m.status}`" x-text="m.status ? m.status.charAt(0).toUpperCase() + m.status.slice(1) : ''"></span>
+                  <span x-show="m.credit_balance > 0"
+                        class="inline-flex items-center gap-1 text-xs font-semibold bg-blue-100 text-blue-700 rounded-full px-2 py-0.5"
+                        :title="'Credit: ' + fmt(m.credit_balance)">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span x-text="fmt(m.credit_balance)"></span>
+                  </span>
+                </div>
               </td>
               <td class="px-4 py-3">
                 <div class="flex items-center gap-1.5">
@@ -1011,14 +1019,17 @@ function members() {
               <div style="font-size:10px;color:#aaa;margin-top:1px">${fmtDt(b.payment_date)}</div>
             </td>
             <td>
-              <div style="font-weight:600">Week ${b.weeks_covered.join(', ')}</div>
+              <div style="font-weight:600">Week ${b.weeks_covered.join(', ')}${b.is_partial?' <span style="color:#d97706;font-size:10px">(partial)</span>':''}</div>
               <div style="font-size:10px;color:#888">${b.weeks_count} week${b.weeks_count>1?'s':''}</div>
             </td>
             <td style="font-family:monospace;color:#6b7280;font-size:11px">${esc(b.receipt_no||'—')}</td>
             <td style="color:#555">${methodLabel(b.payment_method)}</td>
             <td style="font-family:monospace;color:#999">${esc(b.reference||'—')}</td>
             <td style="color:#555">${esc(b.collected_by_name||'—')}</td>
-            <td style="text-align:right;font-weight:700;color:#15803d">${fmtNum(b.total_amount)}</td>
+            <td style="text-align:right;font-weight:700;color:#15803d">
+              ${fmtNum(b.total_amount)}
+              ${b.credit_applied>0?`<div style="font-size:9px;color:#2563eb;font-weight:600">(incl. ${fmtNum(b.credit_applied)} credit)</div>`:''}
+            </td>
           </tr>`).join('');
 
         // ── Outstanding / unpaid weeks rows ───────────────────────────────────
@@ -1028,10 +1039,14 @@ function members() {
             <td style="font-weight:600">Week ${p.week_number}</td>
             <td style="color:#666">${fmtDt(p.draw_date)}</td>
             <td>${
-              p.status==='missed' ? '<span style="color:#991b1b;font-weight:600">Missed</span>' :
-              p.status==='late'   ? '<span style="color:#9a3412;font-weight:600">Late</span>' :
-                                    '<span style="color:#854d0e">Pending</span>'}</td>
-            <td style="text-align:right;font-weight:600;color:#991b1b">${fmtNum(p.amount)}</td>
+              p.status==='missed'  ? '<span style="color:#991b1b;font-weight:600">Missed</span>' :
+              p.status==='late'    ? '<span style="color:#9a3412;font-weight:600">Late</span>' :
+              p.status==='partial' ? '<span style="color:#d97706;font-weight:600">Partial</span>' :
+                                     '<span style="color:#854d0e">Pending</span>'}</td>
+            <td style="text-align:right;font-weight:600;color:#991b1b">
+              ${fmtNum(p.amount)}
+              ${p.status==='partial'?`<div style="font-size:9px;color:#d97706">${fmtNum(p.paid_amount)} paid</div>`:''}
+            </td>
           </tr>`).join('');
 
         const orgName = this.settings?.group_name || 'እቁብ';
@@ -1088,6 +1103,14 @@ function members() {
   <div class="card"><div class="label">Pending / Late</div><div class="val" style="color:#854d0e">${d.summary.pending + d.summary.late}</div></div>
   <div class="card" style="background:#f0fdf4;border-color:#86efac"><div class="label">Total Paid</div><div class="val" style="color:#15803d;font-size:15px">${fmtNum(d.summary.total_paid_amount)}</div></div>
 </div>
+${d.credit_balance > 0 ? `
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+  <span style="font-size:18px">💳</span>
+  <div>
+    <div style="font-weight:700;color:#1d4ed8;font-size:13px">Credit Balance: ${fmtNum(d.credit_balance)}</div>
+    <div style="font-size:11px;color:#3b82f6">Will be applied automatically to the next payment</div>
+  </div>
+</div>` : ''}
 
 <h2>Payment History</h2>
 ${d.batches.length > 0 ? `

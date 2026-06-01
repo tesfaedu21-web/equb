@@ -182,6 +182,7 @@ def batch_to_dict(b: PaymentBatch) -> dict:
         "payment_method": b.payment_method,
         "reference": b.reference,
         "notes": b.notes,
+        "credit_applied": float(b.credit_applied or 0),
         "week_numbers": sorted([p.week.week_number for p in b.payments if p.week]),
         "collected_by_name": b.collected_by.full_name if b.collected_by else None,
     }
@@ -400,6 +401,7 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
         reference=data.reference,
         notes=data.notes,
         collected_by_id=cashier_id,
+        credit_applied=round(existing_credit, 2),
     )
     db.add(batch)
     db.flush()
@@ -660,6 +662,7 @@ def outstanding_members(cycle_id: Optional[int] = None, db: Session = Depends(ge
             "status": member.status,
             "unpaid_count": int(cnt),
             "unpaid_amount": float(total),
+            "credit_balance": float(member.credit_balance or 0),
         })
     return result
 
@@ -918,6 +921,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   <div class="row"><span>Amount Paid</span><span style="font-weight:700;color:#078930">{paid_str}</span></div>
   {f'<div class="row" style="color:#d97706"><span>Remaining Balance</span><span style="font-weight:700">{remaining_str}</span></div>' if remaining_str else ""}
   {f'<div class="row penalty"><span>Late Penalty</span><span>{penalty_str}</span></div>' if penalty_str else ""}
+  {f'<div class="row" style="color:#2563eb"><span>Credit Applied</span><span style="font-weight:600">{int(p.batch.credit_applied):,} ETB</span></div>' if p.batch and p.batch.credit_applied and float(p.batch.credit_applied) > 0 else ""}
   <div class="total-row"><span>{'Amount Received' if is_partial else 'Total'}</span><span>{total_str}</span></div>
   {"<div class='row' style='margin-top:12px;font-size:13px;color:#6b7280'><span>Notes</span><span style='text-align:right'>" + p.notes + "</span></div>" if p.notes else ""}
 

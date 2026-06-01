@@ -1512,12 +1512,13 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
     ]
 
     return {
-        "member_id":    member.id,
-        "member_name":  member.name,
-        "phone":        member.phone,
-        "spot_numbers": spot_numbers,
-        "batches":      batch_rows,
-        "unpaid":       unpaid,
+        "member_id":      member.id,
+        "member_name":    member.name,
+        "phone":          member.phone,
+        "spot_numbers":   spot_numbers,
+        "credit_balance": float(member.credit_balance or 0),
+        "batches":        batch_rows,
+        "unpaid":         unpaid,
         "summary": {
             "paid":                sum(1 for p in ps if p.status == "paid"),
             "partial":             sum(1 for p in ps if p.status == "partial"),
@@ -1529,6 +1530,7 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
                 for p in ps if p.status in ("paid", "partial")
             )),
             "total_owed_amount":   float(sum(p["amount"] for p in unpaid)),
+            "credit_balance":      float(member.credit_balance or 0),
         },
     }
 
@@ -1633,11 +1635,12 @@ def member_history(member_id: int, db: Session = Depends(get_db)):
         })
 
     return {
-        "member_id":   member.id,
-        "member_name": member.name,
-        "phone":       member.phone,
-        "status":      member.status,
-        "cycles":      cycle_rows,
+        "member_id":      member.id,
+        "member_name":    member.name,
+        "phone":          member.phone,
+        "status":         member.status,
+        "credit_balance": float(member.credit_balance or 0),
+        "cycles":         cycle_rows,
         "totals": {
             "cycles_participated": len(cycle_rows),
             "total_paid_amount":   sum(r["total_paid_amount"] for r in cycle_rows),

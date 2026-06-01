@@ -267,6 +267,7 @@ class PaymentBatch(Base):
     reference = Column(String, nullable=True)
     notes = Column(Text)
     collected_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    credit_applied = Column(Numeric(12, 2), default=0, server_default="0")  # credit drawn from member balance
     created_at = Column(DateTime, default=_utcnow)
 
     member = relationship("Member")
@@ -953,6 +954,7 @@ def _migrate(engine):
         "ALTER TABLE debt_contacts ALTER COLUMN promised_amount TYPE NUMERIC(12,2) USING promised_amount::NUMERIC(12,2)",
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12,2)",
         "ALTER TABLE members ADD COLUMN IF NOT EXISTS credit_balance NUMERIC(12,2) DEFAULT 0",
+        "ALTER TABLE payment_batches ADD COLUMN IF NOT EXISTS credit_applied NUMERIC(12,2) DEFAULT 0",
         # One-time: reactivate the new cycle that was accidentally closed
         "UPDATE cycles SET status='active', end_date=NULL WHERE id=32",
     ]

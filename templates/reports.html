@@ -1119,7 +1119,7 @@
                     x-text="mhHistory.status"></span>
             </div>
           </div>
-          <div class="grid grid-cols-3 gap-4 text-center shrink-0">
+          <div class="grid grid-cols-4 gap-4 text-center shrink-0">
             <div>
               <div class="text-xl font-bold text-equb-green" x-text="mhHistory.totals.cycles_participated"></div>
               <div class="text-xs text-gray-400">Cycles</div>
@@ -1131,6 +1131,10 @@
             <div>
               <div class="text-lg font-bold text-orange-500" x-text="fmt(mhHistory.totals.total_paid_amount)"></div>
               <div class="text-xs text-gray-400">Total Paid</div>
+            </div>
+            <div x-show="mhHistory.credit_balance > 0">
+              <div class="text-lg font-bold text-blue-600" x-text="fmt(mhHistory.credit_balance)"></div>
+              <div class="text-xs text-blue-400">Credit</div>
             </div>
           </div>
         </div>

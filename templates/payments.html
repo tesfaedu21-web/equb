@@ -620,7 +620,12 @@
                         :class="d.unpaid_count >= 10 ? 'bg-red-100 text-red-700' : d.unpaid_count >= 5 ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'"
                         x-text="d.unpaid_count"></span>
                 </td>
-                <td class="px-5 py-3.5 text-right font-bold text-red-600" x-text="fmt(d.unpaid_amount)"></td>
+                <td class="px-5 py-3.5 text-right">
+                  <div class="font-bold text-red-600" x-text="fmt(d.unpaid_amount)"></div>
+                  <div x-show="d.credit_balance > 0"
+                       class="text-xs font-semibold text-blue-600 mt-0.5"
+                       x-text="'− ' + fmt(d.credit_balance) + ' credit'"></div>
+                </td>
                 <td class="px-5 py-3.5">
                   <button @click="openDebtorPay(d)"
                           class="btn-primary text-xs py-1 px-3">
@@ -1365,9 +1370,16 @@ function payments() {
           total_paid: actualPaid,
         });
         this.showPayModal = false;
-        const label = res.is_partial
+        this.memberCreditBalance = res.member_credit_balance || 0;
+        let label = res.is_partial
           ? `Partial payment recorded — ${this.fmt(res.total_amount)} received`
           : `Recorded ${res.weeks_paid} week(s) — ${this.fmt(res.total_amount)}`;
+        if (res.credit_applied > 0)
+          label += ` (${this.fmt(res.credit_applied)} credit applied)`;
+        if (res.cascade_week_number && res.credit_carried === 0)
+          label += ` · overflow → Wk ${res.cascade_week_number}`;
+        if (res.credit_carried > 0)
+          label += ` · ${this.fmt(res.credit_carried)} stored as credit`;
         this.showToast(label);
         if (this.selectedWeek) await this.loadPayments();
         if (this.activeTab === 'debtors') await this.loadDebtors();

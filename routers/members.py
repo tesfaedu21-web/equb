@@ -112,6 +112,7 @@ def _member_dict(m: Member, cycle_id: Optional[int] = None) -> dict:
         "spot_count": len(assignments),
         "partners": list(set(partners)),
         "notes": m.notes,
+        "credit_balance": float(getattr(m, "credit_balance", None) or 0),
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "updated_at": m.updated_at.isoformat() if m.updated_at else None,
         "deleted_at": m.deleted_at.isoformat() if getattr(m, "deleted_at", None) else None,
