@@ -343,11 +343,15 @@ def send_payment_confirmed(payment, db: Session, credit_applied: float = 0.0) ->
         msg = _pick_message(tmpl, cfg, vars_)
         # Append credit note after template rendering so existing templates aren't broken
         if credit_applied > 0:
-            lang = getattr(cfg, "sms_language", "en")
+            lang = (cfg.sms_language or "en") if cfg else "en"
+            en_c = f"(Includes {int(credit_applied):,} ETB credit.)"
+            am_c = f"({int(credit_applied):,} ብር ቅድሚያ ክፍያ ተጠቅሟል።)"
             if lang == "am":
-                msg += f" ({int(credit_applied):,} ብር ቅድሚያ ክፍያ ተጠቅሟል።)"
+                msg += f" {am_c}"
+            elif lang == "both":
+                msg += f" {en_c} {am_c}"
             else:
-                msg += f" (Includes {int(credit_applied):,} ETB credit.)"
+                msg += f" {en_c}"
         status, response = _send_sms(m.phone, msg, cfg, db=db,
                                      template_key="payment_confirmed", member_id=m.id)
         db.add(NotificationLog(
@@ -380,7 +384,7 @@ def send_partial_payment(payment, db: Session, credit_applied: float = 0.0) -> s
         paid   = float(payment.paid_amount or 0)
         total  = float(payment.amount or 0)
         remain = total - paid
-        lang   = getattr(cfg, "sms_language", "en")
+        lang   = (cfg.sms_language or "en") if cfg else "en"
 
         credit_note_en = f" (incl. {int(credit_applied):,} ETB credit)" if credit_applied > 0 else ""
         credit_note_am = f" ({int(credit_applied):,} ብር ቅድሚያ ክፍያ ጨምሮ)" if credit_applied > 0 else ""
@@ -394,7 +398,12 @@ def send_partial_payment(payment, db: Session, credit_applied: float = 0.0) -> s
             f"ውድ {m.name}፣ ለሳምንት {w.week_number} {int(paid):,} ብር{credit_note_am} ከፊል ክፍያ ተቀብለናል። "
             f"ቀሪ ሂሳብ: {int(remain):,} ብር። እባክዎ ቀሪውን ያስተካክሉ።"
         )
-        msg = msg_am if lang == "am" else msg_en
+        if lang == "am":
+            msg = msg_am
+        elif lang == "both":
+            msg = f"{msg_en}\n\n{msg_am}"
+        else:
+            msg = msg_en
 
         status, response = _send_sms(m.phone, msg, cfg, db=db,
                                      template_key="partial_payment", member_id=m.id)
@@ -422,7 +431,7 @@ def send_credit_stored(member, amount: float, db: Session) -> str:
         cfg = db.query(NotificationSettings).first()
         if not cfg:
             return "skipped"
-        lang = getattr(cfg, "sms_language", "en")
+        lang   = (cfg.sms_language or "en") if cfg else "en"
         msg_en = (
             f"Dear {member.name}, your overpayment of {int(amount):,} ETB has been "
             f"stored as a credit balance. It will be applied automatically to your next payment."
@@ -431,7 +440,12 @@ def send_credit_stored(member, amount: float, db: Session) -> str:
             f"ውድ {member.name}፣ ተጨማሪ ክፍያዎ {int(amount):,} ብር እንደ ቅድሚያ ክፍያ ሂሳብ ተቀምጧል። "
             f"ለቀጣዩ ክፍያዎ ራስ-ሰር ይተገበራል።"
         )
-        msg = msg_am if lang == "am" else msg_en
+        if lang == "am":
+            msg = msg_am
+        elif lang == "both":
+            msg = f"{msg_en}\n\n{msg_am}"
+        else:
+            msg = msg_en
         status, response = _send_sms(member.phone, msg, cfg, db=db,
                                      template_key="credit_stored", member_id=member.id)
         db.add(NotificationLog(
