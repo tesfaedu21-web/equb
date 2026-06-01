@@ -920,6 +920,29 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     total_str    = f"{int(grand_total):,} ETB"
     new_cash_str = f"{int(_cash_for_batch):,} ETB"
 
+    # Find which week the payment was recorded during (based on paid_date)
+    # This may differ from the weeks covered (e.g. week 65 paid during week 66 session)
+    recorded_during_row = ""
+    if p.paid_date and cycle:
+        paid_date_obj = p.paid_date.date() if hasattr(p.paid_date, "date") else p.paid_date
+        recording_week = (db.query(Week)
+                          .filter(Week.cycle_id == cycle.id,
+                                  Week.draw_date <= p.paid_date)
+                          .order_by(Week.draw_date.desc())
+                          .first())
+        covered_week_nums = {bp.week.week_number for bp in batch_payments if bp.week}
+        if recording_week and recording_week.week_number not in covered_week_nums:
+            rec_eth  = _greg_to_eth(recording_week.draw_date)
+            rec_greg = recording_week.draw_date.strftime("%d %b %Y")
+            recorded_during_row = (
+                f"<div class='row' style='color:#6b7280;font-size:13px'>"
+                f"<span>Recorded During</span>"
+                f"<span style='text-align:right'>"
+                f"<div style='font-weight:600'>Week {recording_week.week_number}</div>"
+                f"<div style='font-size:11px;color:#9ca3af'>{rec_eth} / {rec_greg}</div>"
+                f"</span></div>"
+            )
+
     # Weeks / draw dates section
     if len(batch_payments) == 1:
         bp0 = batch_payments[0]
@@ -1014,6 +1037,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   <div class="row"><span>Cycle</span><span>{cycle.name if cycle else "—"}</span></div>
   <div class="row"><span>Weeks Covered</span><span style="font-weight:600">{weeks_str}</span></div>
   {draw_date_row}
+  {recorded_during_row}
 
   <h2>Amount Breakdown</h2>
   {week_rows_html}
