@@ -372,21 +372,25 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
             detail=f"Week(s) {paid_weeks} are already recorded as paid. Check for duplicate submission.",
         )
 
-    full_total = sum(p.amount for p in payments)
+    # For partial weeks, only the *remaining* amount is still owed
+    full_total = sum(
+        float(p.amount) - float(p.paid_amount or 0) if p.status == "partial" else float(p.amount)
+        for p in payments
+    )
     cashier_id = getattr(request.state, "user_id", None)
 
     # Sort weeks by week_number so distribution is sequential
     payments.sort(key=lambda p: p.week.week_number if p.week else 0)
 
     # Distribute actual cash received across weeks sequentially
-    remaining = float(data.total_paid) if data.total_paid is not None else float(full_total)
+    remaining = float(data.total_paid) if data.total_paid is not None else full_total
     actual_collected = remaining  # save for batch record
 
     batch = PaymentBatch(
         member_id=data.member_id,
         payment_date=pay_date,
         weeks_paid=len(payments),
-        total_amount=min(remaining, float(full_total)),
+        total_amount=min(remaining, full_total),
         payment_method=data.payment_method,
         reference=data.reference,
         notes=data.notes,
@@ -397,21 +401,23 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
 
     partial_payments = []
     for p in payments:
-        week_amount = float(p.amount)
+        existing_paid = float(p.paid_amount or 0)
+        # Only the remaining balance is needed to fully clear this week
+        week_needed = float(p.amount) - existing_paid
         p.paid_date = pay_date
         p.payment_method = data.payment_method
         p.reference = data.reference
         p.batch_id = batch.id
         p.collected_by_id = cashier_id
-        if remaining >= week_amount:
+        if remaining >= week_needed:
             p.status = "paid"
             p.paid_amount = p.amount
-            remaining -= week_amount
+            remaining -= week_needed
             if data.penalty_amount is None:
                 p.penalty_amount = _calc_penalty(p, pay_date, db)
         elif remaining > 0:
             p.status = "partial"
-            p.paid_amount = round(remaining, 2)
+            p.paid_amount = round(existing_paid + remaining, 2)
             remaining = 0
             partial_payments.append(p)
         # else: remaining==0, leave status unchanged (pending/late/missed)
