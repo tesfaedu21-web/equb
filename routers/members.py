@@ -760,6 +760,39 @@ def remove_spot(member_id: int, spot_id: int, request: Request, db: Session = De
     return {"ok": True}
 
 
+class CreditAdjust(BaseModel):
+    amount: float  # new credit balance value (0 to reset)
+    reason: Optional[str] = None
+
+
+@router.put("/{member_id}/credit-balance")
+def adjust_credit_balance(member_id: int, data: CreditAdjust, request: Request,
+                          db: Session = Depends(get_db)):
+    """Admin: manually set a member's credit balance (use 0 to reset)."""
+    from routers.deps import _require_admin
+    _require_admin(request)
+    m = db.query(Member).filter(Member.id == member_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if data.amount < 0:
+        raise HTTPException(status_code=400, detail="Credit balance cannot be negative")
+    old = float(m.credit_balance or 0)
+    m.credit_balance = round(data.amount, 2)
+    from database import log_action
+    user = None
+    try:
+        from routers.deps import _get_current_user
+        user = _get_current_user(request, db)
+    except Exception:
+        pass
+    log_action(db, user=user, action="update", table="members", record_id=m.id,
+               description=f"Credit balance adjusted: {old:,.0f} → {data.amount:,.0f} ETB" +
+                           (f" — {data.reason}" if data.reason else ""),
+               old={"credit_balance": old}, new={"credit_balance": data.amount})
+    db.commit()
+    return {"ok": True, "member_id": member_id, "credit_balance": float(m.credit_balance)}
+
+
 @router.delete("/{member_id}")
 def mark_left(member_id: int, request: Request, db: Session = Depends(get_db)):
     _require_feature(request, db, "manage_members")
