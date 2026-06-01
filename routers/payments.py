@@ -896,10 +896,15 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     credit_applied = max(0.0, total_paid_all - _cash_for_batch) if _batch_credit > 0 else 0.0
     credit_applied = min(credit_applied, _batch_credit)  # cap at actual drawn amount
 
+    # Pre-existing partial amounts already on these weeks before this batch was recorded
+    # = total paid on receipt - (new cash + credit used here)
+    pre_existing_total = max(0.0, total_paid_all - _cash_for_batch - credit_applied)
+
     penalty_amt  = float(p.penalty_amount or 0)
     penalty_str  = f"{int(penalty_amt):,} ETB" if penalty_amt else None
     grand_total  = total_paid_all + penalty_amt
     total_str    = f"{int(grand_total):,} ETB"
+    new_cash_str = f"{int(_cash_for_batch):,} ETB"
 
     # Weeks / draw dates section
     if len(batch_payments) == 1:
@@ -1001,6 +1006,8 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   {f'<div class="row penalty"><span>Late Penalty</span><span>{penalty_str}</span></div>' if penalty_str else ""}
   {f'<div class="row" style="color:#2563eb"><span>Credit Applied</span><span style="font-weight:600">{int(credit_applied):,} ETB</span></div>' if credit_applied > 0 else ""}
   {f'<div class="row" style="color:#d97706;font-weight:600"><span>Total Remaining</span><span>{int(total_remaining):,} ETB</span></div>' if total_remaining > 0 else ""}
+  {f'<div style="border-top:1px dashed #e5e7eb;margin:8px 0 4px"></div><div class="row" style="font-size:13px;color:#6b7280"><span>Previous Partial Payments</span><span>{int(pre_existing_total):,} ETB</span></div>' if pre_existing_total > 0 else ""}
+  {f'<div class="row" style="font-size:13px;color:#6b7280"><span>New Cash Received</span><span>{new_cash_str}</span></div>' if pre_existing_total > 0 else ""}
   <div class="total-row"><span>{'Amount Received' if is_partial_batch else 'Total Paid'}</span><span>{total_str}</span></div>
   {"<div class='row' style='margin-top:12px;font-size:13px;color:#6b7280'><span>Notes</span><span style='text-align:right'>" + p.notes + "</span></div>" if p.notes else ""}
 
