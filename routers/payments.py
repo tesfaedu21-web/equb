@@ -1006,8 +1006,10 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   {f'<div class="row penalty"><span>Late Penalty</span><span>{penalty_str}</span></div>' if penalty_str else ""}
   {f'<div class="row" style="color:#2563eb"><span>Credit Applied</span><span style="font-weight:600">{int(credit_applied):,} ETB</span></div>' if credit_applied > 0 else ""}
   {f'<div class="row" style="color:#d97706;font-weight:600"><span>Total Remaining</span><span>{int(total_remaining):,} ETB</span></div>' if total_remaining > 0 else ""}
-  {f'<div style="border-top:1px dashed #e5e7eb;margin:8px 0 4px"></div><div class="row" style="font-size:13px;color:#6b7280"><span>Previous Partial Payments</span><span>{int(pre_existing_total):,} ETB</span></div>' if pre_existing_total > 0 else ""}
-  {f'<div class="row" style="font-size:13px;color:#6b7280"><span>New Cash Received</span><span>{new_cash_str}</span></div>' if pre_existing_total > 0 else ""}
+  {f'''<div style="border-top:1px dashed #e5e7eb;margin:10px 0 6px"></div>
+  <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">How this was covered</div>
+  <div class="row" style="font-size:13px;color:#6b7280"><span>Previously paid (from prior overpayment)</span><span style="font-weight:600">{int(pre_existing_total):,} ETB</span></div>
+  <div class="row" style="font-size:13px;color:#374151"><span>Cash received on {p.paid_date.strftime("%d %b %Y") if p.paid_date else "this date"}</span><span style="font-weight:600">{new_cash_str}</span></div>''' if pre_existing_total > 0 else ""}
   <div class="total-row"><span>{'Amount Received' if is_partial_batch else 'Total Paid'}</span><span>{total_str}</span></div>
   {"<div class='row' style='margin-top:12px;font-size:13px;color:#6b7280'><span>Notes</span><span style='text-align:right'>" + p.notes + "</span></div>" if p.notes else ""}
 
