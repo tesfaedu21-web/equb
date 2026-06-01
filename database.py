@@ -191,6 +191,8 @@ class Member(Base):
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     deleted_at = Column(DateTime, nullable=True)          # set when member leaves/is removed
 
+    credit_balance = Column(Numeric(12, 2), default=0, server_default="0")  # unspent overpayment carried forward
+
     spot_assignments = relationship("MemberSpot", back_populates="member",
                                    foreign_keys="MemberSpot.member_id")
     payments = relationship("Payment", back_populates="member")
@@ -950,6 +952,7 @@ def _migrate(engine):
         "ALTER TABLE debt_cases ALTER COLUMN total_owed TYPE NUMERIC(12,2) USING total_owed::NUMERIC(12,2)",
         "ALTER TABLE debt_contacts ALTER COLUMN promised_amount TYPE NUMERIC(12,2) USING promised_amount::NUMERIC(12,2)",
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12,2)",
+        "ALTER TABLE members ADD COLUMN IF NOT EXISTS credit_balance NUMERIC(12,2) DEFAULT 0",
         # One-time: reactivate the new cycle that was accidentally closed
         "UPDATE cycles SET status='active', end_date=NULL WHERE id=32",
     ]

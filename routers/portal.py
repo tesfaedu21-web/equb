@@ -215,6 +215,7 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
                 (p["remaining_amount"] if p["remaining_amount"] is not None else p["amount"])
                 for p in outstanding
             ),
+            "credit_balance": float(member.credit_balance or 0),
         },
     }
 

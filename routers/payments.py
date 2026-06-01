@@ -329,6 +329,7 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
             (p.amount - (p.paid_amount or 0)) if p.status == "partial" else p.amount
             for p in payments
         ),
+        "credit_balance": float(member.credit_balance or 0),
     }
 
 
@@ -382,9 +383,13 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
     # Sort weeks by week_number so distribution is sequential
     payments.sort(key=lambda p: p.week.week_number if p.week else 0)
 
-    # Distribute actual cash received across weeks sequentially
-    remaining = float(data.total_paid) if data.total_paid is not None else full_total
-    actual_collected = remaining  # save for batch record
+    # Apply any existing credit balance before new cash
+    existing_credit = float(member.credit_balance or 0)
+    new_cash = float(data.total_paid) if data.total_paid is not None else full_total
+    remaining = new_cash + existing_credit
+    actual_collected = new_cash  # only new cash shown in audit/SMS
+    if existing_credit > 0:
+        member.credit_balance = 0  # tentatively zero; restore below if unused
 
     batch = PaymentBatch(
         member_id=data.member_id,
@@ -422,14 +427,67 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
             partial_payments.append(p)
         # else: remaining==0, leave status unchanged (pending/late/missed)
 
+    # Cascade any leftover cash to the next unpaid week in the cycle
+    credit_carried = 0.0
+    cascade_week_number = None
+    if remaining > 0:
+        active_cycle = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
+        if active_cycle:
+            next_p = (
+                db.query(Payment)
+                .join(Week, Week.id == Payment.week_id)
+                .filter(
+                    Payment.member_id == data.member_id,
+                    Payment.status.in_(["pending", "late", "missed"]),
+                    Week.cycle_id == active_cycle.id,
+                    ~Payment.week_id.in_(data.week_ids),
+                )
+                .order_by(Week.week_number)
+                .first()
+            )
+            if next_p:
+                cascade_week_number = next_p.week.week_number if next_p.week else None
+                week_needed = float(next_p.amount) - float(next_p.paid_amount or 0)
+                next_p.batch_id = batch.id
+                next_p.paid_date = pay_date
+                next_p.payment_method = data.payment_method
+                next_p.reference = data.reference
+                next_p.collected_by_id = cashier_id
+                if remaining >= week_needed:
+                    next_p.status = "paid"
+                    next_p.paid_amount = next_p.amount
+                    remaining -= week_needed
+                    # Any further overflow becomes credit (don't cascade recursively)
+                    if remaining > 0:
+                        member.credit_balance = round(remaining, 2)
+                        credit_carried = remaining
+                        remaining = 0
+                else:
+                    next_p.status = "partial"
+                    next_p.paid_amount = round(float(next_p.paid_amount or 0) + remaining, 2)
+                    partial_payments.append(next_p)
+                    remaining = 0
+            else:
+                # No outstanding week — store as credit for future payments
+                member.credit_balance = round(float(member.credit_balance or 0) + remaining, 2)
+                credit_carried = remaining
+                remaining = 0
+        else:
+            member.credit_balance = round(float(member.credit_balance or 0) + remaining, 2)
+            credit_carried = remaining
+            remaining = 0
+
     db.commit()
     db.refresh(batch)
     user = _get_current_user(request, db)
+    credit_note = f" (includes {existing_credit:,.0f} ETB credit)" if existing_credit > 0 else ""
+    cascade_note = f"; {credit_carried:,.0f} ETB carried to Wk {cascade_week_number}" if cascade_week_number and credit_carried == 0 else (f"; {credit_carried:,.0f} ETB stored as credit" if credit_carried > 0 else "")
     log_action(db, user=user, action="create", table="payment_batches",
                record_id=batch.id,
-               description=f"Recorded {len(payments)} payment(s) for {member.name} — {actual_collected:,.0f} ETB via {data.payment_method}",
+               description=f"Recorded {len(payments)} payment(s) for {member.name} — {actual_collected:,.0f} ETB via {data.payment_method}{credit_note}{cascade_note}",
                new={"member_id": data.member_id, "weeks": data.week_ids,
-                    "total": actual_collected, "method": data.payment_method})
+                    "total": actual_collected, "method": data.payment_method,
+                    "credit_applied": existing_credit, "credit_carried": credit_carried})
     db.commit()
 
     # SMS: send partial notification if any week was partially paid
@@ -443,6 +501,10 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
     result = batch_to_dict(batch)
     result["sms_status"] = sms_status
     result["is_partial"] = bool(partial_payments)
+    result["credit_applied"] = existing_credit
+    result["credit_carried"] = credit_carried
+    result["cascade_week_number"] = cascade_week_number
+    result["member_credit_balance"] = float(member.credit_balance or 0)
     return result
 
 
@@ -721,6 +783,7 @@ def member_payment_balance(member_id: int, up_to_week_number: int = 9999,
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)
     unpaid = q.all()
+    member_obj = db.query(Member).filter(Member.id == member_id).first()
     return {
         "member_id": member_id,
         "fully_paid": len(unpaid) == 0,
@@ -730,6 +793,7 @@ def member_payment_balance(member_id: int, up_to_week_number: int = 9999,
             for p in unpaid
         ),
         "unpaid_weeks": sorted([p.week.week_number for p in unpaid]),
+        "credit_balance": float(member_obj.credit_balance or 0) if member_obj else 0.0,
     }
 
 
