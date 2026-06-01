@@ -558,19 +558,8 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
         p.penalty_amount  = 0
         p.collected_by_id = None
 
-        # Restore credit if the entire batch is now undone
-        if old_batch and old_batch.credit_applied and float(old_batch.credit_applied) > 0:
-            sibling_payments = [bp for bp in old_batch.payments if bp.id != p.id]
-            all_siblings_reverted = all(
-                bp.status in ("pending", "missed", "late") or bp.id == p.id
-                for bp in sibling_payments
-            )
-            if all_siblings_reverted:
-                member = db.query(Member).filter(Member.id == p.member_id).first()
-                if member:
-                    member.credit_balance = round(
-                        float(member.credit_balance or 0) + float(old_batch.credit_applied), 2
-                    )
+        # Note: credit_balance is NOT restored on reset — use the admin
+        # "Reset to 0" tool on the Members page to correct credit manually.
     else:
         if data.payment_method:
             p.payment_method = data.payment_method
