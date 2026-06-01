@@ -167,7 +167,7 @@ def payment_to_dict(p: Payment, cycle_id: Optional[int] = None) -> dict:
         "collected_by_id": p.collected_by_id,
         "collected_by_name": p.collected_by.full_name if p.collected_by else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-        "receipt_no": _receipt_no(p) if p.status == "paid" else None,
+        "receipt_no": _receipt_no(p) if p.status in ("paid", "partial") else None,
     }
 
 
@@ -305,7 +305,7 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
     now = _eat_now()
     q = (db.query(Payment)
          .filter(Payment.member_id == member_id,
-                 Payment.status.in_(["pending", "late", "missed"]))
+                 Payment.status.in_(["pending", "late", "missed", "partial"]))
          .join(Week)
          .options(
              selectinload(Payment.batch).selectinload(PaymentBatch.payments).selectinload(Payment.week),
@@ -325,7 +325,10 @@ def outstanding_weeks(member_id: int, include_week_id: Optional[int] = None,
         "member_id": member_id,
         "member_name": member.name,
         "outstanding": [payment_to_dict(p) for p in payments],
-        "total_owed": sum(p.amount for p in payments),
+        "total_owed": sum(
+            (p.amount - (p.paid_amount or 0)) if p.status == "partial" else p.amount
+            for p in payments
+        ),
     }
 
 
@@ -556,21 +559,26 @@ def outstanding_members(cycle_id: Optional[int] = None, db: Session = Depends(ge
         active = db.query(Cycle).filter(Cycle.status == "active").order_by(Cycle.id.desc()).first()
         cycle_id = active.id if active else None
 
+    from sqlalchemy import case as _case
+    _remaining = _case(
+        (Payment.status == "partial", Payment.amount - func.coalesce(Payment.paid_amount, 0)),
+        else_=Payment.amount
+    )
     q = (
         db.query(Member,
                  func.count(Payment.id).label("cnt"),
-                 func.sum(Payment.amount).label("total"))
+                 func.sum(_remaining).label("total"))
         .join(Payment, Payment.member_id == Member.id)
         .join(Week, Week.id == Payment.week_id)
         .filter(
             Member.status.in_(["active", "received"]),
-            Payment.status.in_(["pending", "late", "missed"]),
+            Payment.status.in_(["pending", "late", "missed", "partial"]),
             Week.draw_date <= now,
         )
     )
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)
-    rows = q.group_by(Member.id).order_by(func.sum(Payment.amount).desc()).all()
+    rows = q.group_by(Member.id).order_by(func.sum(_remaining).desc()).all()
 
     result = []
     for member, cnt, total in rows:
@@ -702,7 +710,7 @@ def member_payment_balance(member_id: int, up_to_week_number: int = 9999,
     q = (db.query(Payment)
          .join(Week)
          .filter(Payment.member_id == member_id,
-                 Payment.status.in_(["pending", "late", "missed"]),
+                 Payment.status.in_(["pending", "late", "missed", "partial"]),
                  Week.week_number <= up_to_week_number))
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)
@@ -711,7 +719,10 @@ def member_payment_balance(member_id: int, up_to_week_number: int = 9999,
         "member_id": member_id,
         "fully_paid": len(unpaid) == 0,
         "unpaid_count": len(unpaid),
-        "unpaid_amount": sum(p.amount for p in unpaid),
+        "unpaid_amount": sum(
+            (p.amount - (p.paid_amount or 0)) if p.status == "partial" else p.amount
+            for p in unpaid
+        ),
         "unpaid_weeks": sorted([p.week.week_number for p in unpaid]),
     }
 
@@ -737,16 +748,21 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     group_name  = (gs.group_name  or "እቁብ") if gs else "እቁብ"
     group_tag   = (gs.group_tagline or "Equb Manager") if gs else "Equb Manager"
 
-    paid_date_html = _dual_date(p.paid_date)
-    draw_date_html = _dual_date(w.draw_date if w else None)
-    amount_str     = f"{int(p.amount):,} ETB"
-    penalty_str    = f"{int(p.penalty_amount):,} ETB" if p.penalty_amount else None
-    total_str      = f"{int((p.amount or 0) + (p.penalty_amount or 0)):,} ETB"
-    method_labels  = {"cash": "Cash", "bank_transfer": "Bank Transfer", "cheque": "Cheque"}
-    method_str     = method_labels.get(p.payment_method or "", p.payment_method or "—")
-    receipt_no     = _receipt_no(p)
+    paid_date_html   = _dual_date(p.paid_date)
+    draw_date_html   = _dual_date(w.draw_date if w else None)
+    is_partial       = p.status == "partial"
+    paid_amt         = float(p.paid_amount or 0) if is_partial else float(p.amount or 0)
+    remaining_amt    = float(p.amount or 0) - paid_amt if is_partial else 0
+    amount_str       = f"{int(p.amount):,} ETB"
+    paid_str         = f"{int(paid_amt):,} ETB"
+    remaining_str    = f"{int(remaining_amt):,} ETB" if is_partial else None
+    penalty_str      = f"{int(p.penalty_amount):,} ETB" if p.penalty_amount else None
+    total_str        = f"{int(paid_amt + float(p.penalty_amount or 0)):,} ETB"
+    method_labels    = {"cash": "Cash", "bank_transfer": "Bank Transfer", "cheque": "Cheque"}
+    method_str       = method_labels.get(p.payment_method or "", p.payment_method or "—")
+    receipt_no       = _receipt_no(p)
     collected_by_str = p.collected_by.full_name if p.collected_by else "—"
-    is_late        = bool(p.penalty_amount)
+    is_late          = bool(p.penalty_amount)
 
     # Spot number(s) for this member in this cycle
     if m and cycle:
@@ -803,7 +819,9 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     <div class="logo">እ</div>
     <div class="org">{group_name}</div>
     <div class="tag">{group_tag}</div>
-    <div class="badge">✓ Payment Received</div>
+    <div class="badge" style="{'background:#fef3c7;color:#92400e' if is_partial else ''}">
+      {'⚠ Partial Payment' if is_partial else '✓ Payment Received'}
+    </div>
   </div>
 
   <h2>Receipt Details</h2>
@@ -813,6 +831,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   <div class="row"><span>Collected By</span><span>{collected_by_str}</span></div>
   {"<div class='row'><span>Reference</span><span>" + p.reference + "</span></div>" if p.reference else ""}
   {"<div class='row'><span>Status</span><span style='color:#dc2626;font-weight:600'>Late Payment</span></div>" if is_late else ""}
+  {"<div class='row'><span>Status</span><span style='color:#d97706;font-weight:600'>Partial Payment</span></div>" if is_partial else ""}
 
   <h2>Member</h2>
   <div class="row"><span>Name</span><span>{m.name if m else "—"}</span></div>
@@ -825,9 +844,11 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   <div class="row"><span>Draw Date</span>{draw_date_html}</div>
 
   <h2>Amount</h2>
-  <div class="row"><span>Contribution</span><span>{amount_str}</span></div>
+  <div class="row"><span>Weekly Contribution</span><span>{amount_str}</span></div>
+  <div class="row"><span>Amount Paid</span><span style="font-weight:700;color:#078930">{paid_str}</span></div>
+  {f'<div class="row" style="color:#d97706"><span>Remaining Balance</span><span style="font-weight:700">{remaining_str}</span></div>' if remaining_str else ""}
   {f'<div class="row penalty"><span>Late Penalty</span><span>{penalty_str}</span></div>' if penalty_str else ""}
-  <div class="total-row"><span>Total</span><span>{total_str}</span></div>
+  <div class="total-row"><span>{'Amount Received' if is_partial else 'Total'}</span><span>{total_str}</span></div>
   {"<div class='row' style='margin-top:12px;font-size:13px;color:#6b7280'><span>Notes</span><span style='text-align:right'>" + p.notes + "</span></div>" if p.notes else ""}
 
   <div class="footer">

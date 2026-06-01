@@ -55,15 +55,20 @@ def _check_fully_paid(member: Member, up_to_week_number: int, db: Session,
                        cycle_id: Optional[int] = None) -> dict:
     q = (db.query(Payment).join(Week)
          .filter(Payment.member_id == member.id,
-                 Payment.status.in_(["pending", "late", "missed"]),
+                 Payment.status.in_(["pending", "late", "missed", "partial"]),
                  Week.week_number <= up_to_week_number))
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)
     unpaid = q.all()
+    # For partial payments, only the remaining amount is truly owed
+    unpaid_amount = sum(
+        (p.amount - (p.paid_amount or 0)) if p.status == "partial" else p.amount
+        for p in unpaid
+    )
     return {
         "fully_paid": len(unpaid) == 0,
         "unpaid_count": len(unpaid),
-        "unpaid_amount": sum(p.amount for p in unpaid),
+        "unpaid_amount": unpaid_amount,
         "unpaid_weeks": sorted(p.week.week_number for p in unpaid),
     }
 
@@ -1000,10 +1005,10 @@ def closure_checklist(cycle_id: int, db: Session = Depends(get_db)):
             + ("" if all_drawn else f" — {total_weeks - drawn_weeks} still pending"),
     }]
 
-    # 2. All members paid up (no pending/late/missed)?
+    # 2. All members paid up (no pending/late/missed/partial)?
     unpaid_count = db.query(Payment).filter(
         Payment.week_id.in_(week_ids),
-        Payment.status.in_(["pending", "late", "missed"])
+        Payment.status.in_(["pending", "late", "missed", "partial"])
     ).count() if week_ids else 0
     items.append({
         "check": "All member payments settled",

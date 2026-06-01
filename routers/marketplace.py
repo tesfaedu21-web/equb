@@ -89,7 +89,7 @@ def _listing_dict(l: SpotListing) -> dict:
 def _check_fully_paid(member, up_to_week_number: int, cycle_id, db: Session) -> dict:
     q = (db.query(Payment).join(Week)
          .filter(Payment.member_id == member.id,
-                 Payment.status.in_(["pending", "late", "missed"]),
+                 Payment.status.in_(["pending", "late", "missed", "partial"]),
                  Week.week_number <= up_to_week_number))
     if cycle_id:
         q = q.filter(Week.cycle_id == cycle_id)

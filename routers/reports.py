@@ -248,22 +248,27 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
     top_debtors = []
     if cycle:
         now_dt = _eat_now()
+        from sqlalchemy import case as _case
+        _rem = _case(
+            (Payment.status == "partial", Payment.amount - func.coalesce(Payment.paid_amount, 0)),
+            else_=Payment.amount
+        )
         debtor_rows = (
             db.query(
                 Payment.member_id,
                 Member.name,
                 func.count(Payment.id).label("unpaid_weeks"),
-                func.sum(Payment.amount + func.coalesce(Payment.penalty_amount, 0)).label("total_owed"),
+                func.sum(_rem + func.coalesce(Payment.penalty_amount, 0)).label("total_owed"),
             )
             .join(Week, Week.id == Payment.week_id)
             .join(Member, Member.id == Payment.member_id)
             .filter(
-                Payment.status.in_(["pending", "late", "missed"]),
+                Payment.status.in_(["pending", "late", "missed", "partial"]),
                 Week.draw_date <= now_dt,
                 Week.cycle_id == cycle.id,
             )
             .group_by(Payment.member_id, Member.name)
-            .order_by(func.sum(Payment.amount + func.coalesce(Payment.penalty_amount, 0)).desc())
+            .order_by(func.sum(_rem + func.coalesce(Payment.penalty_amount, 0)).desc())
             .limit(5)
             .all()
         )
@@ -271,14 +276,28 @@ def dashboard_stats(cycle_id: Optional[int] = None, db: Session = Depends(get_db
             db.query(Payment.member_id)
             .join(Week, Week.id == Payment.week_id)
             .filter(
-                Payment.status.in_(["pending", "late", "missed"]),
+                Payment.status.in_(["pending", "late", "missed", "partial"]),
                 Week.draw_date <= now_dt,
                 Week.cycle_id == cycle.id,
             )
             .distinct()
             .count()
         )
-        debtors_total_owed = sum(float(r.total_owed or 0) for r in debtor_rows)
+        _total_rem_all = _case(
+            (Payment.status == "partial", Payment.amount - func.coalesce(Payment.paid_amount, 0)),
+            else_=Payment.amount
+        )
+        _total_owed_row = (
+            db.query(func.sum(_total_rem_all + func.coalesce(Payment.penalty_amount, 0)))
+            .join(Week, Week.id == Payment.week_id)
+            .filter(
+                Payment.status.in_(["pending", "late", "missed", "partial"]),
+                Week.draw_date <= now_dt,
+                Week.cycle_id == cycle.id,
+            )
+            .scalar()
+        )
+        debtors_total_owed = float(_total_owed_row or 0)
         top_debtors = [
             {"name": r.name, "unpaid_weeks": r.unpaid_weeks, "total_owed": round(float(r.total_owed or 0), 2)}
             for r in debtor_rows
@@ -403,6 +422,7 @@ def weekly_payment_summary(week_id: int, db: Session = Depends(get_db)):
     paid_rows = []
     unpaid_rows = []
 
+    partial_rows = []
     for p in all_payments:
         member_name = p.member.name if p.member else ""
         if p.status == "paid":
@@ -419,6 +439,23 @@ def weekly_payment_summary(week_id: int, db: Session = Depends(get_db)):
                 "reference":   p.reference,
                 "paid_date":   p.paid_date.isoformat() if p.paid_date else None,
             })
+        elif p.status == "partial":
+            method = p.payment_method or "cash"
+            bucket = method if method in totals else "other"
+            paid_amt = float(p.paid_amount or 0)
+            totals[bucket] += paid_amt
+            count[bucket]  += 1
+            partial_rows.append({
+                "member_id":      p.member_id,
+                "member_name":    member_name,
+                "week_number":    w.week_number,
+                "amount":         p.amount,
+                "paid_amount":    p.paid_amount,
+                "remaining":      float(p.amount) - paid_amt,
+                "method":         method,
+                "reference":      p.reference,
+                "paid_date":      p.paid_date.isoformat() if p.paid_date else None,
+            })
         else:
             unpaid_rows.append({
                 "member_id":   p.member_id,
@@ -428,6 +465,7 @@ def weekly_payment_summary(week_id: int, db: Session = Depends(get_db)):
             })
 
     paid_rows.sort(key=lambda r: (r["method"], r["member_name"]))
+    partial_rows.sort(key=lambda r: r["member_name"])
     unpaid_rows.sort(key=lambda r: r["member_name"])
 
     return {
@@ -440,6 +478,8 @@ def weekly_payment_summary(week_id: int, db: Session = Depends(get_db)):
         "totals":         totals,
         "count":          count,
         "payments":       paid_rows,
+        "partial":        partial_rows,
+        "partial_count":  len(partial_rows),
         "unpaid_count":   len(unpaid_rows),
         "unpaid":         unpaid_rows,
     }
@@ -840,7 +880,8 @@ def _general_ledger_data(cycle_id: int, db: Session) -> list:
     week_map = {w.id: w for w in weeks}
 
     payments = db.query(Payment).filter(
-        Payment.week_id.in_(week_ids), Payment.status == "paid"
+        Payment.week_id.in_(week_ids),
+        Payment.status.in_(["paid", "partial"])
     ).all()
 
     by_week: dict = {}
@@ -849,7 +890,11 @@ def _general_ledger_data(cycle_id: int, db: Session) -> list:
 
     for w in weeks:
         week_payments = by_week.get(w.id, [])
-        total = sum(p.amount for p in week_payments)
+        # For partial payments, only credit the actual cash received
+        total = sum(
+            (p.paid_amount or 0) if p.status == "partial" else p.amount
+            for p in week_payments
+        )
         if total == 0:
             continue
         paid_dates = [p.paid_date for p in week_payments if p.paid_date]
@@ -1200,7 +1245,7 @@ def export_payment_matrix(cycle_id: Optional[int] = None, db: Session = Depends(
             row[week_headers[w.id]] = status
             if status == "paid":
                 total_paid += 1
-            if status in ("paid", "late", "missed", "pending"):
+            if status in ("paid", "late", "missed", "pending", "partial"):
                 total_owed += 1
         row["Paid Weeks"] = total_paid
         row["Total Weeks"] = total_owed
@@ -1286,18 +1331,23 @@ def export_outstanding(cycle_id: Optional[int] = None, db: Session = Depends(get
 
     cycle = db.query(Cycle).filter(Cycle.id == cycle_id).first()
     now = _eat_now()
+    from sqlalchemy import case as _case
+    _remaining_csv = _case(
+        (Payment.status == "partial", Payment.amount - func.coalesce(Payment.paid_amount, 0)),
+        else_=Payment.amount
+    )
     rows_data = (
         db.query(Member, func.count(Payment.id).label("unpaid_weeks"),
-                 func.sum(Payment.amount).label("total_owed"))
+                 func.sum(_remaining_csv).label("total_owed"))
         .join(Payment, Payment.member_id == Member.id)
         .join(Week, Week.id == Payment.week_id)
         .filter(
             Week.cycle_id == cycle_id,
-            Payment.status.in_(["pending", "late", "missed"]),
+            Payment.status.in_(["pending", "late", "missed", "partial"]),
             Week.draw_date <= now,
         )
         .group_by(Member.id)
-        .order_by(func.sum(Payment.amount).desc())
+        .order_by(func.sum(_remaining_csv).desc())
         .all()
     )
 
@@ -1407,27 +1457,35 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
         week_numbers = sorted([p.week.week_number for p in bp if p.week])
         eth_yr   = _eth_year(b.payment_date) if b.payment_date else None
         max_week = max(week_numbers, default=0)
+        has_partial = any(p.status == "partial" for p in bp)
+        paid_total = float(sum(
+            (p.paid_amount or p.amount) if p.status == "partial" else p.amount
+            for p in bp
+        ))
         batch_rows.append({
             "payment_date":     b.payment_date.isoformat(),
             "weeks_covered":    week_numbers,
             "weeks_count":      len(week_numbers),
-            "total_amount":     float(sum(p.amount for p in bp)),
+            "total_amount":     paid_total,
+            "is_partial":       has_partial,
             "payment_method":   b.payment_method,
             "reference":        b.reference,
             "collected_by_name": b.collected_by.full_name if b.collected_by else None,
             "receipt_no":       f"RCP-{eth_yr}-W{max_week:02d}-{b.id:05d}" if eth_yr else None,
         })
-    # Payments marked paid directly (no batch)
+    # Payments marked paid/partial directly (no batch)
     for p in ps:
-        if p.status == "paid" and not p.batch_id and p.week:
+        if p.status in ("paid", "partial") and not p.batch_id and p.week:
             pd = p.paid_date
             eth_yr = _eth_year(pd) if pd else None
             wk     = p.week.week_number if p.week else 0
+            paid_amt = float((p.paid_amount or p.amount) if p.status == "partial" else p.amount)
             batch_rows.append({
                 "payment_date":     pd.isoformat() if pd else None,
                 "weeks_covered":    [wk],
                 "weeks_count":      1,
-                "total_amount":     float(p.amount),
+                "total_amount":     paid_amt,
+                "is_partial":       p.status == "partial",
                 "payment_method":   p.payment_method,
                 "reference":        p.reference,
                 "collected_by_name": p.collected_by.full_name if p.collected_by else None,
@@ -1441,13 +1499,14 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
     _today = _dt.utcnow().date()
     unpaid = [
         {
-            "week_number": p.week.week_number,
-            "draw_date":   p.week.draw_date.isoformat(),
-            "status":      p.status,
-            "amount":      float(p.amount),
+            "week_number":  p.week.week_number,
+            "draw_date":    p.week.draw_date.isoformat(),
+            "status":       p.status,
+            "amount":       float(p.amount - (p.paid_amount or 0)) if p.status == "partial" else float(p.amount),
+            "paid_amount":  float(p.paid_amount or 0) if p.status == "partial" else None,
         }
         for p in ps
-        if p.status in ("pending", "missed", "late")
+        if p.status in ("pending", "missed", "late", "partial")
         and p.week
         and p.week.draw_date.date() <= _today
     ]
@@ -1461,10 +1520,14 @@ def member_statement(member_id: int, cycle_id: Optional[int] = None, db: Session
         "unpaid":       unpaid,
         "summary": {
             "paid":                sum(1 for p in ps if p.status == "paid"),
+            "partial":             sum(1 for p in ps if p.status == "partial"),
             "missed":              sum(1 for p in ps if p.status == "missed"),
             "late":                sum(1 for p in ps if p.status == "late"),
             "pending":             sum(1 for p in ps if p.status == "pending"),
-            "total_paid_amount":   float(sum(p.amount for p in ps if p.status == "paid")),
+            "total_paid_amount":   float(sum(
+                (p.paid_amount or p.amount) if p.status == "partial" else p.amount
+                for p in ps if p.status in ("paid", "partial")
+            )),
             "total_owed_amount":   float(sum(p["amount"] for p in unpaid)),
         },
     }
@@ -1721,7 +1784,11 @@ def cycle_closure_report(cycle_id: Optional[int] = None, db: Session = Depends(g
     paid_payments = db.query(Payment).filter(
         Payment.week_id.in_(week_ids), Payment.status == "paid"
     ).all() if week_ids else []
-    total_collected = sum(p.amount for p in paid_payments)
+    partial_payments = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids), Payment.status == "partial"
+    ).all() if week_ids else []
+    total_collected = sum(p.amount for p in paid_payments) + sum(p.paid_amount or 0 for p in partial_payments)
+    total_partial_remaining = sum(p.amount - (p.paid_amount or 0) for p in partial_payments)
     missed_payments = db.query(Payment).filter(
         Payment.week_id.in_(week_ids), Payment.status.in_(["missed", "late"])
     ).all() if week_ids else []
@@ -1778,9 +1845,10 @@ def cycle_closure_report(cycle_id: Optional[int] = None, db: Session = Depends(g
         },
         "collections": {
             "total_collected": round(total_collected, 2),
+            "total_partial_remaining": round(total_partial_remaining, 2),
             "total_missed": round(total_missed, 2),
-            "collection_rate": round(total_collected / (total_collected + total_missed) * 100, 1)
-                               if (total_collected + total_missed) else 0,
+            "collection_rate": round(total_collected / (total_collected + total_partial_remaining + total_missed) * 100, 1)
+                               if (total_collected + total_partial_remaining + total_missed) else 0,
         },
         "disbursements": {
             "count": len(active_disbs),

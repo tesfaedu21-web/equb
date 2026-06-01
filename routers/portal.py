@@ -92,11 +92,14 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
                 w = p.week
                 if not w:
                     continue
+                is_partial = p.status == "partial"
                 payments.append({
                     "id": p.id,
                     "week_number": w.week_number,
                     "draw_date": w.draw_date.isoformat(),
                     "amount": float(p.amount),
+                    "paid_amount": float(p.paid_amount or 0) if is_partial else None,
+                    "remaining_amount": float(p.amount - (p.paid_amount or 0)) if is_partial else None,
                     "status": p.status,
                     "paid_date": p.paid_date.isoformat() if p.paid_date else None,
                     "payment_method": p.payment_method,
@@ -144,14 +147,18 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
 
     # Summary stats
     paid_count = sum(1 for p in payments if p["status"] == "paid")
+    partial_count = sum(1 for p in payments if p["status"] == "partial")
     missed_count = sum(1 for p in payments if p["status"] in ("missed",))
-    total_paid_amount = sum(p["amount"] for p in payments if p["status"] == "paid")
-    outstanding = [p for p in payments if p["status"] in ("pending", "late", "missed") and p["is_past"]]
+    total_paid_amount = sum(
+        (p["paid_amount"] or p["amount"]) if p["status"] == "partial" else p["amount"]
+        for p in payments if p["status"] in ("paid", "partial")
+    )
+    outstanding = [p for p in payments if p["status"] in ("pending", "late", "missed", "partial") and p["is_past"]]
 
     # Next payment due: earliest overdue first, then next upcoming unpaid
     next_due = None
     overdue_payments = sorted(
-        [p for p in payments if p["status"] in ("late", "missed") and p["is_past"]],
+        [p for p in payments if p["status"] in ("late", "missed", "partial") and p["is_past"]],
         key=lambda x: x["draw_date"],
     )
     if overdue_payments:
@@ -200,10 +207,14 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
         "summary": {
             "total_weeks": len(payments),
             "paid_weeks": paid_count,
+            "partial_weeks": partial_count,
             "missed_weeks": missed_count,
             "total_paid_amount": total_paid_amount,
             "outstanding_count": len(outstanding),
-            "outstanding_amount": sum(p["amount"] for p in outstanding),
+            "outstanding_amount": sum(
+                (p["remaining_amount"] if p["remaining_amount"] is not None else p["amount"])
+                for p in outstanding
+            ),
         },
     }
 

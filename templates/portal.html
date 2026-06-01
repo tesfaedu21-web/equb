@@ -231,6 +231,7 @@ body { font-family: var(--font-ui); background: #0f1a12; min-height: 100vh; colo
 .wn-paid    { background:#dcfce7; color:#15803d; }
 .wn-missed  { background:#fee2e2; color:#b91c1c; }
 .wn-late    { background:#ffedd5; color:#c2410c; }
+.wn-partial { background:#fff7ed; color:#c2410c; }
 .wn-pending { background:#f1f5f9; color:#64748b; }
 .wn-future  { background:rgba(255,255,255,.12); color:rgba(255,255,255,.5); }
 .week-info { flex:1; min-width:0; }
@@ -244,6 +245,7 @@ body { font-family: var(--font-ui); background: #0f1a12; min-height: 100vh; colo
 .sp-pending { background:#fef9c3; color:#854d0e; border:1px solid #fde68a; }
 .sp-late    { background:#ffedd5; color:#c2410c; border:1px solid #fed7aa; }
 .sp-missed  { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+.sp-partial { background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; }
 .sp-upcoming{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
 .amount-val { font-family:var(--font-display); font-size:1rem; color:var(--gold); line-height:1; }
 .amount-val.white { color:#fff; }
@@ -619,7 +621,7 @@ body { font-family: var(--font-ui); background: #0f1a12; min-height: 100vh; colo
               <div :style="!p.is_past && p.status==='pending' ? 'opacity:.4' : ''">
                 <div class="week-row">
                   <div class="week-num"
-                       :class="{'wn-paid':p.status==='paid','wn-missed':p.status==='missed','wn-late':p.status==='late','wn-pending':p.status==='pending'&&p.is_past,'wn-future':p.status==='pending'&&!p.is_past}">
+                       :class="{'wn-paid':p.status==='paid','wn-missed':p.status==='missed','wn-late':p.status==='late','wn-partial':p.status==='partial','wn-pending':p.status==='pending'&&p.is_past,'wn-future':p.status==='pending'&&!p.is_past}">
                     <span x-text="p.week_number"></span>
                   </div>
                   <div class="week-info">
@@ -629,6 +631,13 @@ body { font-family: var(--font-ui); background: #0f1a12; min-height: 100vh; colo
                       <span x-text="t('Paid','ተከፍሏል')"></span> <span x-text="fmtDate(p.paid_date)"></span>
                       <span x-show="p.payment_method" x-text="' · ' + p.payment_method"></span>
                     </div>
+                    <!-- Partial detail -->
+                    <template x-if="p.status === 'partial' && p.paid_amount">
+                      <div style="font-size:11px;color:#d97706;margin-top:2px">
+                        <span x-text="t('Paid:','ተከፍሏል:') + ' ' + fmt(p.paid_amount)"></span>
+                        <span style="margin-left:4px;color:#dc2626" x-text="'· ' + t('Due:','ቀሪ:') + ' ' + fmt(p.remaining_amount)"></span>
+                      </div>
+                    </template>
                   </div>
                   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">
                     <span style="font-family:var(--font-display);font-size:.95rem;color:var(--gold)" x-text="fmt(p.amount)"></span>
@@ -638,7 +647,7 @@ body { font-family: var(--font-ui); background: #0f1a12; min-height: 100vh; colo
                   </div>
                 </div>
                 <!-- Print receipt -->
-                <div x-show="p.status === 'paid'" style="padding:0 18px 10px">
+                <div x-show="p.status === 'paid' || p.status === 'partial'" style="padding:0 18px 10px">
                   <a :href="'/api/portal/payments/' + p.id + '/receipt?phone=' + encodeURIComponent(phone) + '&spot_number=' + encodeURIComponent(spotNumber) + '&print=1'"
                      target="_blank" class="receipt-btn">
                     <svg style="width:13px;height:13px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
