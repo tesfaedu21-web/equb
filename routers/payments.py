@@ -825,21 +825,67 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     group_name  = (gs.group_name  or "እቁብ") if gs else "እቁብ"
     group_tag   = (gs.group_tagline or "Equb Manager") if gs else "Equb Manager"
 
-    paid_date_html   = _dual_date(p.paid_date)
-    draw_date_html   = _dual_date(w.draw_date if w else None)
-    is_partial       = p.status == "partial"
-    paid_amt         = float(p.paid_amount or 0) if is_partial else float(p.amount or 0)
-    remaining_amt    = float(p.amount or 0) - paid_amt if is_partial else 0
-    amount_str       = f"{int(p.amount):,} ETB"
-    paid_str         = f"{int(paid_amt):,} ETB"
-    remaining_str    = f"{int(remaining_amt):,} ETB" if is_partial else None
-    penalty_str      = f"{int(p.penalty_amount):,} ETB" if p.penalty_amount else None
-    total_str        = f"{int(paid_amt + float(p.penalty_amount or 0)):,} ETB"
     method_labels    = {"cash": "Cash", "bank_transfer": "Bank Transfer", "cheque": "Cheque"}
     method_str       = method_labels.get(p.payment_method or "", p.payment_method or "—")
     receipt_no       = _receipt_no(p)
     collected_by_str = p.collected_by.full_name if p.collected_by else "—"
+    paid_date_html   = _dual_date(p.paid_date)
     is_late          = bool(p.penalty_amount)
+    credit_applied   = float(p.batch.credit_applied or 0) if p.batch else 0.0
+
+    # Batch-aware: collect all payments in this batch, sorted by week
+    if p.batch_id and p.batch:
+        batch_payments = sorted(
+            [bp for bp in p.batch.payments if bp.week],
+            key=lambda bp: bp.week.week_number
+        )
+    else:
+        batch_payments = [p] if p.week else []
+
+    is_partial_batch = any(bp.status == "partial" for bp in batch_payments)
+    is_partial       = p.status == "partial"
+
+    # Per-week breakdown rows for the Amount section
+    week_rows_html = ""
+    total_paid_all  = 0.0
+    total_due_all   = 0.0
+    total_remaining = 0.0
+    for bp in batch_payments:
+        bp_paid = float(bp.paid_amount or 0) if bp.status == "partial" else float(bp.amount or 0)
+        bp_rem  = float(bp.amount or 0) - bp_paid if bp.status == "partial" else 0.0
+        total_paid_all  += bp_paid
+        total_due_all   += float(bp.amount or 0)
+        total_remaining += bp_rem
+        status_tag = ""
+        if bp.status == "partial":
+            status_tag = f" <span style='font-size:10px;color:#d97706'>(partial — {int(bp_rem):,} ETB remaining)</span>"
+        week_rows_html += (
+            f"<div class='row'>"
+            f"<span>Week {bp.week.week_number}</span>"
+            f"<span style='font-weight:600;color:#078930'>{int(bp_paid):,} ETB{status_tag}</span>"
+            f"</div>"
+        )
+
+    penalty_amt  = float(p.penalty_amount or 0)
+    penalty_str  = f"{int(penalty_amt):,} ETB" if penalty_amt else None
+    grand_total  = total_paid_all + penalty_amt
+    total_str    = f"{int(grand_total):,} ETB"
+
+    # Weeks / draw dates section
+    if len(batch_payments) == 1:
+        bp0 = batch_payments[0]
+        weeks_str      = f"Week {bp0.week.week_number}"
+        draw_date_html = _dual_date(bp0.week.draw_date)
+        draw_date_row  = f"<div class='row'><span>Draw Date</span>{draw_date_html}</div>"
+    else:
+        week_nums  = [bp.week.week_number for bp in batch_payments]
+        weeks_str  = "Week " + ", ".join(str(n) for n in week_nums)
+        # List each week and its draw date
+        draw_date_row = "".join(
+            f"<div class='row'><span style='font-size:12px;color:#9ca3af'>Wk {bp.week.week_number} Draw</span>"
+            f"{_dual_date(bp.week.draw_date)}</div>"
+            for bp in batch_payments
+        )
 
     # Spot number(s) for this member in this cycle
     if m and cycle:
@@ -896,8 +942,8 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     <div class="logo">እ</div>
     <div class="org">{group_name}</div>
     <div class="tag">{group_tag}</div>
-    <div class="badge" style="{'background:#fef3c7;color:#92400e' if is_partial else ''}">
-      {'⚠ Partial Payment' if is_partial else '✓ Payment Received'}
+    <div class="badge" style="{'background:#fef3c7;color:#92400e' if is_partial_batch else ''}">
+      {'⚠ Partial Payment' if is_partial_batch else '✓ Payment Received'}
     </div>
   </div>
 
@@ -908,7 +954,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
   <div class="row"><span>Collected By</span><span>{collected_by_str}</span></div>
   {"<div class='row'><span>Reference</span><span>" + p.reference + "</span></div>" if p.reference else ""}
   {"<div class='row'><span>Status</span><span style='color:#dc2626;font-weight:600'>Late Payment</span></div>" if is_late else ""}
-  {"<div class='row'><span>Status</span><span style='color:#d97706;font-weight:600'>Partial Payment</span></div>" if is_partial else ""}
+  {"<div class='row'><span>Status</span><span style='color:#d97706;font-weight:600'>Partial Payment</span></div>" if is_partial_batch else ""}
 
   <h2>Member</h2>
   <div class="row"><span>Name</span><span>{m.name if m else "—"}</span></div>
@@ -917,16 +963,15 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
 
   <h2>Equb Details</h2>
   <div class="row"><span>Cycle</span><span>{cycle.name if cycle else "—"}</span></div>
-  <div class="row"><span>Week #</span><span>{w.week_number if w else "—"}</span></div>
-  <div class="row"><span>Draw Date</span>{draw_date_html}</div>
+  <div class="row"><span>Weeks Covered</span><span style="font-weight:600">{weeks_str}</span></div>
+  {draw_date_row}
 
-  <h2>Amount</h2>
-  <div class="row"><span>Weekly Contribution</span><span>{amount_str}</span></div>
-  <div class="row"><span>Amount Paid</span><span style="font-weight:700;color:#078930">{paid_str}</span></div>
-  {f'<div class="row" style="color:#d97706"><span>Remaining Balance</span><span style="font-weight:700">{remaining_str}</span></div>' if remaining_str else ""}
+  <h2>Amount Breakdown</h2>
+  {week_rows_html}
   {f'<div class="row penalty"><span>Late Penalty</span><span>{penalty_str}</span></div>' if penalty_str else ""}
-  {f'<div class="row" style="color:#2563eb"><span>Credit Applied</span><span style="font-weight:600">{int(p.batch.credit_applied):,} ETB</span></div>' if p.batch and p.batch.credit_applied and float(p.batch.credit_applied) > 0 else ""}
-  <div class="total-row"><span>{'Amount Received' if is_partial else 'Total'}</span><span>{total_str}</span></div>
+  {f'<div class="row" style="color:#2563eb"><span>Credit Applied</span><span style="font-weight:600">{int(credit_applied):,} ETB</span></div>' if credit_applied > 0 else ""}
+  {f'<div class="row" style="color:#d97706;font-weight:600"><span>Total Remaining</span><span>{int(total_remaining):,} ETB</span></div>' if total_remaining > 0 else ""}
+  <div class="total-row"><span>{'Amount Received' if is_partial_batch else 'Total Paid'}</span><span>{total_str}</span></div>
   {"<div class='row' style='margin-top:12px;font-size:13px;color:#6b7280'><span>Notes</span><span style='text-align:right'>" + p.notes + "</span></div>" if p.notes else ""}
 
   <div class="footer">
