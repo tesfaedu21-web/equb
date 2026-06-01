@@ -909,11 +909,11 @@ function members() {
     // Cycle-aware amounts: prefer active cycle overrides over global settings
     get cycleFullAmount() {
       const cycle = this.allCycles.find(c => c.id == this.selectedCycle);
-      return (cycle?.full_spot_amount) || this.settings.full_spot_amount || 21000;
+      return cycle?.settings?.full_spot_amount || this.settings.full_spot_amount || 21000;
     },
     get cycleHalfAmount() {
       const cycle = this.allCycles.find(c => c.id == this.selectedCycle);
-      return (cycle?.half_spot_amount) || this.settings.half_spot_amount || 10500;
+      return cycle?.settings?.half_spot_amount || this.settings.half_spot_amount || 10500;
     },
 
     async openAdd() {
