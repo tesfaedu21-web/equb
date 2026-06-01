@@ -1007,6 +1007,19 @@
               ⚠ Partial — <span x-text="fmt(selectedAmount - parseFloat(batch.actual_paid || 0))"></span> will remain outstanding
             </p>
           </template>
+          <!-- Overpayment cascade warning -->
+          <template x-if="batch.actual_paid && parseFloat(batch.actual_paid) > selectedAmount">
+            <div class="mt-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs space-y-1">
+              <div class="font-semibold text-blue-800">
+                ⚡ Extra <span x-text="fmt(parseFloat(batch.actual_paid) - selectedAmount)"></span> ETB will cascade
+              </div>
+              <div class="text-blue-600">
+                <span x-text="fmt(selectedAmount)"></span> covers the selected week(s).
+                The extra <span x-text="fmt(parseFloat(batch.actual_paid) - selectedAmount)"></span> ETB
+                will automatically apply to the next outstanding week as a partial payment.
+              </div>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -1048,7 +1061,10 @@
             <button type="button" @click="showPayModal = false" class="btn-secondary flex-1">Cancel</button>
             <button type="button" @click="saveBatch()" :disabled="saving"
                     class="btn-primary flex-1"
-                    x-text="saving ? 'Saving…' : `Confirm — ${fmt(batch.actual_paid ? parseFloat(batch.actual_paid) : selectedAmount)}`"></button>
+                    x-text="saving ? 'Saving…' : (batch.actual_paid && parseFloat(batch.actual_paid) > selectedAmount)
+                      ? `Confirm — ${fmt(parseFloat(batch.actual_paid))} (${fmt(parseFloat(batch.actual_paid) - selectedAmount)} cascades)`
+                      : `Confirm — ${fmt(batch.actual_paid ? parseFloat(batch.actual_paid) : selectedAmount)}`">
+            </button>
           </div>
         </div>
       </template>
