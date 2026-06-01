@@ -402,6 +402,7 @@ def record_batch_payment(data: BatchPaymentRecord, request: Request, db: Session
         notes=data.notes,
         collected_by_id=cashier_id,
         credit_applied=round(existing_credit, 2),
+        cash_collected=round(new_cash, 2),
     )
     db.add(batch)
     db.flush()
@@ -537,24 +538,37 @@ def update_payment(payment_id: int, data: PaymentUpdate, request: Request, db: S
             raise HTTPException(status_code=400, detail="Payment date cannot be in the future")
 
     old_status = p.status
-    was_unpaid = p.status != "paid"
+    was_unpaid = p.status not in ("paid", "partial")
+    reverting  = p.status in ("paid", "partial") and data.status in ("pending", "missed", "late")
+
     p.status = data.status
-    if data.payment_method:
-        p.payment_method = data.payment_method
-    if data.reference is not None:
-        p.reference = data.reference
-    if data.paid_date:
-        p.paid_date = datetime.fromisoformat(data.paid_date)
-    elif data.status == "paid" and not p.paid_date:
-        p.paid_date = _utcnow()
-    if data.notes is not None:
-        p.notes = data.notes
-    if data.penalty_amount is not None:
-        p.penalty_amount = data.penalty_amount
-    elif data.status == "paid" and was_unpaid:
-        p.penalty_amount = _calc_penalty(p, p.paid_date or _utcnow(), db)
-    if data.status == "paid" and was_unpaid:
-        p.collected_by_id = getattr(request.state, "user_id", None)
+
+    if reverting:
+        # Clear all payment data — record reverts to a clean unpaid state
+        p.paid_amount     = None
+        p.paid_date       = None
+        p.payment_method  = None
+        p.reference       = None
+        p.batch_id        = None
+        p.penalty_amount  = 0
+        p.collected_by_id = None
+    else:
+        if data.payment_method:
+            p.payment_method = data.payment_method
+        if data.reference is not None:
+            p.reference = data.reference
+        if data.paid_date:
+            p.paid_date = datetime.fromisoformat(data.paid_date)
+        elif data.status == "paid" and not p.paid_date:
+            p.paid_date = _utcnow()
+        if data.notes is not None:
+            p.notes = data.notes
+        if data.penalty_amount is not None:
+            p.penalty_amount = data.penalty_amount
+        elif data.status == "paid" and was_unpaid:
+            p.penalty_amount = _calc_penalty(p, p.paid_date or _utcnow(), db)
+        if data.status == "paid" and was_unpaid:
+            p.collected_by_id = getattr(request.state, "user_id", None)
 
     user = _get_current_user(request, db)
     log_action(db, user=user, action="update", table="payments",
@@ -831,7 +845,11 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
     collected_by_str = p.collected_by.full_name if p.collected_by else "—"
     paid_date_html   = _dual_date(p.paid_date)
     is_late          = bool(p.penalty_amount)
-    credit_applied   = float(p.batch.credit_applied or 0) if p.batch else 0.0
+    # Credit that actually contributed to THIS receipt's weeks
+    # = max(0, total_receipt_amount - cash_collected_by_cashier)
+    # If cashier's cash covered all weeks, credit went to cascade/other weeks — don't show here
+    _batch_credit  = float(p.batch.credit_applied or 0) if p.batch else 0.0
+    _cash_for_batch = float(p.batch.cash_collected or p.batch.total_amount or 0) if p.batch else 0.0
 
     # Batch-aware: collect all payments in this batch, sorted by week
     if p.batch_id and p.batch:
@@ -865,6 +883,10 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db)):
             f"<span style='font-weight:600;color:#078930'>{int(bp_paid):,} ETB{status_tag}</span>"
             f"</div>"
         )
+
+    # Only show credit that actually went to these weeks (not cascade/carry-forward)
+    credit_applied = max(0.0, total_paid_all - _cash_for_batch) if _batch_credit > 0 else 0.0
+    credit_applied = min(credit_applied, _batch_credit)  # cap at actual drawn amount
 
     penalty_amt  = float(p.penalty_amount or 0)
     penalty_str  = f"{int(penalty_amt):,} ETB" if penalty_amt else None
