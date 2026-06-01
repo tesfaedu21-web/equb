@@ -375,20 +375,20 @@
                     :class="addForm.share === 'full'
                       ? 'ring-2 ring-equb-green bg-equb-pale border-equb-green'
                       : 'bg-gray-50 hover:bg-gray-100 border-gray-200'"
-                    @click="addForm.share = 'full'; addForm.spot_id = null; addForm.weekly_contribution = settings.full_spot_amount || 21000"
+                    @click="addForm.share = 'full'; addForm.spot_id = null; addForm.weekly_contribution = cycleFullAmount"
                     class="rounded-xl p-3 text-left border transition-all">
               <div class="font-semibold text-gray-900 text-sm">Full Spot</div>
-              <div class="text-xs text-equb-green font-medium mt-0.5" x-text="fmt(settings.full_spot_amount || 21000) + ' / week'"></div>
+              <div class="text-xs text-equb-green font-medium mt-0.5" x-text="fmt(cycleFullAmount) + ' / week'"></div>
               <div class="text-xs text-gray-400 mt-1">One person per spot</div>
             </button>
             <button type="button"
                     :class="addForm.share === 'half'
                       ? 'ring-2 ring-equb-green bg-equb-pale border-equb-green'
                       : 'bg-gray-50 hover:bg-gray-100 border-gray-200'"
-                    @click="addForm.share = 'half'; addForm.spot_id = null; addForm.weekly_contribution = settings.half_spot_amount || 10500"
+                    @click="addForm.share = 'half'; addForm.spot_id = null; addForm.weekly_contribution = cycleHalfAmount"
                     class="rounded-xl p-3 text-left border transition-all">
               <div class="font-semibold text-gray-900 text-sm">Half Spot</div>
-              <div class="text-xs text-equb-green font-medium mt-0.5" x-text="fmt(settings.half_spot_amount || 10500) + ' / week'"></div>
+              <div class="text-xs text-equb-green font-medium mt-0.5" x-text="fmt(cycleHalfAmount) + ' / week'"></div>
               <div class="text-xs text-gray-400 mt-1">Shared with one other</div>
             </button>
           </div>
@@ -509,17 +509,17 @@
           <div class="grid grid-cols-2 gap-2">
             <button type="button"
                     :class="newSpotForm.share === 'full' ? 'ring-2 ring-equb-green bg-equb-pale border-equb-green' : 'bg-gray-50 border-gray-200'"
-                    @click="newSpotForm.share = 'full'; newSpotForm.spot_id = null; newSpotForm.weekly_contribution = settings.full_spot_amount || 21000"
+                    @click="newSpotForm.share = 'full'; newSpotForm.spot_id = null; newSpotForm.weekly_contribution = cycleFullAmount"
                     class="rounded-lg p-2 text-left border transition-all text-xs">
               <div class="font-semibold text-gray-800">Full</div>
-              <div class="text-equb-green" x-text="fmt(settings.full_spot_amount || 21000)"></div>
+              <div class="text-equb-green" x-text="fmt(cycleFullAmount)"></div>
             </button>
             <button type="button"
                     :class="newSpotForm.share === 'half' ? 'ring-2 ring-equb-green bg-equb-pale border-equb-green' : 'bg-gray-50 border-gray-200'"
-                    @click="newSpotForm.share = 'half'; newSpotForm.spot_id = null; newSpotForm.weekly_contribution = settings.half_spot_amount || 10500"
+                    @click="newSpotForm.share = 'half'; newSpotForm.spot_id = null; newSpotForm.weekly_contribution = cycleHalfAmount"
                     class="rounded-lg p-2 text-left border transition-all text-xs">
               <div class="font-semibold text-gray-800">Half</div>
-              <div class="text-equb-green" x-text="fmt(settings.half_spot_amount || 10500)"></div>
+              <div class="text-equb-green" x-text="fmt(cycleHalfAmount)"></div>
             </button>
           </div>
           <!-- Filtered spot selector -->
@@ -906,24 +906,36 @@ function members() {
       } catch(e) { /* keep defaults */ }
     },
 
+    // Cycle-aware amounts: prefer active cycle overrides over global settings
+    get cycleFullAmount() {
+      const cycle = this.allCycles.find(c => c.id == this.selectedCycle);
+      return (cycle?.full_spot_amount) || this.settings.full_spot_amount || 21000;
+    },
+    get cycleHalfAmount() {
+      const cycle = this.allCycles.find(c => c.id == this.selectedCycle);
+      return (cycle?.half_spot_amount) || this.settings.half_spot_amount || 10500;
+    },
+
     async openAdd() {
       await Promise.all([this.loadSettings(), this.loadSpots()]);
       this.addForm = {
         name: '', phone: '', spot_id: null, share: 'full',
-        weekly_contribution: this.settings.full_spot_amount || 21000,
+        weekly_contribution: this.cycleFullAmount,
         notes: ''
       };
       this.showAddModal = true;
     },
 
     async openEdit(m) {
-      this.editMember = m;
-      this.editForm = { name: m.name, phone: m.phone || '', status: m.status, notes: m.notes || '' };
+      // Refresh member data so credit_balance is always current
+      const fresh = await this.api('GET', `/api/members/${m.id}`).catch(() => m);
+      this.editMember = fresh;
+      this.editForm = { name: fresh.name, phone: fresh.phone || '', status: fresh.status, notes: fresh.notes || '' };
+      await Promise.all([this.loadSettings(), this.loadSpots()]);
       this.newSpotForm = {
         spot_id: null, share: 'full',
-        weekly_contribution: this.settings.full_spot_amount || 21000
+        weekly_contribution: this.cycleFullAmount
       };
-      await Promise.all([this.loadSettings(), this.loadSpots()]);
       this.showEditModal = true;
     },
 
@@ -970,7 +982,7 @@ function members() {
         this.editMember = updated;
         this.newSpotForm = {
           spot_id: null, share: 'full',
-          weekly_contribution: this.settings.full_spot_amount || 21000
+          weekly_contribution: this.cycleFullAmount
         };
         this.showToast('Spot added');
         await Promise.all([this.load(), this.loadSpots()]);
