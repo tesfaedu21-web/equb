@@ -171,6 +171,9 @@ def portal_lookup(phone: str, spot_number: int, db: Session = Depends(get_db)):
         if upcoming_unpaid:
             next_due = upcoming_unpaid[0]
 
+    if next_due and next_due.get("status") == "partial" and next_due.get("remaining_amount") is not None:
+        next_due = {**next_due, "amount": next_due["remaining_amount"], "is_remaining": True}
+
     # Scheduled pot week: a future week assigned to this member's spot (not yet drawn)
     pot_week = None
     member_spot_ids = [sa.spot_id for sa in sas if sa.spot_id]

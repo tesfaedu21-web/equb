@@ -158,6 +158,8 @@ def payment_to_dict(p: Payment, cycle_id: Optional[int] = None) -> dict:
         "amount": p.amount,
         "paid_amount": p.paid_amount,
         "remaining_amount": float(p.amount - p.paid_amount) if p.paid_amount is not None and p.status == "partial" else None,
+        "prior_paid_amount": float(p.prior_paid_amount) if p.prior_paid_amount else None,
+        "prior_paid_date": p.prior_paid_date.isoformat() if p.prior_paid_date else None,
         "paid_date": p.paid_date.isoformat() if p.paid_date else None,
         "payment_method": p.payment_method,
         "reference": p.reference,

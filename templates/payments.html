@@ -224,6 +224,9 @@
                     <div class="text-xs mt-0.5">
                       <span class="text-orange-600 font-medium" x-text="'Paid: ' + fmt(p.paid_amount)"></span>
                       <span class="text-red-500 ml-1" x-text="'· Due: ' + fmt(p.remaining_amount)"></span>
+                      <template x-if="p.prior_paid_amount">
+                        <div class="text-gray-400 mt-0.5" x-text="'(prev. ' + fmt(p.prior_paid_amount) + ' on ' + (p.prior_paid_date ? fmtDate(p.prior_paid_date) : '—') + ')'"></div>
+                      </template>
                     </div>
                   </template>
                 </td>

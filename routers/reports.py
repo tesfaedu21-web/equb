@@ -564,11 +564,14 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
             "cash_balance": 0, "pending_draw_balance": 0,
         }
 
-    # Cash IN — actual member payments
+    # Cash IN — actual member payments (paid + partial paid_amounts)
     paid_payments = db.query(Payment).filter(
         Payment.week_id.in_(week_ids), Payment.status == "paid"
     ).all()
-    total_collected = sum(p.amount for p in paid_payments)
+    partial_bs = db.query(Payment).filter(
+        Payment.week_id.in_(week_ids), Payment.status == "partial"
+    ).all()
+    total_collected = sum(p.amount for p in paid_payments) + sum(float(p.paid_amount or 0) for p in partial_bs)
 
     # Disbursements
     disbs = db.query(PotDisbursement).filter(
@@ -892,17 +895,19 @@ def _general_ledger_data(cycle_id: int, db: Session) -> list:
         week_payments = by_week.get(w.id, [])
         # For partial payments, only credit the actual cash received
         total = sum(
-            (p.paid_amount or 0) if p.status == "partial" else p.amount
+            float(p.paid_amount or 0) if p.status == "partial" else float(p.amount)
             for p in week_payments
         )
         if total == 0:
             continue
+        has_partial = any(p.status == "partial" for p in week_payments)
+        partial_note = " (incl. partial)" if has_partial else ""
         paid_dates = [p.paid_date for p in week_payments if p.paid_date]
         entry_date = min(paid_dates).date() if paid_dates else w.draw_date.date()
         entries.append({
             "date":        entry_date.isoformat(),
             "type":        "collection",
-            "description": f"Week {w.week_number} — Cash Collected",
+            "description": f"Week {w.week_number} — Cash Collected{partial_note}",
             "credit":      total,
             "debit":       0,
         })
@@ -1095,9 +1100,10 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
         start = (sorted_weeks[i - 1].draw_date.date() + _td(days=1)) if i > 0 else w.draw_date.date() - _td(days=365)
         windows.append((w, start, w.draw_date.date()))
 
-    # Fetch all paid payments once
+    # Fetch paid + partial payments for accurate cash-flow (partial contributes paid_amount)
     all_paid = db.query(Payment).filter(
-        Payment.week_id.in_(week_ids), Payment.status == "paid"
+        Payment.week_id.in_(week_ids),
+        Payment.status.in_(["paid", "partial"])
     ).all()
     week_map = {w.id: w for w in weeks}
 
@@ -1108,10 +1114,12 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
     }
 
     # Bucket each payment into a collection window by paid_date.
-    # If the matched window belongs to a pending/future week (excluded from chart),
-    # fall back to the payment's obligation week so collections aren't lost.
+    # Partial payments contribute paid_amount (not full amount).
     collected: dict = {}
     for p in all_paid:
+        cash = float(p.paid_amount or 0) if p.status == "partial" else float(p.amount)
+        if not cash:
+            continue
         if p.paid_date:
             pd = p.paid_date.date() if hasattr(p.paid_date, "date") else p.paid_date
         else:
@@ -1122,16 +1130,14 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
             if ws <= pd <= we:
                 matched_id = w.id
                 break
-        # Use matched window only if it's a renderable (completed) week
         if matched_id and matched_id in renderable_ids:
             target = matched_id
         elif p.week_id in renderable_ids:
-            target = p.week_id  # fall back to obligation week
+            target = p.week_id
         else:
-            # last renderable week
             target = next((w.id for w, _, _ in reversed(windows) if w.id in renderable_ids), None)
         if target:
-            collected[target] = collected.get(target, 0) + p.amount
+            collected[target] = collected.get(target, 0) + cash
 
     # Per-week obligation: sum payments by week_id regardless of paid_date
     all_week_payments = db.query(Payment).filter(Payment.week_id.in_(week_ids)).all()
@@ -1141,8 +1147,10 @@ def collection_trend(cycle_id: Optional[int] = None, db: Session = Depends(get_d
     for p in all_week_payments:
         obligation_total[p.week_id] = obligation_total.get(p.week_id, 0) + p.amount
         if p.status == "paid":
-            obligation_paid[p.week_id] = obligation_paid.get(p.week_id, 0) + p.amount
+            obligation_paid[p.week_id] = obligation_paid.get(p.week_id, 0) + float(p.amount)
             obligation_counts[p.week_id] = obligation_counts.get(p.week_id, 0) + 1
+        elif p.status == "partial" and p.paid_amount:
+            obligation_paid[p.week_id] = obligation_paid.get(p.week_id, 0) + float(p.paid_amount)
 
     # paid_count per week_id for cash-flow tooltip
     paid_counts: dict = {}
@@ -1411,19 +1419,21 @@ def member_ranking(cycle_id: Optional[int] = None, db: Session = Depends(get_db)
         statuses = payments_by_member[mid]
         paid   = statuses.count("paid")
         missed = statuses.count("missed")
-        late   = statuses.count("late")
-        total  = len(statuses)
-        rate   = round(paid / total * 100, 1) if total else 100.0
+        late    = statuses.count("late")
+        partial = statuses.count("partial")
+        total   = len(statuses)
+        rate    = round(paid / total * 100, 1) if total else 100.0
         result.append({
-            "member_id":    mid,
-            "member_name":  member.name,
-            "phone":        member.phone,
-            "spot_numbers": sorted(spots_by_member[mid]),
-            "paid_weeks":   paid,
-            "missed_weeks": missed,
-            "late_weeks":   late,
-            "total_weeks":  total,
-            "rate":         rate,
+            "member_id":      mid,
+            "member_name":    member.name,
+            "phone":          member.phone,
+            "spot_numbers":   sorted(spots_by_member[mid]),
+            "paid_weeks":     paid,
+            "missed_weeks":   missed,
+            "late_weeks":     late,
+            "partial_weeks":  partial,
+            "total_weeks":    total,
+            "rate":           rate,
         })
     return sorted(result, key=lambda x: (-x["rate"], -x["paid_weeks"]))
 
