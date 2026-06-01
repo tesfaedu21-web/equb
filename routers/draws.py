@@ -34,7 +34,7 @@ def _actual_assoc_collected(db: Session, completed_week_ids: list, cycle_id: int
 
     paid_payments = db.query(Payment).filter(
         Payment.week_id.in_(completed_week_ids),
-        Payment.status == "paid",
+        Payment.status.in_(["paid", "partial"]),
     ).all()
 
     # Build member → list of MemberSpot for this cycle
@@ -46,8 +46,14 @@ def _actual_assoc_collected(db: Session, completed_week_ids: list, cycle_id: int
 
     total = 0
     for p in paid_payments:
+        # For partial payments, contribute proportionally based on fraction paid
+        if p.status == "partial" and p.amount and p.paid_amount:
+            fraction = float(p.paid_amount) / float(p.amount)
+        else:
+            fraction = 1.0
         for ms in ms_by_member.get(p.member_id, []):
-            total += assoc_ded if ms.share == "full" else assoc_ded / 2
+            base = assoc_ded if ms.share == "full" else assoc_ded / 2
+            total += base * fraction
     return total
 
 

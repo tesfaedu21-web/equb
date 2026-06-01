@@ -712,9 +712,12 @@ def cycle_payment_summary(cycle_id: int, db: Session = Depends(get_db)):
                 "collection_rate": 0, "weeks": []}
 
     all_payments = db.query(Payment).filter(Payment.week_id.in_(week_ids)).all()
-    total_expected = sum(p.amount for p in all_payments)
-    total_paid = sum(p.amount for p in all_payments if p.status == "paid")
-    total_missed = sum(p.amount for p in all_payments if p.status == "missed")
+    total_expected = sum(float(p.amount) for p in all_payments)
+    total_paid = sum(
+        float(p.paid_amount or 0) if p.status == "partial" else float(p.amount)
+        for p in all_payments if p.status in ("paid", "partial")
+    )
+    total_missed = sum(float(p.amount) for p in all_payments if p.status == "missed")
     rate = (total_paid / total_expected * 100) if total_expected else 0
 
     week_summary = []

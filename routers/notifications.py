@@ -307,9 +307,13 @@ def send_payment_confirmed(payment, db: Session, credit_applied: float = 0.0) ->
 
         # Batch-aware: aggregate weeks and total across all payments in this batch
         if payment.batch_id and payment.batch:
-            batch_payments = [bp for bp in payment.batch.payments if bp.week and bp.status == "paid"]
+            batch_payments = [bp for bp in payment.batch.payments if bp.week and bp.status in ("paid", "partial")]
             week_nums    = sorted(bp.week.week_number for bp in batch_payments)
-            total_amount = sum(bp.amount for bp in batch_payments)
+            # Use actual cash received: paid_amount for partial, full amount for paid
+            total_amount = sum(
+                float(bp.paid_amount or 0) if bp.status == "partial" else float(bp.amount)
+                for bp in batch_payments
+            )
             if len(week_nums) == 1:
                 week_str    = str(week_nums[0])
                 week_str_am = str(week_nums[0])

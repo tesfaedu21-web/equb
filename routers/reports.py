@@ -607,9 +607,11 @@ def balance_sheet(cycle_id: Optional[int] = None, db: Session = Depends(get_db))
 
     # Pending draw balance = what's been collected but not yet disbursed
     disbursed_week_ids = {d.week_id for d in disbs}
-    pending_weeks = [wid for wid in week_ids if wid not in disbursed_week_ids]
+    pending_weeks = set(wid for wid in week_ids if wid not in disbursed_week_ids)
     pending_draw_balance = sum(
-        p.amount for p in paid_payments if p.week_id in pending_weeks
+        float(p.amount) for p in paid_payments if p.week_id in pending_weeks
+    ) + sum(
+        float(p.paid_amount or 0) for p in partial_bs if p.week_id in pending_weeks
     )
 
     return {
